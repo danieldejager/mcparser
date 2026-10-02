@@ -12,7 +12,7 @@ Offline Windows event log parser. Point it at `.evtx` files and query them with 
 v1 returns structured fields and reconstructed XML. The English message text usually lives in a provider DLL, which is not on macOS or Ubuntu, so rendered messages are not a parse dependency.
 
 ## Stack
-![McParser stack](Yenbd.jpg)
+![McParser stack](docs/Yenbd.jpg)
 
 One Rust CLI binary. Targets are macOS, Ubuntu, and Windows. Commands are `ingest`, `query`, `shell`, and `stats`.
 
