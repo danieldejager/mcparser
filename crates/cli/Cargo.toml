@@ -1,0 +1,15 @@
+[package]
+name = "mcparser"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "mcparser"
+path = "src/main.rs"
+
+[dependencies]
+evtx-read = { path = "../evtx-read" }
+model = { path = "../model" }
+case = { path = "../case" }
+query = { path = "../query" }
