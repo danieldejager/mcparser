@@ -7,10 +7,11 @@ pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")
 }
 
-pub fn ingest(db_path: &Path, events: &[Event]) -> Result<usize, duckdb::Error> {
+pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS events (
+            source_sha256 VARCHAR,
             record_id BIGINT,
             event_id INTEGER,
             channel VARCHAR,
@@ -19,10 +20,10 @@ pub fn ingest(db_path: &Path, events: &[Event]) -> Result<usize, duckdb::Error> 
             time_created VARCHAR
         )",
     )?;
-    conn.execute("DELETE FROM events", [])?;
     let mut appender = conn.appender("events")?;
     for event in events {
         appender.append_row(params![
+            source_sha256,
             event.record_id,
             event.event_id,
             event.channel,
