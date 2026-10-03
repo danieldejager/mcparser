@@ -17,14 +17,29 @@ fn main() -> ExitCode {
     };
     println!("ok={} err={}", count.ok, count.err);
 
-    match evtx_read::first_json(path.as_ref()) {
-        Ok(json) => {
-            println!("{json}");
-            ExitCode::SUCCESS
-        }
-        Err(err) => {
-            eprintln!("{err}");
-            ExitCode::from(1)
-        }
+    let json = match evtx_read::first_json(path.as_ref()) {
+    Ok(json) => json,
+    Err(err) => {
+        eprintln!("{err}");
+        return ExitCode::from(1);
     }
+};
+match model::from_json(&json) {
+    Ok(event) => {
+        println!(
+            "record={} event_id={} channel={} provider={} computer={} time={}",
+            event.record_id,
+            event.event_id,
+            event.channel,
+            event.provider,
+            event.computer,
+            event.time_created
+        );
+        ExitCode::SUCCESS
+    }
+    Err(err) => {
+        eprintln!("{err}");
+        ExitCode::from(1)
+    }
+}
 }
