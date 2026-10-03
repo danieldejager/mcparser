@@ -7,9 +7,19 @@ fn main() -> ExitCode {
         eprintln!("usage: mcparser <file.evtx>");
         return ExitCode::from(2);
     };
-    match evtx_read::count_records(path.as_ref()) {
-        Ok(count) => {
-            println!("ok={} err={}", count.ok, count.err);
+
+    let count = match evtx_read::count_records(path.as_ref()) {
+        Ok(count) => count,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    };
+    println!("ok={} err={}", count.ok, count.err);
+
+    match evtx_read::first_json(path.as_ref()) {
+        Ok(json) => {
+            println!("{json}");
             ExitCode::SUCCESS
         }
         Err(err) => {
@@ -17,14 +27,4 @@ fn main() -> ExitCode {
             ExitCode::from(1)
         }
     }
-    match evtx_read::first_json(path.as_ref()) {
-    Ok(json) => {
-        println!("{json}");
-        ExitCode::SUCCESS
-    }
-    Err(err) => {
-        eprintln!("{err}");
-        ExitCode::from(1)
-    }
-}
 }
