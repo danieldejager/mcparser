@@ -31,3 +31,12 @@ pub fn first_json(path: &Path) -> Result<String, evtx::err::EvtxError> {
         None => Ok(String::new()),
     }
 }
+
+pub fn records_json(path: &Path) -> Result<Vec<String>, evtx::err::EvtxError> {
+    let mut parser = EvtxParser::from_path(path)?;
+    let mut out = Vec::new();
+    for record in parser.records_json() {
+        out.push(record?.data);
+    }
+    Ok(out)
+}
