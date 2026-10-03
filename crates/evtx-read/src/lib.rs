@@ -24,7 +24,8 @@ pub fn count_records(path: &Path) -> Result<ParseCount, evtx::err::EvtxError> {
 
 pub fn first_json(path: &Path) -> Result<String, evtx::err::EvtxError> {
     let mut parser = EvtxParser::from_path(path)?;
-    match parser.records_json().next() {
+    let record = parser.records_json().next();
+    match record {
         Some(Ok(record)) => Ok(record.data),
         Some(Err(err)) => Err(err),
         None => Ok(String::new()),
