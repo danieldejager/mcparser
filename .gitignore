@@ -1,3 +1,5 @@
 /target
 *.mcp
 .DS_Store
+*.duckdb
+/fixtures

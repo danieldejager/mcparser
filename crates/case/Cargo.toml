@@ -5,3 +5,5 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+duckdb = { version = "1.4", features = ["bundled"] }
+model = { path = "../model" }
