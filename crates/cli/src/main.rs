@@ -28,6 +28,25 @@ fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
         eprintln!("{err}");
         return ExitCode::from(1);
     }
+    let catalog = case_dir.join("catalog.sqlite");
+    let sha256 = match case::file_sha256(path.as_ref()) {
+        Ok(sha256) => sha256,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    };
+    match case::already_ingested(&catalog, &sha256) {
+        Ok(true) => {
+            println!("skipped sha256={sha256}");
+            return ExitCode::SUCCESS;
+        }
+        Ok(false) => {}
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    }
 
     let records = match evtx_read::records_json(path.as_ref()) {
         Ok(records) => records,
@@ -51,6 +70,10 @@ fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::ingest(&db, &events) {
         Ok(inserted) => {
             println!("mapped={} inserted={} db={}", events.len(), inserted, db.display());
+            if let Err(err) = case::record_source(&catalog, path.as_ref(), &sha256, inserted as i64) {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+}
             ExitCode::SUCCESS
         }
         Err(err) => {

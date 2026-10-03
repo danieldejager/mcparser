@@ -1,6 +1,7 @@
 use duckdb::{Connection, params};
 use model::Event;
 use std::path::Path;
+use sha2::{Digest, Sha256};
 
 pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")
@@ -70,4 +71,56 @@ fn cell(row: &duckdb::Row, i: usize) -> String {
         return value;
     }
     String::new()
+}
+
+
+
+pub fn file_sha256(path: &Path) -> std::io::Result<String> {
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 65536];
+    loop {
+        let n = std::io::Read::read(&mut file, &mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
+}
+
+pub fn already_ingested(catalog: &Path, sha256: &str) -> Result<bool, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let count: i64 = conn.query_row(
+        "SELECT count(*) FROM sources WHERE sha256 = ?1",
+        [sha256],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+pub fn record_source(
+    catalog: &Path,
+    source: &Path,
+    sha256: &str,
+    records: i64,
+) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO sources (sha256, source_path, records) VALUES (?1, ?2, ?3)",
+        rusqlite::params![sha256, source.display().to_string(), records],
+    )?;
+    Ok(())
+}
+
+fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
+    let conn = rusqlite::Connection::open(path)?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sources (
+            sha256 TEXT PRIMARY KEY,
+            source_path TEXT NOT NULL,
+            records INTEGER NOT NULL
+        )",
+    )?;
+    Ok(conn)
 }
