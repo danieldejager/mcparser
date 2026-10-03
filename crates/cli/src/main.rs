@@ -17,4 +17,14 @@ fn main() -> ExitCode {
             ExitCode::from(1)
         }
     }
+    match evtx_read::first_json(path.as_ref()) {
+    Ok(json) => {
+        println!("{json}");
+        ExitCode::SUCCESS
+    }
+    Err(err) => {
+        eprintln!("{err}");
+        ExitCode::from(1)
+    }
+}
 }
