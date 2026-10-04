@@ -8,8 +8,8 @@ fn main() -> ExitCode {
         Some("ingest") => ingest(&mut args),
         Some("query") => query(&mut args),
         _ => {
-            eprintln!("usage: mcparser ingest <file.evtx> --case <dir>");
-            eprintln!("       mcparser query --case <dir> \"<sql>\"");
+            eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
+            eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
             ExitCode::from(2)
         }
     }
@@ -87,25 +87,83 @@ fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
 
 fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser query --case <dir> \"<sql>\"");
+        eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
         return ExitCode::from(2);
     };
-    let Some(sql) = args.next() else {
-        eprintln!("usage: mcparser query --case <dir> \"<sql>\"");
+    let mut rest: Vec<String> = args.collect();
+    let format = if rest.first().map(String::as_str) == Some("--format") {
+        rest.remove(0);
+        let Some(value) = rest.first().cloned() else {
+            eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
+            return ExitCode::from(2);
+        };
+        rest.remove(0);
+        match value.as_str() {
+            "table" | "csv" | "jsonl" => value,
+            other => {
+                eprintln!("unknown format: {other}");
+                return ExitCode::from(2);
+            }
+        }
+    } else {
+        "table".to_string()
+    };
+    let Some(sql) = rest.first() else {
+        eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
         return ExitCode::from(2);
     };
     let db = case_dir.join("events.duckdb");
-    let rows = match case::query(&db, &sql) {
+    let rows = match case::query(&db, sql) {
         Ok(rows) => rows,
         Err(err) => {
             eprintln!("{err}");
             return ExitCode::from(1);
         }
     };
-    for row in rows {
-        println!("{}", row.join("\t"));
-    }
+    print_rows(&rows, &format);
     ExitCode::SUCCESS
+}
+
+fn print_rows(rows: &[Vec<String>], format: &str) {
+    match format {
+        "csv" => {
+            for row in rows {
+                println!(
+                    "{}",
+                    row.iter()
+                        .map(|cell| csv_cell(cell))
+                        .collect::<Vec<_>>()
+                        .join(",")
+                );
+            }
+        }
+        "jsonl" => {
+            for row in rows {
+                let values: Vec<String> = row
+                    .iter()
+                    .map(|cell| format!("\"{}\"", json_escape(cell)))
+                    .collect();
+                println!("[{}]", values.join(","));
+            }
+        }
+        _ => {
+            for row in rows {
+                println!("{}", row.join("\t"));
+            }
+        }
+    }
+}
+
+fn csv_cell(value: &str) -> String {
+    if value.contains([',', '"', '\n']) {
+        format!("\"{}\"", value.replace('"', "\"\""))
+    } else {
+        value.to_string()
+    }
+}
+
+fn json_escape(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 fn case_dir(args: &mut impl Iterator<Item = String>) -> Option<PathBuf> {
