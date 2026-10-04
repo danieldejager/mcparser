@@ -1,7 +1,7 @@
 use duckdb::{Connection, params};
 use model::Event;
-use std::path::Path;
 use sha2::{Digest, Sha256};
+use std::path::Path;
 
 pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")
@@ -17,7 +17,8 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
             channel VARCHAR,
             provider VARCHAR,
             computer VARCHAR,
-            time_created VARCHAR
+            time_created VARCHAR,
+            event_data VARCHAR
         )",
     )?;
     let mut appender = conn.appender("events")?;
@@ -30,6 +31,7 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
             event.provider,
             event.computer,
             event.time_created,
+            event.event_data,
         ])?;
     }
     appender.flush()?;
@@ -73,8 +75,6 @@ fn cell(row: &duckdb::Row, i: usize) -> String {
     }
     String::new()
 }
-
-
 
 pub fn file_sha256(path: &Path) -> std::io::Result<String> {
     let mut file = std::fs::File::open(path)?;
