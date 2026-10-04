@@ -13,6 +13,7 @@ pub struct Event {
     pub provider: String,
     pub computer: String,
     pub time_created: String,
+    pub event_data: String,
 }
 
 #[derive(Deserialize)]
@@ -25,6 +26,8 @@ struct Raw {
 struct RawEvent {
     #[serde(rename = "System")]
     system: RawSystem,
+    #[serde(rename = "EventData", default)]
+    event_data: Value,
 }
 
 #[derive(Deserialize)]
@@ -69,7 +72,8 @@ struct TimeAttr {
 
 pub fn from_json(json: &str) -> Result<Event, String> {
     let raw: Raw = serde_json::from_str(json).map_err(|err| err.to_string())?;
-    let system = raw.event.system;
+    let event = raw.event;
+    let system = event.system;
     Ok(Event {
         record_id: system.record_id,
         event_id: event_id(&system.event_id)?,
@@ -77,6 +81,7 @@ pub fn from_json(json: &str) -> Result<Event, String> {
         provider: system.provider.attributes.name,
         computer: system.computer,
         time_created: system.time_created.attributes.system_time,
+        event_data: event.event_data.to_string(),
     })
 }
 
