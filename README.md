@@ -1,28 +1,62 @@
 # McParser
 
-Offline Windows event log parser. Point it at `.evtx` files and query them with SQL. No Windows Event Log API, so the same binary runs on macOS, Ubuntu, and Windows.
+Offline Windows event log parser. Point it at `.evtx` files and query them with SQL. No Windows Event Log API, so the same tool runs on macOS, Ubuntu, and Windows.
 
-## What it does
+Current release: **0.1.0**. This is the CLI gate before a UI. There is no packaged binary yet. Install from source.
 
-- Reads offline `.evtx` logs (BinXml). Corrupt chunks are warnings, not a hard stop
-- Normalizes each record to a stable row: time, channel, provider, event id, computer, SID, and `event_data` JSON
-- Stores a case directory: SQLite catalog plus DuckDB or Parquet events
-- Runs real SQL through embedded DuckDB
-
-v1 returns structured fields and reconstructed XML. The English message text usually lives in a provider DLL, which is not on macOS or Ubuntu, so rendered messages are not a parse dependency.
-
-## Stack
 ![McParser stack](docs/Yenbd.jpg)
 
-One Rust CLI binary. Targets are macOS, Ubuntu, and Windows. Commands are `ingest`, `query`, `shell`, and `stats`.
+## Install
 
-Offline `.evtx` files go into three modules:
+You need a Rust toolchain. DuckDB and SQLite are compiled into the binary. Do not install them separately.
 
-- `evtx` crate: BinXml reader
-- model: normalized event row
-- case catalog: SQLite
+macOS, with Homebrew:
 
-Those land in a DuckDB query engine. Output is table, JSONL, or CSV.
+```bash
+git clone https://github.com/danieldejager/mcparser.git
+cd mcparser
+brew install rust
+cargo build --release
+cp target/release/mcparser /usr/local/bin/mcparser
+mcparser
+```
+
+Ubuntu:
+
+```bash
+git clone https://github.com/danieldejager/mcparser.git
+cd mcparser
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source "$HOME/.cargo/env"
+cargo build --release
+```
+
+Windows: install Rust from https://rustup.rs, then `cargo build --release` in this repo. The binary is `target\release\mcparser.exe`.
+
+The first build compiles DuckDB and can take several minutes.
+
+## Usage
+
+```bash
+mcparser ingest --case case.mcp Security.evtx System.evtx
+mcparser stats --case case.mcp
+mcparser query --case case.mcp \
+  "SELECT event_id, count(*) FROM events GROUP BY event_id ORDER BY event_id"
+mcparser query --case case.mcp --format csv \
+  "SELECT time_created, event_id, json_extract_string(event_data, '$.TargetUserName') FROM events WHERE event_id = 4624 LIMIT 20"
+```
+
+`--format` is `table` (default), `csv`, or `jsonl`.
+
+A case directory contains `events.duckdb` and `catalog.sqlite`. Do not commit it. Ingest skips a file whose bytes are already in the catalog. The same path with a new hash replaces the old rows.
+
+Columns are `source_sha256`, `record_id`, `event_id`, `channel`, `provider`, `computer`, `time_created`, and `event_data`. `event_data` is JSON. Filter a field with `json_extract_string(event_data, '$.TargetUserName')`.
+
+## What 0.1.0 does not do
+
+Rendered message text is not in the `.evtx` file. It lives in the provider DLL, so 0.1.0 does not produce the English sentence. There is no shell, no saved queries, and no installer. `crates/query` is still empty. SQL runs in the case crate.
+
+## Stack
 
 | Layer | Choice |
 | --- | --- |
@@ -30,20 +64,7 @@ Those land in a DuckDB query engine. Output is table, JSONL, or CSV.
 | Reader | `evtx` crate |
 | Query | DuckDB |
 | Catalog | SQLite |
-| CLI | `clap` |
-
-Users install the binary, not Rust or DuckDB.
-
-```sql
-SELECT time_created, computer, event_id, event_data
-FROM events
-WHERE channel = 'Security'
-  AND event_id IN (4624, 4625)
-  AND time_created >= TIMESTAMP '2024-01-01'
-ORDER BY time_created;
-```
-
-## Layout
+| Commands | `ingest`, `query`, `stats` |
 
 ```text
 crates/evtx-read
@@ -52,5 +73,3 @@ crates/case
 crates/query
 crates/cli
 ```
-
-Case directory: `catalog.sqlite`, event store, source hashes. Row identity is `(sha256 of file, record_id)`.
