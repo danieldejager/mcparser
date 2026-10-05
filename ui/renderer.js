@@ -1,10 +1,17 @@
 const caseInput = document.getElementById("case");
 const sql = document.getElementById("sql");
+const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 
 function caseDir() {
   return caseInput.value.trim();
+}
+
+function updateLines() {
+  const count = sql.value.split("\n").length;
+  lines.textContent = Array.from({ length: count }, (_, i) => i + 1).join("\n");
+  lines.scrollTop = sql.scrollTop;
 }
 
 function addFilter(clause) {
@@ -15,6 +22,7 @@ function addFilter(clause) {
   } else {
     sql.value += where;
   }
+  updateLines();
 }
 
 function buttons(target, rows, clause) {
@@ -74,6 +82,10 @@ async function run() {
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
 }
 
+sql.addEventListener("input", updateLines);
+sql.addEventListener("scroll", () => {
+  lines.scrollTop = sql.scrollTop;
+});
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
 window.mcparser.onOpened((opened) => {
@@ -81,4 +93,5 @@ window.mcparser.onOpened((opened) => {
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
   refresh().then(run);
 });
+updateLines();
 refresh().then(run);
