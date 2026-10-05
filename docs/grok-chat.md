@@ -4,7 +4,7 @@ Status: design only. Not in 0.1.0.
 
 The chat is a pane in the desktop app. It writes SQL, McParser runs that SQL on the open case, and Grok answers from the returned rows. The `.evtx` file and the DuckDB file never leave the machine.
 
-![UI Mockup](docs/mockup_grok.png)
+![UI Mockup](mockup_grok.png)
 
 ## Boundary
 
