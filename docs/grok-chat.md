@@ -46,13 +46,19 @@ flowchart LR
 
 The case path never crosses to `api.x.ai`. The key never crosses to the chat pane. Run copies the SQL into the editor and queries the case again, locally, with no row cap.
 
-## Key
+## Key security
 
-The analyst pastes an xAI key once. Electron `safeStorage` encrypts it with the macOS keychain or Windows DPAPI, then the ciphertext is stored in the app user-data directory. It is not written into the case, the repo, logs, or the chat transcript on disk.
+The key is the analyst's xAI key. McParser does not ship one. A packaged build does not contain a key. A debug build does not read `XAI_API_KEY` or any other environment variable.
 
-Settings shows only the last four characters. Replace and Forget are the only operations. Forget deletes the ciphertext. No key, no chat. Ingest, query, and export do not change.
+Paste happens in a settings sheet. The renderer sends the pasted value to the main process once, over IPC, and then clears the field. The renderer does not keep a copy. IPC handlers never return the key. Settings can ask only "is a key set?" and receives the last four characters.
 
-A packaged build does not contain a key. A debug build does not read a key from the environment.
+The main process encrypts the key with Electron `safeStorage` before it touches disk. On macOS that uses the login keychain. On Windows it uses DPAPI, bound to the current user. The file in the app user-data directory is ciphertext. It is not in the case directory, the repository, crash dumps we write, or the chat transcript.
+
+The plaintext exists in the main process only for the length of an API call. It is not passed as an argument to `mcparser`. It is not written to stdout or stderr. Request logs, if added later, record status and elapsed time, not the `Authorization` header.
+
+The call is HTTPS to `api.x.ai` only. The key is the bearer token on that call and nowhere else.
+
+Replace overwrites the ciphertext. Forget deletes the file. There is no export. Closing the app drops the plaintext. No key, no chat. Ingest, query, and export do not change.
 
 ## Request path
 
@@ -63,7 +69,7 @@ A packaged build does not contain a key. A debug build does not read a key from 
 5. The main process sends the question, the SQL, and those rows. Cell values are truncated.
 6. The reply is shown with the SQL. Run copies that SQL into the editor. The analyst can run it again and see every row.
 
-The analyst confirms the first send of a session. The confirm dialog names the case and says that row text will leave the machine. Later sends in that session do not ask again. Forget, or closing the case, resets the confirm.
+The analyst confirms the first send of a session. The confirm dialog names the case and says that row text will leave the machine. It does not show the key. Later sends in that session do not ask again. Forget, or closing the case, resets the confirm.
 
 ## UI
 
