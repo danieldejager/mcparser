@@ -8,7 +8,6 @@ const WINDOW: egui::Color32 = egui::Color32::from_rgb(243, 243, 243);
 const PANEL: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
 const INK: egui::Color32 = egui::Color32::from_rgb(32, 32, 32);
 const MUTED: egui::Color32 = egui::Color32::from_rgb(96, 96, 96);
-const STRIPE: egui::Color32 = egui::Color32::from_rgb(236, 236, 236);
 
 pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
     let case_dir = case_dir.to_path_buf();
@@ -38,7 +37,7 @@ impl McParserApp {
     fn new(case_dir: PathBuf) -> Self {
         let mut app = Self {
             case_dir,
-            sql: "SELECT event_id, count(*) AS count FROM events GROUP BY event_id ORDER BY count DESC LIMIT 20".to_string(),
+            sql: "SELECT event_id, count(*) AS count\nFROM events\nGROUP BY event_id\nORDER BY count DESC\nLIMIT 20".to_string(),
             channels: Vec::new(),
             providers: Vec::new(),
             event_ids: Vec::new(),
@@ -77,7 +76,7 @@ impl McParserApp {
         if self.sql.to_ascii_lowercase().contains("where") {
             self.sql.push_str(" AND ");
         } else {
-            self.sql.push_str(" WHERE ");
+            self.sql.push_str("\nWHERE ");
         }
         self.sql.push_str(clause);
     }
@@ -88,80 +87,87 @@ impl eframe::App for McParserApp {
         let mut visuals = egui::Visuals::light();
         visuals.panel_fill = WINDOW;
         visuals.window_fill = WINDOW;
-        visuals.faint_bg_color = STRIPE;
         visuals.extreme_bg_color = PANEL;
         visuals.override_text_color = Some(INK);
         ui.ctx().set_visuals(visuals.clone());
         ui.style_mut().visuals = visuals;
 
-        egui::Frame::new()
-            .fill(WINDOW)
-            .inner_margin(8.0)
-            .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
-                        ui.set_width(240.0);
-                        ui.heading("Case");
-                        ui.label(self.case_dir.display().to_string());
-                        ui.separator();
-                        ui.colored_label(MUTED, "Channels");
-                        for channel in self.channels.clone() {
-                            if ui.button(&channel).clicked() {
-                                self.add_filter(&format!("channel = '{channel}'"));
-                            }
+        let full = ui.available_rect_before_wrap();
+        ui.painter().rect_filled(full, 0.0, WINDOW);
+
+        ui.horizontal(|ui| {
+            ui.allocate_ui_with_layout(
+                egui::vec2(260.0, ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_min_height(ui.available_height());
+                    ui.heading("Case");
+                    ui.label(self.case_dir.display().to_string());
+                    ui.separator();
+                    ui.colored_label(MUTED, "Channels");
+                    for channel in self.channels.clone() {
+                        if ui.button(&channel).clicked() {
+                            self.add_filter(&format!("channel = '{channel}'"));
                         }
-                        ui.separator();
-                        ui.colored_label(MUTED, "Providers");
-                        for provider in self.providers.clone() {
-                            if ui.button(&provider).clicked() {
-                                self.add_filter(&format!("provider = '{provider}'"));
-                            }
+                    }
+                    ui.separator();
+                    ui.colored_label(MUTED, "Providers");
+                    for provider in self.providers.clone() {
+                        if ui.button(&provider).clicked() {
+                            self.add_filter(&format!("provider = '{provider}'"));
                         }
-                        ui.separator();
-                        ui.colored_label(MUTED, "Event IDs");
+                    }
+                    ui.separator();
+                    ui.colored_label(MUTED, "Event IDs");
+                    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
                         for event_id in self.event_ids.clone() {
                             if ui.button(&event_id).clicked() {
                                 self.add_filter(&format!("event_id = {event_id}"));
                             }
                         }
                     });
-                    ui.separator();
-                    egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.heading("SQL");
-                            if ui.button("Run").clicked() {
-                                self.run_query();
-                            }
-                            if ui.button("Refresh case").clicked() {
-                                self.load_sidebar();
-                            }
-                        });
-                        ui.add(
-                            egui::TextEdit::multiline(&mut self.sql)
-                                .code_editor()
-                                .desired_rows(6)
-                                .desired_width(f32::INFINITY),
-                        );
-                        ui.separator();
-                        ui.colored_label(MUTED, "Results");
-                        if !self.error.is_empty() {
-                            ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
-                        } else {
-                            show_grid(ui, &self.result);
+                },
+            );
+            ui.separator();
+            ui.allocate_ui_with_layout(
+                egui::vec2(ui.available_width(), ui.available_height()),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.horizontal(|ui| {
+                        ui.heading("SQL");
+                        if ui.button("Run").clicked() {
+                            self.run_query();
+                        }
+                        if ui.button("Refresh case").clicked() {
+                            self.load_sidebar();
                         }
                     });
-                });
-                ui.separator();
-                ui.colored_label(
-                    MUTED,
-                    format!(
-                        "rows {} | elapsed {} ms | case {}",
-                        self.result.rows.len(),
-                        self.elapsed_ms,
-                        self.case_dir.display()
-                    ),
-                );
-            });
+                    ui.add(
+                        egui::TextEdit::multiline(&mut self.sql)
+                            .code_editor()
+                            .desired_rows(6)
+                            .desired_width(f32::INFINITY),
+                    );
+                    ui.separator();
+                    ui.colored_label(MUTED, "Results");
+                    if !self.error.is_empty() {
+                        ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
+                    } else {
+                        show_grid(ui, &self.result);
+                    }
+                    ui.separator();
+                    ui.colored_label(
+                        MUTED,
+                        format!(
+                            "rows {} | elapsed {} ms | case {}",
+                            self.result.rows.len(),
+                            self.elapsed_ms,
+                            self.case_dir.display()
+                        ),
+                    );
+                },
+            );
+        });
     }
 }
 
@@ -170,7 +176,11 @@ fn show_grid(ui: &mut egui::Ui, table: &Table) {
         ui.label("No rows");
         return;
     }
-    let mut builder = TableBuilder::new(ui).striped(true).resizable(true);
+    let height = (ui.available_height() - 28.0).max(120.0);
+    let mut builder = TableBuilder::new(ui)
+        .striped(true)
+        .resizable(true)
+        .max_scroll_height(height);
     for _ in &table.columns {
         builder = builder.column(Column::initial(180.0).at_least(100.0).resizable(true));
     }
