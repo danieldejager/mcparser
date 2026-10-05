@@ -92,80 +92,83 @@ impl eframe::App for McParserApp {
         ui.ctx().set_visuals(visuals.clone());
         ui.style_mut().visuals = visuals;
 
-        let height = ui.available_height();
-        let width = ui.available_width();
-        ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, WINDOW);
+        let height = ui.available_height().max(640.0);
+        let width = ui.available_width().max(900.0);
+        ui.painter().rect_filled(egui::Rect::from_min_size(ui.min_rect().min, egui::vec2(width, height)), 0.0, WINDOW);
 
-        ui.horizontal_top(|ui| {
-            ui.allocate_ui(egui::vec2(260.0, height), |ui| {
-                egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
-                    ui.set_min_size(egui::vec2(244.0, height - 16.0));
-                    ui.heading("Case");
-                    ui.label(self.case_dir.display().to_string());
-                    ui.separator();
-                    ui.colored_label(MUTED, "Channels");
-                    for channel in self.channels.clone() {
-                        if ui.button(&channel).clicked() {
-                            self.add_filter(&format!("channel = '{channel}'"));
+        ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+            pane(ui, egui::vec2(260.0, height), |ui| {
+                ui.heading("Case");
+                ui.label(self.case_dir.display().to_string());
+                ui.separator();
+                ui.colored_label(MUTED, "Channels");
+                for channel in self.channels.clone() {
+                    if ui.button(&channel).clicked() {
+                        self.add_filter(&format!("channel = '{channel}'"));
+                    }
+                }
+                ui.separator();
+                ui.colored_label(MUTED, "Providers");
+                for provider in self.providers.clone() {
+                    if ui.button(&provider).clicked() {
+                        self.add_filter(&format!("provider = '{provider}'"));
+                    }
+                }
+                ui.separator();
+                ui.colored_label(MUTED, "Event IDs");
+                egui::ScrollArea::vertical().show(ui, |ui| {
+                    for event_id in self.event_ids.clone() {
+                        if ui.button(&event_id).clicked() {
+                            self.add_filter(&format!("event_id = {event_id}"));
                         }
                     }
-                    ui.separator();
-                    ui.colored_label(MUTED, "Providers");
-                    for provider in self.providers.clone() {
-                        if ui.button(&provider).clicked() {
-                            self.add_filter(&format!("provider = '{provider}'"));
-                        }
-                    }
-                    ui.separator();
-                    ui.colored_label(MUTED, "Event IDs");
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        for event_id in self.event_ids.clone() {
-                            if ui.button(&event_id).clicked() {
-                                self.add_filter(&format!("event_id = {event_id}"));
-                            }
-                        }
-                    });
                 });
             });
-            ui.allocate_ui(egui::vec2((width - 268.0).max(400.0), height), |ui| {
-                egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
-                    ui.set_min_size(egui::vec2((width - 284.0).max(380.0), height - 16.0));
-                    ui.horizontal(|ui| {
-                        ui.heading("SQL");
-                        if ui.button("Run").clicked() {
-                            self.run_query();
-                        }
-                        if ui.button("Refresh case").clicked() {
-                            self.load_sidebar();
-                        }
-                    });
-                    ui.add(
-                        egui::TextEdit::multiline(&mut self.sql)
-                            .code_editor()
-                            .desired_rows(6)
-                            .desired_width(f32::INFINITY),
-                    );
-                    ui.add_space(8.0);
-                    ui.colored_label(MUTED, "Results");
-                    if !self.error.is_empty() {
-                        ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
-                    } else {
-                        show_grid(ui, &self.result, (height - 220.0).max(160.0));
+            pane(ui, egui::vec2(width - 268.0, height), |ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("SQL");
+                    if ui.button("Run").clicked() {
+                        self.run_query();
                     }
-                    ui.add_space(8.0);
-                    ui.colored_label(
-                        MUTED,
-                        format!(
-                            "rows {} | elapsed {} ms | case {}",
-                            self.result.rows.len(),
-                            self.elapsed_ms,
-                            self.case_dir.display()
-                        ),
-                    );
+                    if ui.button("Refresh case").clicked() {
+                        self.load_sidebar();
+                    }
                 });
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.sql)
+                        .code_editor()
+                        .desired_rows(6)
+                        .desired_width(f32::INFINITY),
+                );
+                ui.add_space(8.0);
+                ui.colored_label(MUTED, "Results");
+                if !self.error.is_empty() {
+                    ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
+                } else {
+                    show_grid(ui, &self.result, (height - 230.0).max(200.0));
+                }
+                ui.add_space(8.0);
+                ui.colored_label(
+                    MUTED,
+                    format!(
+                        "rows {} | elapsed {} ms | case {}",
+                        self.result.rows.len(),
+                        self.elapsed_ms,
+                        self.case_dir.display()
+                    ),
+                );
             });
         });
     }
+}
+
+fn pane(ui: &mut egui::Ui, size: egui::Vec2, add: impl FnOnce(&mut egui::Ui)) {
+    ui.allocate_ui_with_layout(size, egui::Layout::top_down(egui::Align::Min), |ui| {
+        egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
+            ui.set_min_size(size - egui::vec2(16.0, 16.0));
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), add);
+        });
+    });
 }
 
 fn show_grid(ui: &mut egui::Ui, table: &Table, height: f32) {
