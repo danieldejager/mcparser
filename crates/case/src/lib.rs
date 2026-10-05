@@ -7,6 +7,11 @@ pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")
 }
 
+pub struct Table {
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+}
+
 pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch(
@@ -48,19 +53,31 @@ pub fn count_event_id(db_path: &Path, event_id: u32) -> Result<i64, duckdb::Erro
 }
 
 pub fn query(db_path: &Path, sql: &str) -> Result<Vec<Vec<String>>, duckdb::Error> {
+    Ok(query_table(db_path, sql)?.rows)
+}
+
+pub fn query_table(db_path: &Path, sql: &str) -> Result<Table, duckdb::Error> {
     let conn = Connection::open(db_path)?;
     let mut stmt = conn.prepare(sql)?;
     let mut rows = stmt.query([])?;
-    let mut out = Vec::new();
+    let mut table = Table {
+        columns: Vec::new(),
+        rows: Vec::new(),
+    };
     while let Some(row) = rows.next()? {
         let column_count = row.as_ref().column_count();
+        if table.columns.is_empty() {
+            for i in 0..column_count {
+                table.columns.push(row.as_ref().column_name(i).unwrap_or_default().to_string());
+            }
+        }
         let mut cols = Vec::with_capacity(column_count);
         for i in 0..column_count {
             cols.push(cell(row, i));
         }
-        out.push(cols);
+        table.rows.push(cols);
     }
-    Ok(out)
+    Ok(table)
 }
 
 fn cell(row: &duckdb::Row, i: usize) -> String {
