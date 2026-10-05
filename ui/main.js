@@ -1,9 +1,10 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 
 const repo = path.resolve(__dirname, "..");
 const binary = path.join(repo, "target/debug/mcparser");
+let win;
 
 function run(args) {
   return new Promise((resolve) => {
@@ -25,8 +26,35 @@ function run(args) {
   });
 }
 
+async function openEvtx() {
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Open Windows event log",
+    properties: ["openFile"],
+    filters: [{ name: "Windows Event Log", extensions: ["evtx"] }],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return;
+  const file = picked.filePaths[0];
+  const caseDir = file.replace(/\.evtx$/i, "") + ".mcp";
+  const result = await run(["ingest", "--case", caseDir, file]);
+  win.webContents.send("opened", { file, caseDir, ...result });
+}
+
+function buildMenu() {
+  const template = [
+    {
+      label: "File",
+      submenu: [
+        { label: "Open EVTX...", accelerator: "CmdOrCtrl+O", click: openEvtx },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 function createWindow() {
-  const win = new BrowserWindow({
+  win = new BrowserWindow({
     width: 1200,
     height: 760,
     title: "McParser",
@@ -41,5 +69,8 @@ function createWindow() {
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", caseDir]));
 ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", caseDir, "--format", "csv", sql]));
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  buildMenu();
+  createWindow();
+});
 app.on("window-all-closed", () => app.quit());
