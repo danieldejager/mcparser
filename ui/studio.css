@@ -1,0 +1,27 @@
+html, body { height: 100%; margin: 0; font: 13px/1.4 "Segoe UI", sans-serif; color: #1f1f1f; background: #f3f3f3; }
+body { display: flex; }
+aside { width: 280px; background: #fafafa; border-right: 1px solid #e1e1e1; padding: 16px; overflow: auto; }
+main { flex: 1; display: flex; flex-direction: column; min-width: 0; padding: 12px; gap: 12px; }
+h1, .pane-title { font-size: 16px; font-weight: 700; color: #111; }
+h1 { margin: 0 0 8px; }
+input, textarea, button { font: inherit; }
+input { width: 100%; box-sizing: border-box; border: 1px solid #d0d0d0; border-radius: 6px; padding: 6px 8px; background: #fff; }
+button { border: 1px solid #d0d0d0; background: #fff; border-radius: 6px; padding: 4px 10px; }
+button:hover { background: #f3f6fb; }
+dl { margin: 16px 0 0; }
+dt { margin-top: 12px; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+dd { margin: 2px 0 0; color: #111; word-break: break-all; }
+.editor, .results { background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; display: flex; flex-direction: column; min-height: 0; }
+.results { flex: 1; }
+header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eee; }
+.results header { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; column-gap: 12px; }
+#export { width: 108px; }
+.editor-body { display: flex; min-height: 140px; }
+.lines { margin: 0; padding: 12px 8px; width: 36px; text-align: right; color: #8a8a8a; background: #f7f7f7; border-right: 1px solid #eee; overflow: hidden; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
+textarea { flex: 1; border: 0; margin: 0; min-height: 140px; resize: vertical; padding: 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
+#results { flex: 1; overflow: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #eee; }
+th { background: #f7f7f7; position: sticky; top: 0; }
+tr:nth-child(even) td { background: #fafafa; }
+#status { color: #666; }

@@ -1,0 +1,14 @@
+{
+  "name": "mcparser-ui",
+  "productName": "McParser",
+  "version": "0.1.0",
+  "private": true,
+  "description": "McParser desktop UI.",
+  "main": "main.js",
+  "scripts": {
+    "start": "node rename-mac.js && electron ."
+  },
+  "devDependencies": {
+    "electron": "36.4.0"
+  }
+}

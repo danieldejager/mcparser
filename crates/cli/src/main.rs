@@ -137,14 +137,14 @@ fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
         return ExitCode::from(2);
     };
     let db = case_dir.join("events.duckdb");
-    let rows = match case::query(&db, sql) {
-        Ok(rows) => rows,
+    let table = match case::query_table(&db, sql) {
+        Ok(table) => table,
         Err(err) => {
             eprintln!("{err}");
             return ExitCode::from(1);
         }
     };
-    print_rows(&rows, &format);
+    print_rows(&table.columns, &table.rows, &format);
     ExitCode::SUCCESS
 }
 
@@ -181,15 +181,31 @@ fn stats(args: &mut impl Iterator<Item = String>) -> ExitCode {
                 return ExitCode::from(1);
             }
         };
-        print_rows(&rows, "table");
+        print_rows(&[], &rows, "table");
         println!();
+    }
+    println!("# sources");
+    match case::sources(&case_dir.join("catalog.sqlite")) {
+        Ok(sources) => {
+            for source in sources {
+                let size = std::fs::metadata(&source.path).map(|meta| meta.len()).unwrap_or(0);
+                println!("{}\t{}\t{}\t{}", source.path, source.sha256, size, source.records);
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
     }
     ExitCode::SUCCESS
 }
 
-fn print_rows(rows: &[Vec<String>], format: &str) {
+fn print_rows(columns: &[String], rows: &[Vec<String>], format: &str) {
     match format {
         "csv" => {
+            if !columns.is_empty() {
+                println!("{}", columns.iter().map(|cell| csv_cell(cell)).collect::<Vec<_>>().join(","));
+            }
             for row in rows {
                 println!(
                     "{}",
