@@ -8,7 +8,13 @@ function caseDir() {
 }
 
 function addFilter(clause) {
-  sql.value += sql.value.toLowerCase().includes("where") ? ` AND ${clause}` : `\nWHERE ${clause}`;
+  const where = sql.value.toLowerCase().includes("where") ? ` AND ${clause}` : `\nWHERE ${clause}`;
+  const limit = sql.value.search(/\n(ORDER BY|LIMIT)\b/i);
+  if (limit >= 0) {
+    sql.value = sql.value.slice(0, limit) + where + sql.value.slice(limit);
+  } else {
+    sql.value += where;
+  }
 }
 
 function buttons(target, rows, clause) {
@@ -70,4 +76,9 @@ async function run() {
 
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
+window.mcparser.onOpened((opened) => {
+  caseInput.value = opened.caseDir;
+  status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
+  refresh().then(run);
+});
 refresh().then(run);
