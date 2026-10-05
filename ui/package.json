@@ -1,0 +1,13 @@
+{
+  "name": "mcparser-ui",
+  "version": "0.1.0",
+  "private": true,
+  "description": "McParser desktop UI. Electron shell over the mcparser CLI.",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "36.4.0"
+  }
+}
