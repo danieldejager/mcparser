@@ -6,9 +6,23 @@
   "description": "McParser desktop UI.",
   "main": "main.js",
   "scripts": {
-    "start": "node rename-mac.js && electron ."
+    "start": "node rename-mac.js && electron .",
+    "dist": "electron-builder --mac dmg"
   },
   "devDependencies": {
-    "electron": "36.4.0"
+    "electron": "36.4.0",
+    "electron-builder": "26.0.12"
+  },
+  "build": {
+    "appId": "com.danieldejager.mcparser",
+    "productName": "McParser",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js"],
+    "extraResources": [{ "from": "../target/release/mcparser", "to": "mcparser" }],
+    "mac": {
+      "identity": null,
+      "category": "public.app-category.developer-tools",
+      "target": ["dmg"]
+    }
   }
 }
