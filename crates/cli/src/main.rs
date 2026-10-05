@@ -184,6 +184,19 @@ fn stats(args: &mut impl Iterator<Item = String>) -> ExitCode {
         print_rows(&[], &rows, "table");
         println!();
     }
+    println!("# sources");
+    match case::sources(&case_dir.join("catalog.sqlite")) {
+        Ok(sources) => {
+            for source in sources {
+                let size = std::fs::metadata(&source.path).map(|meta| meta.len()).unwrap_or(0);
+                println!("{}\t{}\t{}\t{}", source.path, source.sha256, size, source.records);
+            }
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    }
     ExitCode::SUCCESS
 }
 
