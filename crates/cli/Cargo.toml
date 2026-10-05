@@ -9,6 +9,7 @@ name = "mcparser"
 path = "src/main.rs"
 
 [dependencies]
+eframe = "0.36"
 evtx-read = { path = "../evtx-read" }
 model = { path = "../model" }
 case = { path = "../case" }
