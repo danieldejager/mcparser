@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require("electron");
 const { spawn } = require("child_process");
+const fs = require("fs");
 const path = require("path");
 
 const repo = path.resolve(__dirname, "..");
@@ -80,6 +81,16 @@ function createWindow() {
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", caseDir]));
 ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", caseDir, "--format", "csv", sql]));
+ipcMain.handle("save-csv", async (_event, csv) => {
+  const picked = await dialog.showSaveDialog(win, {
+    title: "Export results",
+    defaultPath: "results.csv",
+    filters: [{ name: "CSV", extensions: ["csv"] }],
+  });
+  if (picked.canceled || !picked.filePath) return { saved: false };
+  fs.writeFileSync(picked.filePath, csv);
+  return { saved: true, path: picked.filePath };
+});
 
 app.whenReady().then(() => {
   buildMenu();
