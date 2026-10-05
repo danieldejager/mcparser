@@ -2,7 +2,7 @@
 
 ## 0.1.0 — 2026-10-05
 
-First release. Offline `.evtx` ingest, SQL query, and a macOS desktop app.
+First release. Offline `.evtx` ingest, SQL query, and desktop apps for macOS and Windows.
 
 ### Added
 
@@ -20,6 +20,7 @@ First release. Offline `.evtx` ingest, SQL query, and a macOS desktop app.
 - Case summary: file name, size, SHA-256, event count, unique event ids, first and last time, channels, providers
 - Menus: File, Edit, Window, Help. About names Daniel de Jager and links the repository and LinkedIn profile
 - Unsigned macOS disk image, `McParser-0.1.0-arm64.dmg`, attached to this release
+- Unsigned Windows installer, `McParser Setup 0.1.0.exe`, for ARM64 Windows. It runs on Windows 11 on Apple silicon. It is not an Intel build
 
 ### Proven
 
@@ -29,11 +30,13 @@ First release. Offline `.evtx` ingest, SQL query, and a macOS desktop app.
 - Same-byte copy is skipped
 - Replacing that path with the System sample leaves one source and 1881 rows
 - Installed Mac app opens after the icon is no longer written into the packaged archive
+- Windows ARM64 release parser builds with the Visual Studio 2022 ARM64 tools
 
 ### Not in this release
 
 - Signed or notarised macOS build. Gatekeeper warns; right-click the app and choose Open
-- Ubuntu and Windows packages
+- Intel or x64 Windows installer
+- Ubuntu package
 - Homebrew, winget
 - Rendered provider messages
 - Shell, saved queries, query macros
