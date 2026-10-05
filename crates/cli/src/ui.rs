@@ -8,8 +8,6 @@ pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
     let case_dir = case_dir.to_path_buf();
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 720.0]),
-        follow_system_theme: false,
-        default_theme: eframe::Theme::Light,
         ..Default::default()
     };
     eframe::run_native(
@@ -85,6 +83,7 @@ impl McParserApp {
 impl eframe::App for McParserApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         ui.ctx().set_visuals(egui::Visuals::light());
+        ui.visuals_mut().clone_from(&egui::Visuals::light());
         ui.horizontal(|ui| {
             ui.vertical(|ui| {
                 ui.set_width(240.0);
