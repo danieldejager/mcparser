@@ -2,11 +2,12 @@ const { app, BrowserWindow, ipcMain } = require("electron");
 const { spawn } = require("child_process");
 const path = require("path");
 
-const binary = path.resolve(__dirname, "../target/debug/mcparser");
+const repo = path.resolve(__dirname, "..");
+const binary = path.join(repo, "target/debug/mcparser");
 
 function run(args) {
   return new Promise((resolve) => {
-    const child = spawn(binary, args);
+    const child = spawn(binary, args, { cwd: repo });
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk) => {
@@ -29,6 +30,7 @@ function createWindow() {
     width: 1200,
     height: 760,
     title: "McParser",
+    backgroundColor: "#f3f3f3",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
     },
