@@ -13,7 +13,10 @@ pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
     eframe::run_native(
         "McParser",
         options,
-        Box::new(move |_cc| Ok(Box::new(McParserApp::new(case_dir)))),
+        Box::new(move |cc| {
+            cc.egui_ctx.set_visuals(egui::Visuals::light());
+            Ok(Box::new(McParserApp::new(case_dir)))
+        }),
     )
 }
 
@@ -134,7 +137,7 @@ impl eframe::App for McParserApp {
         });
         ui.separator();
         ui.label(format!(
-            "rows {}  ·  elapsed {} ms  ·  case {}",
+            "rows {}  \u00b7  elapsed {} ms  \u00b7  case {}",
             self.result.rows.len(),
             self.elapsed_ms,
             self.case_dir.display()
@@ -149,7 +152,7 @@ fn show_grid(ui: &mut egui::Ui, table: &Table) {
     }
     let mut builder = TableBuilder::new(ui).striped(true).resizable(true);
     for _ in &table.columns {
-        builder = builder.column(Column::auto().resizable(true));
+        builder = builder.column(Column::initial(180.0).at_least(100.0).resizable(true));
     }
     builder
         .header(22.0, |mut header| {
@@ -161,7 +164,7 @@ fn show_grid(ui: &mut egui::Ui, table: &Table) {
         })
         .body(|mut body| {
             for row in &table.rows {
-                body.row(20.0, |mut table_row| {
+                body.row(22.0, |mut table_row| {
                     for cell in row {
                         table_row.col(|ui| {
                             ui.label(cell);
