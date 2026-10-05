@@ -68,7 +68,12 @@ pub fn query_table(db_path: &Path, sql: &str) -> Result<Table, duckdb::Error> {
         let column_count = row.as_ref().column_count();
         if table.columns.is_empty() {
             for i in 0..column_count {
-                table.columns.push(row.as_ref().column_name(i).unwrap_or_default().to_string());
+                let name = row
+                    .as_ref()
+                    .column_name(i)
+                    .map(|name| name.to_string())
+                    .unwrap_or_else(|_| format!("column_{i}"));
+                table.columns.push(name);
             }
         }
         let mut cols = Vec::with_capacity(column_count);
