@@ -31,25 +31,23 @@ impl McParserApp {
 }
 
 impl eframe::App for McParserApp {
-    fn update(&mut self, ctx: &eframe::egui::Context, _frame: &mut eframe::Frame) {
-        eframe::egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("McParser");
-            ui.label(self.case_dir.display().to_string());
-            if ui.button("Stats").clicked() {
-                self.output = stats_text(&self.case_dir);
-            }
-            ui.label("Query");
-            ui.add(
-                eframe::egui::TextEdit::multiline(&mut self.sql)
-                    .desired_rows(4)
-                    .desired_width(f32::INFINITY),
-            );
-            if ui.button("Run").clicked() {
-                self.output = query_text(&self.case_dir, &self.sql);
-            }
-            eframe::egui::ScrollArea::vertical().show(ui, |ui| {
-                ui.monospace(&self.output);
-            });
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
+        ui.heading("McParser");
+        ui.label(self.case_dir.display().to_string());
+        if ui.button("Stats").clicked() {
+            self.output = stats_text(&self.case_dir);
+        }
+        ui.label("Query");
+        ui.add(
+            eframe::egui::TextEdit::multiline(&mut self.sql)
+                .desired_rows(4)
+                .desired_width(f32::INFINITY),
+        );
+        if ui.button("Run").clicked() {
+            self.output = query_text(&self.case_dir, &self.sql);
+        }
+        eframe::egui::ScrollArea::vertical().show(ui, |ui| {
+            ui.monospace(&self.output);
         });
     }
 }
