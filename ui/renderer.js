@@ -4,6 +4,12 @@ const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const summary = document.getElementById("summary");
+const grok = document.getElementById("grok");
+const transcript = document.getElementById("transcript");
+const ask = document.getElementById("ask");
+const sheet = document.getElementById("sheet");
+const keyInput = document.getElementById("key");
+const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
 
 function caseDir() {
@@ -102,6 +108,27 @@ async function exportCsv() {
   if (saved.saved) status.textContent = `exported ${saved.path}`;
 }
 
+function note(text) {
+  const p = document.createElement("p");
+  p.textContent = text;
+  transcript.append(p);
+  transcript.scrollTop = transcript.scrollHeight;
+}
+
+function showSheet(status) {
+  keyHint.textContent = status.connected
+    ? `A key is set, ending ${status.last4}. Save replaces it.`
+    : "The key stays on this machine. This cut keeps it in memory only.";
+  keyInput.value = "";
+  sheet.hidden = false;
+  keyInput.focus();
+}
+
+function hideSheet() {
+  keyInput.value = "";
+  sheet.hidden = true;
+}
+
 sql.addEventListener("input", updateLines);
 sql.addEventListener("scroll", () => {
   lines.scrollTop = sql.scrollTop;
@@ -109,10 +136,39 @@ sql.addEventListener("scroll", () => {
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
 document.getElementById("export").onclick = exportCsv;
+document.getElementById("key-cancel").onclick = hideSheet;
+document.getElementById("key-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const saved = await window.mcparser.grokSave(keyInput.value);
+  hideSheet();
+  if (saved.connected) {
+    grok.hidden = false;
+    note("Grok connected. Ask is not wired to the API yet.");
+  }
+};
+document.getElementById("send").onclick = () => {
+  const question = ask.value.trim();
+  if (!question) return;
+  note(question);
+  ask.value = "";
+  note("API call is the next cut.");
+};
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
   refresh().then(run);
+});
+window.mcparser.onGrokConnect(() => {
+  window.mcparser.grokStatus().then(showSheet);
+});
+window.mcparser.onGrokChat((shown) => {
+  grok.hidden = !shown;
+});
+window.mcparser.onGrokStatus((grokStatus) => {
+  if (!grokStatus.connected) {
+    grok.hidden = true;
+    note("Key forgotten.");
+  }
 });
 updateLines();
 refresh().then(run);
