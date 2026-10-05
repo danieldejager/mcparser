@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   grokStatus: () => ipcRenderer.invoke("grok-status"),
   grokSave: (key) => ipcRenderer.invoke("grok-save", key),
   grokForget: () => ipcRenderer.invoke("grok-forget"),
+  grokAsk: (caseDir, question) => ipcRenderer.invoke("grok-ask", caseDir, question),
   onOpened: (handler) => ipcRenderer.on("opened", (_event, payload) => handler(payload)),
   onGrokConnect: (handler) => ipcRenderer.on("grok-connect", () => handler()),
   onGrokChat: (handler) => ipcRenderer.on("grok-chat", (_event, shown) => handler(shown)),
