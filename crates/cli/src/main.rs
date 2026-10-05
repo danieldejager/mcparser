@@ -2,19 +2,35 @@ use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+mod ui;
+
 fn main() -> ExitCode {
     let mut args = env::args().skip(1);
     match args.next().as_deref() {
         Some("ingest") => ingest(&mut args),
         Some("query") => query(&mut args),
         Some("stats") => stats(&mut args),
+        Some("ui") => ui_cmd(&mut args),
         _ => {
             eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
             eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
             eprintln!("       mcparser stats --case <dir>");
+            eprintln!("       mcparser ui --case <dir>");
             ExitCode::from(2)
         }
     }
+}
+
+fn ui_cmd(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser ui --case <dir>");
+        return ExitCode::from(2);
+    };
+    if let Err(err) = ui::serve(&case_dir) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    ExitCode::SUCCESS
 }
 
 fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
