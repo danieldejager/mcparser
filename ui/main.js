@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -21,6 +21,35 @@ let win;
 let grokKey = "";
 let chatShown = false;
 
+function keyFile() {
+  return path.join(app.getPath("userData"), "grok-key.bin");
+}
+
+function storeKey(key) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
+  const file = keyFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, safeStorage.encryptString(key), { mode: 0o600 });
+}
+
+function loadKey() {
+  const file = keyFile();
+  if (!fs.existsSync(file) || !safeStorage.isEncryptionAvailable()) return;
+  try {
+    grokKey = safeStorage.decryptString(fs.readFileSync(file));
+    chatShown = grokKey.length > 0;
+  } catch {
+    grokKey = "";
+  }
+}
+
+function forgetKey() {
+  grokKey = "";
+  chatShown = false;
+  const file = keyFile();
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
+
 function parserBinary() {
   const name = process.platform === "win32" ? "mcparser.exe" : "mcparser";
   if (app.isPackaged) return path.join(process.resourcesPath, name);
@@ -40,7 +69,9 @@ function appIcon() {
 
 function run(args) {
   return new Promise((resolve) => {
-    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo });
+    const env = { ...process.env };
+    delete env.XAI_API_KEY;
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk) => {
@@ -211,8 +242,7 @@ function buildMenu() {
           label: "Forget key",
           enabled: connected,
           click: () => {
-            grokKey = "";
-            chatShown = false;
+            forgetKey();
             buildMenu();
             win.webContents.send("grok-status", grokStatus());
           },
@@ -250,6 +280,9 @@ function createWindow() {
     },
   });
   win.loadFile("index.html");
+  win.webContents.once("did-finish-load", () => {
+    if (chatShown) win.webContents.send("grok-chat", true);
+  });
 }
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", caseDir]));
@@ -266,14 +299,20 @@ ipcMain.handle("save-csv", async (_event, csv) => {
 });
 ipcMain.handle("grok-status", () => grokStatus());
 ipcMain.handle("grok-save", (_event, key) => {
-  grokKey = String(key || "").trim();
-  chatShown = grokKey.length > 0;
-  buildMenu();
-  return grokStatus();
+  const value = String(key || "").trim();
+  if (!value) return { connected: false, error: "Enter a key" };
+  try {
+    storeKey(value);
+    grokKey = value;
+    chatShown = true;
+    buildMenu();
+    return grokStatus();
+  } catch (error) {
+    return { connected: false, error: error.message };
+  }
 });
 ipcMain.handle("grok-forget", () => {
-  grokKey = "";
-  chatShown = false;
+  forgetKey();
   buildMenu();
   return grokStatus();
 });
@@ -282,6 +321,7 @@ ipcMain.handle("grok-ask", (_event, caseDir, question) => grokAsk(caseDir, quest
 app.whenReady().then(() => {
   const icon = appIcon();
   if (icon && app.dock) app.dock.setIcon(icon);
+  loadKey();
   buildMenu();
   createWindow();
 });
