@@ -1,0 +1,35 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>McParser</title>
+  <link rel="stylesheet" href="studio.css">
+</head>
+<body>
+  <aside>
+    <h1>Case</h1>
+    <input id="case" value="fixtures/data2.mcp">
+    <button id="refresh">Refresh case</button>
+    <h2>Channels</h2>
+    <div id="channels"></div>
+    <h2>Providers</h2>
+    <div id="providers"></div>
+    <h2>Event IDs</h2>
+    <div id="events"></div>
+  </aside>
+  <main>
+    <header>
+      <span>SQL</span>
+      <button id="run">Run</button>
+    </header>
+    <textarea id="sql">SELECT event_id, count(*) AS count
+FROM events
+GROUP BY event_id
+ORDER BY count DESC
+LIMIT 20</textarea>
+    <section id="results"></section>
+    <footer id="status">Ready</footer>
+  </main>
+  <script src="renderer.js"></script>
+</body>
+</html>
