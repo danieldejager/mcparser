@@ -25,3 +25,14 @@ th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #eee; }
 th { background: #f7f7f7; position: sticky; top: 0; }
 tr:nth-child(even) td { background: #fafafa; }
 #status { color: #666; }
+.chat { border-right: 0; border-left: 1px solid #e1e1e1; display: flex; flex-direction: column; }
+.chat[hidden] { display: none; }
+.chat label { margin-top: 12px; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+#transcript { flex: 1; overflow: auto; background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 8px; min-height: 120px; }
+#ask { width: 100%; box-sizing: border-box; min-height: 72px; border: 1px solid #d0d0d0; border-radius: 6px; margin: 6px 0; }
+#send { align-self: flex-end; }
+.sheet { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.2); display: grid; place-items: center; }
+.sheet[hidden] { display: none; }
+.sheet form { width: 360px; background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 16px; }
+.sheet p { color: #666; }
+.sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
