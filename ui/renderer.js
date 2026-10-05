@@ -49,16 +49,17 @@ async function refresh() {
 function renderCsv(text) {
   const rows = text.trim().split("\n").filter(Boolean).map((line) => line.split(","));
   const table = document.createElement("table");
-  for (const row of rows) {
+  rows.forEach((row, index) => {
     const tr = document.createElement("tr");
     for (const cell of row) {
-      const td = document.createElement("td");
-      td.textContent = cell;
-      tr.append(td);
+      const node = document.createElement(index === 0 ? "th" : "td");
+      node.textContent = cell;
+      tr.append(node);
     }
     table.append(tr);
-  }
+  });
   results.replaceChildren(table);
+  return Math.max(rows.length - 1, 0);
 }
 
 async function run() {
@@ -69,8 +70,7 @@ async function run() {
     status.textContent = "Query failed";
     return;
   }
-  renderCsv(result.out);
-  const rows = result.out.trim() ? result.out.trim().split("\n").length : 0;
+  const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
 }
 
