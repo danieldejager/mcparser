@@ -7,7 +7,8 @@
   "main": "main.js",
   "scripts": {
     "start": "node rename-mac.js && electron .",
-    "dist": "electron-builder --mac dmg"
+    "dist": "electron-builder --mac dmg",
+    "dist:win": "electron-builder --win nsis"
   },
   "devDependencies": {
     "electron": "36.4.0",
@@ -18,11 +19,18 @@
     "productName": "McParser",
     "directories": { "output": "dist" },
     "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js"],
-    "extraResources": [{ "from": "../target/release/mcparser", "to": "mcparser" }],
+    "extraResources": [{ "from": "../target/release/mcparser${ext}", "to": "mcparser${ext}" }],
     "mac": {
       "identity": null,
       "category": "public.app-category.developer-tools",
       "target": ["dmg"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
     }
   }
 }
