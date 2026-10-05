@@ -43,15 +43,15 @@ async function refresh() {
 function renderCsv(text) {
   const rows = text.trim().split("\n").filter(Boolean).map((line) => line.split(","));
   const table = document.createElement("table");
-  rows.forEach((row, index) => {
+  for (const row of rows) {
     const tr = document.createElement("tr");
     for (const cell of row) {
-      const td = document.createElement(index === 0 ? "th" : "td");
+      const td = document.createElement("td");
       td.textContent = cell;
       tr.append(td);
     }
     table.append(tr);
-  });
+  }
   results.replaceChildren(table);
 }
 
