@@ -92,15 +92,14 @@ impl eframe::App for McParserApp {
         ui.ctx().set_visuals(visuals.clone());
         ui.style_mut().visuals = visuals;
 
-        let full = ui.available_rect_before_wrap();
-        ui.painter().rect_filled(full, 0.0, WINDOW);
+        let height = ui.available_height();
+        let width = ui.available_width();
+        ui.painter().rect_filled(ui.available_rect_before_wrap(), 0.0, WINDOW);
 
-        ui.horizontal(|ui| {
-            ui.allocate_ui_with_layout(
-                egui::vec2(260.0, ui.available_height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    ui.set_min_height(ui.available_height());
+        ui.horizontal_top(|ui| {
+            ui.allocate_ui(egui::vec2(260.0, height), |ui| {
+                egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
+                    ui.set_min_size(egui::vec2(244.0, height - 16.0));
                     ui.heading("Case");
                     ui.label(self.case_dir.display().to_string());
                     ui.separator();
@@ -119,20 +118,18 @@ impl eframe::App for McParserApp {
                     }
                     ui.separator();
                     ui.colored_label(MUTED, "Event IDs");
-                    egui::ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
+                    egui::ScrollArea::vertical().show(ui, |ui| {
                         for event_id in self.event_ids.clone() {
                             if ui.button(&event_id).clicked() {
                                 self.add_filter(&format!("event_id = {event_id}"));
                             }
                         }
                     });
-                },
-            );
-            ui.separator();
-            ui.allocate_ui_with_layout(
-                egui::vec2(ui.available_width(), ui.available_height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
+                });
+            });
+            ui.allocate_ui(egui::vec2((width - 268.0).max(400.0), height), |ui| {
+                egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
+                    ui.set_min_size(egui::vec2((width - 284.0).max(380.0), height - 16.0));
                     ui.horizontal(|ui| {
                         ui.heading("SQL");
                         if ui.button("Run").clicked() {
@@ -148,14 +145,14 @@ impl eframe::App for McParserApp {
                             .desired_rows(6)
                             .desired_width(f32::INFINITY),
                     );
-                    ui.separator();
+                    ui.add_space(8.0);
                     ui.colored_label(MUTED, "Results");
                     if !self.error.is_empty() {
                         ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
                     } else {
-                        show_grid(ui, &self.result);
+                        show_grid(ui, &self.result, (height - 220.0).max(160.0));
                     }
-                    ui.separator();
+                    ui.add_space(8.0);
                     ui.colored_label(
                         MUTED,
                         format!(
@@ -165,18 +162,17 @@ impl eframe::App for McParserApp {
                             self.case_dir.display()
                         ),
                     );
-                },
-            );
+                });
+            });
         });
     }
 }
 
-fn show_grid(ui: &mut egui::Ui, table: &Table) {
+fn show_grid(ui: &mut egui::Ui, table: &Table, height: f32) {
     if table.columns.is_empty() {
         ui.label("No rows");
         return;
     }
-    let height = (ui.available_height() - 28.0).max(120.0);
     let mut builder = TableBuilder::new(ui)
         .striped(true)
         .resizable(true)
