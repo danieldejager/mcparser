@@ -12,6 +12,12 @@ pub struct Table {
     pub rows: Vec<Vec<String>>,
 }
 
+pub struct Source {
+    pub sha256: String,
+    pub path: String,
+    pub records: i64,
+}
+
 pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch(
@@ -156,6 +162,21 @@ pub fn source_sha_for_path(catalog: &Path, source: &Path) -> Result<Option<Strin
         Some(row) => Ok(Some(row.get(0)?)),
         None => Ok(None),
     }
+}
+
+pub fn sources(catalog: &Path) -> Result<Vec<Source>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT sha256, source_path, records FROM sources ORDER BY source_path")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Source {
+            sha256: row.get(0)?,
+            path: row.get(1)?,
+            records: row.get(2)?,
+        });
+    }
+    Ok(out)
 }
 
 pub fn remove_source(catalog: &Path, sha256: &str) -> Result<(), rusqlite::Error> {
