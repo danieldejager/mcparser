@@ -3,6 +3,7 @@ const sql = document.getElementById("sql");
 const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
+let lastCsv = "";
 
 function caseDir() {
   return caseInput.value.trim();
@@ -74,12 +75,23 @@ async function run() {
   const started = performance.now();
   const result = await window.mcparser.query(caseDir(), sql.value);
   if (result.code !== 0) {
+    lastCsv = "";
     results.textContent = result.err || result.out;
     status.textContent = "Query failed";
     return;
   }
+  lastCsv = result.out;
   const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
+}
+
+async function exportCsv() {
+  if (!lastCsv.trim()) {
+    status.textContent = "No results to export";
+    return;
+  }
+  const saved = await window.mcparser.saveCsv(lastCsv);
+  if (saved.saved) status.textContent = `exported ${saved.path}`;
 }
 
 sql.addEventListener("input", updateLines);
@@ -88,6 +100,7 @@ sql.addEventListener("scroll", () => {
 });
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
+document.getElementById("export").onclick = exportCsv;
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
