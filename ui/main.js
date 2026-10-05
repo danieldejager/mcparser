@@ -18,6 +18,8 @@ const linkedin = "https://www.linkedin.com/in/daniel-de-jager-544162135/";
 const iconPath = path.join(__dirname, "icon.png");
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
 let win;
+let grokKey = "";
+let chatShown = false;
 
 function parserBinary() {
   const name = process.platform === "win32" ? "mcparser.exe" : "mcparser";
@@ -56,6 +58,10 @@ function run(args) {
   });
 }
 
+function grokStatus() {
+  return { connected: grokKey.length > 0, last4: grokKey.slice(-4) };
+}
+
 async function openEvtx() {
   const picked = await dialog.showOpenDialog(win, {
     title: "Open Windows event log",
@@ -83,6 +89,7 @@ async function showAbout() {
 }
 
 function buildMenu() {
+  const connected = grokKey.length > 0;
   const template = [
     {
       label: "McParser",
@@ -126,6 +133,35 @@ function buildMenu() {
       ],
     },
     {
+      label: "Grok",
+      submenu: [
+        {
+          label: connected ? "Grok connected" : "Connect Grok...",
+          click: () => win.webContents.send("grok-connect"),
+        },
+        {
+          label: "Forget key",
+          enabled: connected,
+          click: () => {
+            grokKey = "";
+            chatShown = false;
+            buildMenu();
+            win.webContents.send("grok-status", grokStatus());
+          },
+        },
+        {
+          label: "Show chat",
+          type: "checkbox",
+          checked: chatShown,
+          enabled: connected,
+          click: (item) => {
+            chatShown = item.checked;
+            win.webContents.send("grok-chat", chatShown);
+          },
+        },
+      ],
+    },
+    {
       label: "Help",
       submenu: [{ label: "About McParser", click: showAbout }],
     },
@@ -159,6 +195,19 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   if (picked.canceled || !picked.filePath) return { saved: false };
   fs.writeFileSync(picked.filePath, csv);
   return { saved: true, path: picked.filePath };
+});
+ipcMain.handle("grok-status", () => grokStatus());
+ipcMain.handle("grok-save", (_event, key) => {
+  grokKey = String(key || "").trim();
+  chatShown = grokKey.length > 0;
+  buildMenu();
+  return grokStatus();
+});
+ipcMain.handle("grok-forget", () => {
+  grokKey = "";
+  chatShown = false;
+  buildMenu();
+  return grokStatus();
 });
 
 app.whenReady().then(() => {
