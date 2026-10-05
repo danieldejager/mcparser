@@ -137,7 +137,7 @@ impl eframe::App for McParserApp {
         });
         ui.separator();
         ui.label(format!(
-            "rows {}  \u00b7  elapsed {} ms  \u00b7  case {}",
+            "rows {} | elapsed {} ms | case {}",
             self.result.rows.len(),
             self.elapsed_ms,
             self.case_dir.display()
