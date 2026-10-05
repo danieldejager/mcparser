@@ -25,8 +25,14 @@ function parserBinary() {
 }
 
 function appIcon() {
-  if (!fs.existsSync(iconPath)) fs.writeFileSync(iconPath, Buffer.from(iconPng, "base64"));
-  return nativeImage.createFromPath(iconPath);
+  if (fs.existsSync(iconPath)) return nativeImage.createFromPath(iconPath);
+  if (app.isPackaged) return null;
+  try {
+    fs.writeFileSync(iconPath, Buffer.from(iconPng, "base64"));
+    return nativeImage.createFromPath(iconPath);
+  } catch {
+    return null;
+  }
 }
 
 function run(args) {
@@ -127,11 +133,12 @@ function buildMenu() {
 }
 
 function createWindow() {
+  const icon = appIcon();
   win = new BrowserWindow({
     width: 1200,
     height: 760,
     title: "McParser",
-    icon: appIcon(),
+    icon: icon || undefined,
     backgroundColor: "#f3f3f3",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -154,7 +161,8 @@ ipcMain.handle("save-csv", async (_event, csv) => {
 });
 
 app.whenReady().then(() => {
-  if (app.dock) app.dock.setIcon(appIcon());
+  const icon = appIcon();
+  if (icon && app.dock) app.dock.setIcon(icon);
   buildMenu();
   createWindow();
 });
