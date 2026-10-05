@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -6,6 +6,7 @@ const path = require("path");
 app.setName("McParser");
 
 const repo = path.resolve(__dirname, "..");
+const repository = "https://github.com/danieldejager/mcparser";
 const binary = path.join(repo, "target/debug/mcparser");
 const iconPath = path.join(__dirname, "icon.png");
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
@@ -49,14 +50,16 @@ async function openEvtx() {
   win.webContents.send("opened", { file, caseDir, ...result });
 }
 
-function showAbout() {
-  dialog.showMessageBox(win, {
+async function showAbout() {
+  const choice = await dialog.showMessageBox(win, {
     type: "info",
     title: "About McParser",
     message: "McParser",
-    detail: "Offline Windows event log parser.\nQuery a case with SQL.\nVersion 0.1.0",
-    buttons: ["OK"],
+    detail: "Offline Windows event log parser.\nQuery a case with SQL.\nVersion 0.1.0\n\nAuthor: Daniel de Jager\n" + repository,
+    buttons: ["OK", "Open repository"],
+    defaultId: 0,
   });
+  if (choice.response === 1) shell.openExternal(repository);
 }
 
 function buildMenu() {
