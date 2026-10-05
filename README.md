@@ -2,9 +2,9 @@
 
 Offline Windows event log parser. Point it at `.evtx` files and query them with SQL. No Windows Event Log API, so the same tool runs on macOS, Ubuntu, and Windows.
 
-Current release: **0.1.0**. Downloads: https://github.com/danieldejager/mcparser/releases/tag/v0.1.0
+Current release: **0.2.0**, on the `ai-integration` branch. The chat is not in the 0.1.0 installers. Downloads for 0.1.0: https://github.com/danieldejager/mcparser/releases/tag/v0.1.0
 
-What is next: [ROADMAP.md](ROADMAP.md).
+What is next: [ROADMAP.md](ROADMAP.md). Chat design: [docs/grok-chat.md](docs/grok-chat.md).
 
 ![McParser stack](docs/Yenbd.jpg)
 
@@ -12,13 +12,13 @@ What is next: [ROADMAP.md](ROADMAP.md).
 
 ### macOS app
 
-Download `McParser-0.1.0-arm64.dmg` from the release. Open it and drag McParser to Applications. The image is unsigned, so Gatekeeper will warn. Right-click McParser and choose Open.
+Download `McParser-0.1.0-arm64.dmg` from the release. Open it and drag McParser to Applications. The image is unsigned, so Gatekeeper will warn. Right-click McParser and choose Open. That build does not include Grok chat.
 
 File → Open EVTX creates a case beside the log and ingests it. The default `fixtures` path is only for a source checkout.
 
 ### Windows app
 
-Download `McParser Setup 0.1.0.exe` from the release. This installer is ARM64. It runs on Windows 11 on Apple silicon. It is not an Intel build.
+Download `McParser Setup 0.1.0.exe` from the release. This installer is ARM64. It runs on Windows 11 on Apple silicon. It is not an Intel build. That build does not include Grok chat.
 
 ### From source
 
@@ -54,7 +54,7 @@ The binary is `target\release\mcparser.exe`.
 
 ## Desktop
 
-The app is an Electron shell around the parser. From a source checkout:
+The app is an Electron shell around the parser. From a source checkout of `ai-integration`:
 
 ```bash
 cargo build -p mcparser
@@ -64,6 +64,8 @@ npm start
 ```
 
 File → Open EVTX creates `<file>.mcp` next to the log. The case pane shows file name, size, SHA-256, event count, unique event ids, time range, channels, and providers. Run SQL in the editor. Export CSV writes the current grid, including the column names.
+
+Grok, then Connect Grok, takes an xAI key. The key is encrypted with the macOS keychain or Windows DPAPI. Ask writes one SELECT, McParser runs it on the open case, and the answer is shown beside the SQL. The case file is not sent.
 
 ## CLI
 
@@ -82,9 +84,9 @@ A case directory contains `events.duckdb` and `catalog.sqlite`. Do not commit it
 
 Columns are `source_sha256`, `record_id`, `event_id`, `channel`, `provider`, `computer`, `time_created`, and `event_data`. `event_data` is JSON. Filter a field with `json_extract_string(event_data, '$.TargetUserName')`.
 
-## What 0.1.0 does not do
+## What 0.2.0 does not do
 
-Rendered message text is not in the `.evtx` file. It lives in the provider DLL, so 0.1.0 does not produce the English sentence. There is no shell and no saved queries. The macOS image is not notarised. The Windows installer is ARM64 only. There is no Ubuntu package.
+Rendered message text is not in the `.evtx` file. It lives in the provider DLL, so 0.2.0 does not produce the English sentence. There is no shell and no saved queries. The macOS image is not notarised. The Windows installer is ARM64 only. There is no Ubuntu package. The 0.1.0 installers do not include the chat.
 
 ## Stack
 
@@ -96,6 +98,7 @@ Rendered message text is not in the `.evtx` file. It lives in the provider DLL, 
 | Catalog | SQLite |
 | Commands | `ingest`, `query`, `stats` |
 | Desktop | Electron, in `ui/` |
+| Chat | xAI API, key in the OS keychain |
 
 ```text
 crates/evtx-read
