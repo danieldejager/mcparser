@@ -18,6 +18,34 @@ The chat is a pane in the desktop app. It writes SQL, McParser runs that SQL on 
 
 The renderer process never sees the key. The main process holds it and calls `https://api.x.ai`. The parser still runs as the local `mcparser` binary.
 
+## Data flow
+
+```mermaid
+flowchart LR
+  analyst[Analyst]
+  chat[Chat pane]
+  main[Main process]
+  key[OS keychain]
+  parser[mcparser]
+  case[Case on disk]
+  api[api.x.ai]
+
+  analyst -->|question| chat
+  chat -->|question only| main
+  main -->|read key| key
+  main -->|columns and stats| api
+  api -->|one SELECT| main
+  main -->|SQL| parser
+  parser -->|read| case
+  parser -->|at most 50 rows| main
+  main -->|question, SQL, rows| api
+  api -->|answer| main
+  main -->|answer and SQL| chat
+  chat -->|Run| analyst
+```
+
+The case path never crosses to `api.x.ai`. The key never crosses to the chat pane. Run copies the SQL into the editor and queries the case again, locally, with no row cap.
+
 ## Key
 
 The analyst pastes an xAI key once. Electron `safeStorage` encrypts it with the macOS keychain or Windows DPAPI, then the ciphertext is stored in the app user-data directory. It is not written into the case, the repo, logs, or the chat transcript on disk.
