@@ -4,6 +4,12 @@ use egui_extras::{Column, TableBuilder};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+const WINDOW: egui::Color32 = egui::Color32::from_rgb(243, 243, 243);
+const PANEL: egui::Color32 = egui::Color32::from_rgb(255, 255, 255);
+const INK: egui::Color32 = egui::Color32::from_rgb(32, 32, 32);
+const MUTED: egui::Color32 = egui::Color32::from_rgb(96, 96, 96);
+const STRIPE: egui::Color32 = egui::Color32::from_rgb(236, 236, 236);
+
 pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
     let case_dir = case_dir.to_path_buf();
     let options = eframe::NativeOptions {
@@ -13,10 +19,7 @@ pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
     eframe::run_native(
         "McParser",
         options,
-        Box::new(move |cc| {
-            cc.egui_ctx.set_visuals(egui::Visuals::light());
-            Ok(Box::new(McParserApp::new(case_dir)))
-        }),
+        Box::new(move |_cc| Ok(Box::new(McParserApp::new(case_dir)))),
     )
 }
 
@@ -82,68 +85,83 @@ impl McParserApp {
 
 impl eframe::App for McParserApp {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
-        ui.ctx().set_visuals(egui::Visuals::light());
-        ui.visuals_mut().clone_from(&egui::Visuals::light());
-        ui.horizontal(|ui| {
-            ui.vertical(|ui| {
-                ui.set_width(240.0);
-                ui.heading("Case");
-                ui.label(self.case_dir.display().to_string());
-                ui.separator();
-                ui.label("Channels");
-                for channel in self.channels.clone() {
-                    if ui.button(&channel).clicked() {
-                        self.add_filter(&format!("channel = '{channel}'"));
-                    }
-                }
-                ui.separator();
-                ui.label("Providers");
-                for provider in self.providers.clone() {
-                    if ui.button(&provider).clicked() {
-                        self.add_filter(&format!("provider = '{provider}'"));
-                    }
-                }
-                ui.separator();
-                ui.label("Event IDs");
-                for event_id in self.event_ids.clone() {
-                    if ui.button(&event_id).clicked() {
-                        self.add_filter(&format!("event_id = {event_id}"));
-                    }
-                }
-            });
-            ui.separator();
-            ui.vertical(|ui| {
+        let mut visuals = egui::Visuals::light();
+        visuals.panel_fill = WINDOW;
+        visuals.window_fill = WINDOW;
+        visuals.faint_bg_color = STRIPE;
+        visuals.extreme_bg_color = PANEL;
+        visuals.override_text_color = Some(INK);
+        ui.ctx().set_visuals(visuals.clone());
+        ui.style_mut().visuals = visuals;
+
+        egui::Frame::new()
+            .fill(WINDOW)
+            .inner_margin(8.0)
+            .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.heading("SQL");
-                    if ui.button("Run").clicked() {
-                        self.run_query();
-                    }
-                    if ui.button("Refresh case").clicked() {
-                        self.load_sidebar();
-                    }
+                    egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
+                        ui.set_width(240.0);
+                        ui.heading("Case");
+                        ui.label(self.case_dir.display().to_string());
+                        ui.separator();
+                        ui.colored_label(MUTED, "Channels");
+                        for channel in self.channels.clone() {
+                            if ui.button(&channel).clicked() {
+                                self.add_filter(&format!("channel = '{channel}'"));
+                            }
+                        }
+                        ui.separator();
+                        ui.colored_label(MUTED, "Providers");
+                        for provider in self.providers.clone() {
+                            if ui.button(&provider).clicked() {
+                                self.add_filter(&format!("provider = '{provider}'"));
+                            }
+                        }
+                        ui.separator();
+                        ui.colored_label(MUTED, "Event IDs");
+                        for event_id in self.event_ids.clone() {
+                            if ui.button(&event_id).clicked() {
+                                self.add_filter(&format!("event_id = {event_id}"));
+                            }
+                        }
+                    });
+                    ui.separator();
+                    egui::Frame::new().fill(PANEL).inner_margin(8.0).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.heading("SQL");
+                            if ui.button("Run").clicked() {
+                                self.run_query();
+                            }
+                            if ui.button("Refresh case").clicked() {
+                                self.load_sidebar();
+                            }
+                        });
+                        ui.add(
+                            egui::TextEdit::multiline(&mut self.sql)
+                                .code_editor()
+                                .desired_rows(6)
+                                .desired_width(f32::INFINITY),
+                        );
+                        ui.separator();
+                        ui.colored_label(MUTED, "Results");
+                        if !self.error.is_empty() {
+                            ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
+                        } else {
+                            show_grid(ui, &self.result);
+                        }
+                    });
                 });
-                ui.add(
-                    egui::TextEdit::multiline(&mut self.sql)
-                        .code_editor()
-                        .desired_rows(6)
-                        .desired_width(f32::INFINITY),
-                );
                 ui.separator();
-                ui.label("Results");
-                if !self.error.is_empty() {
-                    ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
-                } else {
-                    show_grid(ui, &self.result);
-                }
+                ui.colored_label(
+                    MUTED,
+                    format!(
+                        "rows {} | elapsed {} ms | case {}",
+                        self.result.rows.len(),
+                        self.elapsed_ms,
+                        self.case_dir.display()
+                    ),
+                );
             });
-        });
-        ui.separator();
-        ui.label(format!(
-            "rows {} | elapsed {} ms | case {}",
-            self.result.rows.len(),
-            self.elapsed_ms,
-            self.case_dir.display()
-        ));
     }
 }
 
