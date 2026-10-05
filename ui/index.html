@@ -11,24 +11,31 @@
     <input id="case" value="fixtures/data2.mcp">
     <button id="refresh">Refresh case</button>
     <h2>Channels</h2>
-    <div id="channels"></div>
+    <div id="channels" class="list"></div>
     <h2>Providers</h2>
-    <div id="providers"></div>
+    <div id="providers" class="list"></div>
     <h2>Event IDs</h2>
-    <div id="events"></div>
+    <div id="events" class="list"></div>
   </aside>
   <main>
-    <header>
-      <span>SQL</span>
-      <button id="run">Run</button>
-    </header>
-    <textarea id="sql">SELECT event_id, count(*) AS count
+    <section class="editor">
+      <header>
+        <span>SQL Editor</span>
+        <button id="run">Run</button>
+      </header>
+      <textarea id="sql">SELECT event_id, count(*) AS count
 FROM events
 GROUP BY event_id
 ORDER BY count DESC
 LIMIT 20</textarea>
-    <section id="results"></section>
-    <footer id="status">Ready</footer>
+    </section>
+    <section class="results">
+      <header>
+        <span>Results</span>
+        <span id="status">Ready</span>
+      </header>
+      <div id="results"></div>
+    </section>
   </main>
   <script src="renderer.js"></script>
 </body>
