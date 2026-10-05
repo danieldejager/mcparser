@@ -23,11 +23,14 @@
         <span>SQL Editor</span>
         <button id="run">Run</button>
       </header>
-      <textarea id="sql">SELECT event_id, count(*) AS count
+      <div class="editor-body">
+        <pre id="lines" class="lines" aria-hidden="true">1</pre>
+        <textarea id="sql" spellcheck="false">SELECT event_id, count(*) AS count
 FROM events
 GROUP BY event_id
 ORDER BY count DESC
 LIMIT 20</textarea>
+      </div>
     </section>
     <section class="results">
       <header>
