@@ -15,10 +15,14 @@ app.setAboutPanelOptions({
 const repo = path.resolve(__dirname, "..");
 const repository = "https://github.com/danieldejager/mcparser";
 const linkedin = "https://www.linkedin.com/in/daniel-de-jager-544162135/";
-const binary = path.join(repo, "target/debug/mcparser");
 const iconPath = path.join(__dirname, "icon.png");
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
 let win;
+
+function parserBinary() {
+  if (app.isPackaged) return path.join(process.resourcesPath, "mcparser");
+  return path.join(repo, "target/debug/mcparser");
+}
 
 function appIcon() {
   if (!fs.existsSync(iconPath)) fs.writeFileSync(iconPath, Buffer.from(iconPng, "base64"));
@@ -27,7 +31,7 @@ function appIcon() {
 
 function run(args) {
   return new Promise((resolve) => {
-    const child = spawn(binary, args, { cwd: repo });
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo });
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk) => {
