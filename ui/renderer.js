@@ -3,6 +3,7 @@ const sql = document.getElementById("sql");
 const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
+const summary = document.getElementById("summary");
 let lastCsv = "";
 
 function caseDir() {
@@ -15,43 +16,50 @@ function updateLines() {
   lines.scrollTop = sql.scrollTop;
 }
 
-function addFilter(clause) {
-  const where = sql.value.toLowerCase().includes("where") ? ` AND ${clause}` : `\nWHERE ${clause}`;
-  const limit = sql.value.search(/\n(ORDER BY|LIMIT)\b/i);
-  if (limit >= 0) {
-    sql.value = sql.value.slice(0, limit) + where + sql.value.slice(limit);
-  } else {
-    sql.value += where;
-  }
-  updateLines();
-}
-
-function buttons(target, rows, clause) {
-  target.replaceChildren();
-  for (const row of rows) {
-    const button = document.createElement("button");
-    button.textContent = row;
-    button.onclick = () => addFilter(clause(row));
-    target.append(button);
-  }
-}
-
 function section(text, title) {
   const start = text.indexOf(`# ${title}`);
   if (start < 0) return [];
   const rest = text.slice(start + title.length + 2).split("\n# ")[0];
-  return rest.split("\n").map((line) => line.split("\t")[0]).filter(Boolean);
+  return rest.split("\n").map((line) => line.split("\t")).filter((row) => row[0]);
+}
+
+function fact(label, value) {
+  const dt = document.createElement("dt");
+  dt.textContent = label;
+  const dd = document.createElement("dd");
+  dd.textContent = value || "-";
+  summary.append(dt, dd);
+}
+
+function bytes(value) {
+  const size = Number(value);
+  if (!size) return "-";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
 async function refresh() {
   const result = await window.mcparser.stats(caseDir());
+  summary.replaceChildren();
   if (result.code !== 0) {
     status.textContent = result.err || "stats failed";
     return;
   }
-  buttons(document.getElementById("channels"), section(result.out, "channels"), (value) => `channel = '${value}'`);
-  buttons(document.getElementById("providers"), section(result.out, "providers"), (value) => `provider = '${value}'`);
-  buttons(document.getElementById("events"), section(result.out, "event ids"), (value) => `event_id = ${value}`);
+  const range = section(result.out, "time range")[0] || [];
+  const channels = section(result.out, "channels").map((row) => row[0]);
+  const providers = section(result.out, "providers").map((row) => row[0]);
+  const eventIds = section(result.out, "event ids");
+  const source = section(result.out, "sources")[0] || [];
+  fact("File", source[0] ? source[0].split("/").pop() : "-");
+  fact("Size", bytes(source[2]));
+  fact("SHA256", source[1]);
+  fact("Events", range[2]);
+  fact("Unique event IDs", String(eventIds.length));
+  fact("First", range[0]);
+  fact("Last", range[1]);
+  fact("Channels", channels.join(", "));
+  fact("Providers", providers.join(", "));
   status.textContent = "Case loaded";
 }
 
