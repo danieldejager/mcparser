@@ -19,7 +19,13 @@
     "productName": "McParser",
     "directories": { "output": "dist" },
     "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js"],
-    "extraResources": [{ "from": "../target/release/mcparser${ext}", "to": "mcparser${ext}" }],
+    "extraResources": [
+      {
+        "from": "../target/release",
+        "to": ".",
+        "filter": ["mcparser", "mcparser.exe"]
+      }
+    ],
     "mac": {
       "identity": null,
       "category": "public.app-category.developer-tools",
