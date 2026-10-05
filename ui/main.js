@@ -4,6 +4,13 @@ const fs = require("fs");
 const path = require("path");
 
 app.setName("McParser");
+app.setAboutPanelOptions({
+  applicationName: "McParser",
+  applicationVersion: "0.1.0",
+  copyright: "Author: Daniel de Jager",
+  credits: "https://github.com/danieldejager/mcparser\nhttps://www.linkedin.com/in/daniel-de-jager-544162135/",
+  website: "https://github.com/danieldejager/mcparser",
+});
 
 const repo = path.resolve(__dirname, "..");
 const repository = "https://github.com/danieldejager/mcparser";
@@ -69,6 +76,8 @@ function buildMenu() {
     {
       label: "McParser",
       submenu: [
+        { label: "About McParser", click: showAbout },
+        { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },
         { role: "unhide" },
