@@ -1,9 +1,13 @@
+use case::Table;
+use eframe::egui;
+use egui_extras::{Column, TableBuilder};
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
     let case_dir = case_dir.to_path_buf();
     let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default().with_inner_size([900.0, 640.0]),
+        viewport: egui::ViewportBuilder::default().with_inner_size([1100.0, 720.0]),
         ..Default::default()
     };
     eframe::run_native(
@@ -16,75 +20,160 @@ pub fn serve(case_dir: &Path) -> Result<(), eframe::Error> {
 struct McParserApp {
     case_dir: PathBuf,
     sql: String,
-    output: String,
+    channels: Vec<String>,
+    providers: Vec<String>,
+    event_ids: Vec<String>,
+    result: Table,
+    error: String,
+    elapsed_ms: u128,
 }
 
 impl McParserApp {
     fn new(case_dir: PathBuf) -> Self {
-        let output = stats_text(&case_dir);
-        Self {
+        let mut app = Self {
             case_dir,
-            sql: "SELECT event_id, count(*) FROM events GROUP BY event_id ORDER BY count(*) DESC LIMIT 20".to_string(),
-            output,
+            sql: "SELECT event_id, count(*) AS count FROM events GROUP BY event_id ORDER BY count DESC LIMIT 20".to_string(),
+            channels: Vec::new(),
+            providers: Vec::new(),
+            event_ids: Vec::new(),
+            result: Table { columns: Vec::new(), rows: Vec::new() },
+            error: String::new(),
+            elapsed_ms: 0,
+        };
+        app.load_sidebar();
+        app.run_query();
+        app
+    }
+
+    fn load_sidebar(&mut self) {
+        let db = self.case_dir.join("events.duckdb");
+        self.channels = first_column(&db, "SELECT channel FROM events GROUP BY channel ORDER BY count(*) DESC");
+        self.providers = first_column(&db, "SELECT provider FROM events GROUP BY provider ORDER BY count(*) DESC");
+        self.event_ids = first_column(&db, "SELECT event_id FROM events GROUP BY event_id ORDER BY count(*) DESC LIMIT 20");
+    }
+
+    fn run_query(&mut self) {
+        let started = Instant::now();
+        match case::query_table(&self.case_dir.join("events.duckdb"), &self.sql) {
+            Ok(table) => {
+                self.result = table;
+                self.error.clear();
+            }
+            Err(err) => {
+                self.result = Table { columns: Vec::new(), rows: Vec::new() };
+                self.error = err.to_string();
+            }
         }
+        self.elapsed_ms = started.elapsed().as_millis();
+    }
+
+    fn add_filter(&mut self, clause: &str) {
+        if self.sql.to_ascii_lowercase().contains("where") {
+            self.sql.push_str(" AND ");
+        } else {
+            self.sql.push_str(" WHERE ");
+        }
+        self.sql.push_str(clause);
     }
 }
 
 impl eframe::App for McParserApp {
-    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
-        ui.heading("McParser");
-        ui.label(self.case_dir.display().to_string());
-        if ui.button("Stats").clicked() {
-            self.output = stats_text(&self.case_dir);
-        }
-        ui.label("Query");
-        ui.add(
-            eframe::egui::TextEdit::multiline(&mut self.sql)
-                .desired_rows(4)
-                .desired_width(f32::INFINITY),
-        );
-        if ui.button("Run").clicked() {
-            self.output = query_text(&self.case_dir, &self.sql);
-        }
-        eframe::egui::ScrollArea::vertical().show(ui, |ui| {
-            ui.monospace(&self.output);
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        ui.horizontal(|ui| {
+            ui.vertical(|ui| {
+                ui.set_width(240.0);
+                ui.heading("Case");
+                ui.label(self.case_dir.display().to_string());
+                ui.separator();
+                ui.label("Channels");
+                for channel in self.channels.clone() {
+                    if ui.button(&channel).clicked() {
+                        self.add_filter(&format!("channel = '{channel}'"));
+                    }
+                }
+                ui.separator();
+                ui.label("Providers");
+                for provider in self.providers.clone() {
+                    if ui.button(&provider).clicked() {
+                        self.add_filter(&format!("provider = '{provider}'"));
+                    }
+                }
+                ui.separator();
+                ui.label("Event IDs");
+                for event_id in self.event_ids.clone() {
+                    if ui.button(&event_id).clicked() {
+                        self.add_filter(&format!("event_id = {event_id}"));
+                    }
+                }
+            });
+            ui.separator();
+            ui.vertical(|ui| {
+                ui.horizontal(|ui| {
+                    ui.heading("SQL");
+                    if ui.button("Run").clicked() {
+                        self.run_query();
+                    }
+                    if ui.button("Refresh case").clicked() {
+                        self.load_sidebar();
+                    }
+                });
+                ui.add(
+                    egui::TextEdit::multiline(&mut self.sql)
+                        .code_editor()
+                        .desired_rows(6)
+                        .desired_width(f32::INFINITY),
+                );
+                ui.separator();
+                ui.label("Results");
+                if !self.error.is_empty() {
+                    ui.colored_label(egui::Color32::from_rgb(180, 40, 40), &self.error);
+                } else {
+                    show_grid(ui, &self.result);
+                }
+            });
         });
+        ui.separator();
+        ui.label(format!(
+            "rows {}  ·  elapsed {} ms  ·  case {}",
+            self.result.rows.len(),
+            self.elapsed_ms,
+            self.case_dir.display()
+        ));
     }
 }
 
-fn stats_text(case_dir: &Path) -> String {
-    let db = case_dir.join("events.duckdb");
-    let sections = [
-        ("time range", "SELECT min(time_created), max(time_created), count(*) FROM events"),
-        ("channels", "SELECT channel, count(*) FROM events GROUP BY channel ORDER BY count(*) DESC"),
-        ("providers", "SELECT provider, count(*) FROM events GROUP BY provider ORDER BY count(*) DESC"),
-        ("event ids", "SELECT event_id, count(*) FROM events GROUP BY event_id ORDER BY count(*) DESC LIMIT 20"),
-    ];
-    let mut out = String::new();
-    for (title, sql) in sections {
-        out.push_str("# ");
-        out.push_str(title);
-        out.push('\n');
-        out.push_str(&table(&db, sql));
-        out.push_str("\n\n");
+fn show_grid(ui: &mut egui::Ui, table: &Table) {
+    if table.columns.is_empty() {
+        ui.label("No rows");
+        return;
     }
-    out
+    let mut builder = TableBuilder::new(ui).striped(true).resizable(true);
+    for _ in &table.columns {
+        builder = builder.column(Column::auto().resizable(true));
+    }
+    builder
+        .header(22.0, |mut header| {
+            for column in &table.columns {
+                header.col(|ui| {
+                    ui.strong(column);
+                });
+            }
+        })
+        .body(|mut body| {
+            for row in &table.rows {
+                body.row(20.0, |mut table_row| {
+                    for cell in row {
+                        table_row.col(|ui| {
+                            ui.label(cell);
+                        });
+                    }
+                });
+            }
+        });
 }
 
-fn query_text(case_dir: &Path, sql: &str) -> String {
-    if sql.trim().is_empty() {
-        return "empty query".to_string();
-    }
-    table(&case_dir.join("events.duckdb"), sql)
-}
-
-fn table(db: &Path, sql: &str) -> String {
-    match case::query(db, sql) {
-        Ok(rows) => rows
-            .iter()
-            .map(|row| row.join("\t"))
-            .collect::<Vec<_>>()
-            .join("\n"),
-        Err(err) => err.to_string(),
-    }
+fn first_column(db: &Path, sql: &str) -> Vec<String> {
+    case::query_table(db, sql)
+        .map(|table| table.rows.into_iter().filter_map(|mut row| row.pop()).collect())
+        .unwrap_or_default()
 }
