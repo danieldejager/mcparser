@@ -48,6 +48,16 @@ LIMIT 20</textarea>
     <textarea id="ask" placeholder="Ask about this case"></textarea>
     <button id="send">Ask</button>
   </aside>
+  <div id="query-sheet" class="sheet" hidden>
+    <form id="query-form">
+      <h1>Save query</h1>
+      <input id="query-name" autocomplete="off">
+      <div class="sheet-actions">
+        <button type="button" id="query-cancel">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>
   <div id="sheet" class="sheet" hidden>
     <form id="key-form">
       <h1>Connect Grok</h1>
