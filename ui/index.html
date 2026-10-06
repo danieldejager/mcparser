@@ -11,12 +11,17 @@
     <input id="case" value="fixtures/data2.mcp">
     <button id="refresh">Refresh case</button>
     <dl id="summary"></dl>
+    <h1>Queries</h1>
+    <ul id="saved"></ul>
   </aside>
   <main>
     <section class="editor">
       <header>
         <span class="pane-title">SQL Editor</span>
-        <button id="run">Run</button>
+        <span class="editor-actions">
+          <button id="save-query">Save query</button>
+          <button id="run">Run</button>
+        </span>
       </header>
       <div class="editor-body">
         <pre id="lines" class="lines" aria-hidden="true">1</pre>
@@ -46,7 +51,7 @@ LIMIT 20</textarea>
   <div id="sheet" class="sheet" hidden>
     <form id="key-form">
       <h1>Connect Grok</h1>
-      <p id="key-hint">The key stays on this machine. This cut keeps it in memory only.</p>
+      <p id="key-hint">The key is encrypted with the macOS keychain.</p>
       <input id="key" type="password" autocomplete="off">
       <div class="sheet-actions">
         <button type="button" id="key-cancel">Cancel</button>
