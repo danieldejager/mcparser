@@ -13,7 +13,19 @@ const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
 let confirmed = false;
+let connectProvider = "grok";
 let rowNotes = new Map();
+
+
+function listModels(state) {
+  const models = document.getElementById("models");
+  const vendor = document.getElementById("vendor");
+  if (!models || !vendor) return;
+  const current = state || { provider: "grok", grok: false, claude: false, openai: false };
+  vendor.value = current.provider || "grok";
+  const configured = { grok: current.grok, claude: current.claude, openai: current.openai };
+  models.textContent = configured[vendor.value] ? "Configured." : "Configure this integration.";
+}
 
 function caseDir() {
   return caseInput.value.trim();
@@ -240,9 +252,12 @@ function note(text) {
 }
 
 function showSheet(grokState) {
-  keyHint.textContent = grokState.connected
-    ? `A key is set, ending ${grokState.last4}. Save replaces it.`
-    : "The key is encrypted with the macOS keychain.";
+  const name = connectProvider === "claude" ? "Claude" : "Grok";
+  const label = connectProvider === "claude" ? "Claude" : connectProvider === "openai" ? "OpenAI" : "Grok";
+  document.querySelector("#key-form h1").textContent = `Connect ${label}`;
+  keyHint.textContent = grokState.connected && grokState.provider === connectProvider
+    ? `A ${label} key is set, ending ${grokState.last4}. Save replaces it.`
+    : `The ${label} key is encrypted with the macOS keychain.`;
   keyInput.value = "";
   sheet.hidden = false;
   keyInput.focus();
@@ -269,7 +284,7 @@ document.getElementById("note-form").onsubmit = saveNote;
 document.getElementById("key-cancel").onclick = hideSheet;
 document.getElementById("key-form").onsubmit = async (event) => {
   event.preventDefault();
-  const saved = await window.mcparser.grokSave(keyInput.value);
+  const saved = await window.mcparser.grokSave(keyInput.value, connectProvider);
   hideSheet();
   if (saved.error) {
     note(saved.error);
@@ -277,7 +292,9 @@ document.getElementById("key-form").onsubmit = async (event) => {
   }
   if (saved.connected) {
     grok.hidden = false;
-    note("Grok connected. Ask about this case.");
+    const label = connectProvider === "claude" ? "Claude" : connectProvider === "openai" ? "OpenAI" : "Grok";
+    note(`${label} connected. Ask about this case.`);
+    window.mcparser.grokStatus().then(listModels);
   }
 };
 document.getElementById("send").onclick = async () => {
@@ -290,12 +307,14 @@ document.getElementById("send").onclick = async () => {
   }
   note(question);
   ask.value = "";
-  const result = await window.mcparser.grokAsk(caseDir(), question);
+  const vendor = document.getElementById("vendor").value;
+  const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
+  const who = vendor === "openai" ? "OpenAI" : vendor === "claude" ? "Claude" : "Grok";
   if (result.error) {
-    note(result.error);
+    note(`${who}: ${result.error}`);
     return;
   }
-  note(result.sql);
+  note(`${who}: ${result.sql}`);
   const runSql = document.createElement("button");
   runSql.textContent = "Run";
   runSql.onclick = () => {
@@ -304,14 +323,15 @@ document.getElementById("send").onclick = async () => {
     run();
   };
   transcript.append(runSql);
-  note(result.answer);
+  note(`${who}: ${result.answer}`);
 };
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
   refresh().then(run);
 });
-window.mcparser.onGrokConnect(() => {
+window.mcparser.onGrokConnect((name) => {
+  connectProvider = name || "grok";
   window.mcparser.grokStatus().then(showSheet);
 });
 window.mcparser.onGrokChat((shown) => {
@@ -319,11 +339,18 @@ window.mcparser.onGrokChat((shown) => {
 });
 window.mcparser.onShowNotes(showNotes);
 window.mcparser.onGrokStatus((grokState) => {
+  listModels(grokState);
   if (!grokState.connected) {
     grok.hidden = true;
     confirmed = false;
     note("Key forgotten.");
   }
 });
+document.getElementById("vendor").onchange = async () => {
+  const chosen = await window.mcparser.setProvider(document.getElementById("vendor").value);
+  listModels(chosen);
+  if (chosen.error) note(chosen.error);
+};
 updateLines();
+window.mcparser.grokStatus().then(listModels);
 loadNotes().then(() => refresh().then(run));

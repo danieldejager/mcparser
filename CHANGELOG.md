@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.3 — 2026-10-06
+
+The chat pane can use Grok, Claude, or OpenAI. The analyst picks the vendor. Each key is stored on its own.
+
+### Added
+
+- AI Integration menu. Connect Grok, Connect Claude, Connect OpenAI, Forget key
+- AI Model pane with a vendor dropdown: Grok, Claude, OpenAI
+- A vendor with no key says Configure this integration and no request is sent
+- Claude calls `https://api.anthropic.com/v1/messages` with `claude-sonnet-4-5-20250929`
+- OpenAI calls `https://api.openai.com/v1/chat/completions` with `gpt-4.1`
+- Grok stays on `https://api.x.ai/v1/responses`
+- Each key is encrypted with the macOS keychain or Windows DPAPI, in its own file: `grok-key.bin`, `claude-key.bin`, `openai-key.bin`
+- Replies are prefixed with the vendor: `Grok:`, `Claude:`, `OpenAI:`
+- The parser process does not inherit `XAI_API_KEY`, `ANTHROPIC_API_KEY`, or `OPENAI_API_KEY`
+- The case file still stays on the machine. One SELECT, 50-row cap, confirm on the first ask
+
+### Not in this release
+
+- New installer. Build from `providers` to run it
+- A failed vendor does not fall through to another
+
 ## 0.2.2 — 2026-10-06
 
 A note is a record id and a sentence, stored in the case. Audit, then Notes, lists them after the fact.

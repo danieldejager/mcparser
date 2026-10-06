@@ -19,35 +19,58 @@ const iconPath = path.join(__dirname, "icon.png");
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
 let win;
 let grokKey = "";
+let claudeKey = "";
+let openaiKey = "";
+let provider = "grok";
 let chatShown = false;
 
-function keyFile() {
-  return path.join(app.getPath("userData"), "grok-key.bin");
+function keyFile(name) {
+  return path.join(app.getPath("userData"), `${name}-key.bin`);
 }
 
-function storeKey(key) {
+function storeKey(name, key) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
-  const file = keyFile();
+  const file = keyFile(name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, safeStorage.encryptString(key), { mode: 0o600 });
 }
 
 function loadKey() {
-  const file = keyFile();
-  if (!fs.existsSync(file) || !safeStorage.isEncryptionAvailable()) return;
-  try {
-    grokKey = safeStorage.decryptString(fs.readFileSync(file));
-    chatShown = grokKey.length > 0;
-  } catch {
-    grokKey = "";
+  if (!safeStorage.isEncryptionAvailable()) return;
+  for (const providerName of ["grok", "claude", "openai"]) {
+    const file = keyFile(providerName);
+    if (!fs.existsSync(file)) continue;
+    try {
+      const value = safeStorage.decryptString(fs.readFileSync(file));
+      if (providerName === "claude") claudeKey = value;
+      else if (providerName === "openai") openaiKey = value;
+      else grokKey = value;
+    } catch {
+      if (providerName === "claude") claudeKey = "";
+      else if (providerName === "openai") openaiKey = "";
+      else grokKey = "";
+    }
   }
+  chatShown = activeKey().length > 0;
+  if (claudeKey && !grokKey) provider = "claude";
 }
 
 function forgetKey() {
   grokKey = "";
+  claudeKey = "";
+  openaiKey = "";
+  provider = "grok";
   chatShown = false;
-  const file = keyFile();
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+  for (const providerName of ["grok", "claude", "openai"]) {
+    const file = keyFile(providerName);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
+}
+
+function activeKey() {
+  if (provider === "claude") return claudeKey;
+  if (provider === "openai") return openaiKey;
+  return grokKey;
 }
 
 function parserBinary() {
@@ -77,6 +100,8 @@ function run(args) {
   return new Promise((resolve) => {
     const env = { ...process.env };
     delete env.XAI_API_KEY;
+    delete env.OPENAI_API_KEY;
+    delete env.ANTHROPIC_API_KEY;
     const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
     let out = "";
     let err = "";
@@ -96,7 +121,15 @@ function run(args) {
 }
 
 function grokStatus() {
-  return { connected: grokKey.length > 0, last4: grokKey.slice(-4) };
+  const key = activeKey();
+  return {
+    connected: key.length > 0,
+    last4: key.slice(-4),
+    provider,
+    grok: grokKey.length > 0,
+    claude: claudeKey.length > 0,
+    openai: openaiKey.length > 0,
+  };
 }
 
 function textFrom(body) {
@@ -127,13 +160,62 @@ async function grok(input) {
   return textFrom(body);
 }
 
+async function claude(input) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": claudeKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: input }],
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("key rejected");
+    throw new Error(body.error && body.error.message ? body.error.message : `HTTP ${response.status}`);
+  }
+  return (body.content || []).map((part) => part.text || "").join("\n");
+}
+
+async function openai(input) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1",
+      messages: [{ role: "user", content: input }],
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("key rejected");
+    throw new Error(body.error && body.error.message ? body.error.message : `HTTP ${response.status}`);
+  }
+  const choice = body.choices && body.choices[0] && body.choices[0].message;
+  return choice && choice.content ? choice.content : "";
+}
+
+async function askModel(input) {
+  if (provider === "claude") return claude(input);
+  if (provider === "openai") return openai(input);
+  return grok(input);
+}
+
 function oneSelect(text) {
   const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
   let sql = (fenced ? fenced[1] : text).trim().replace(/;+\s*$/, "");
-  if (sql.includes(";")) throw new Error("Grok returned more than one statement");
-  if (!/^select\b/i.test(sql)) throw new Error("Grok did not return a SELECT");
+  if (sql.includes(";")) throw new Error("The model returned more than one statement");
+  if (!/^select\b/i.test(sql)) throw new Error("The model did not return a SELECT");
   if (/\b(attach|copy|pragma|insert|update|delete|drop|create|alter)\b/i.test(sql)) {
-    throw new Error("Grok returned a statement that is not a read");
+    throw new Error("The model returned a statement that is not a read");
   }
   if (!/\blimit\b/i.test(sql)) sql += " LIMIT 50";
   return sql;
@@ -144,26 +226,26 @@ function clip(text) {
 }
 
 async function grokAsk(caseDir, question) {
-  if (!grokKey) return { error: "Connect Grok first" };
+  if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
     const stats = await run(["stats", "--case", casePath(caseDir)]);
     const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
-    const sqlText = await grok(
+    const sqlText = await askModel(
       "Return one DuckDB SELECT and no other text. " + schema +
       " Case stats:\n" + clip(stats.out || "") +
       "\nQuestion: " + question
     );
     const sql = oneSelect(sqlText);
     const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-    if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql };
-    const answer = await grok(
+    if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
+    const answer = await askModel(
       "Answer the question from these rows only. Do not invent rows.\nQuestion: " + question +
       "\nSQL: " + sql +
       "\nRows:\n" + clip(queried.out || "")
     );
-    return { sql, answer };
+    return { sql, answer, provider };
   } catch (error) {
-    return { error: error.message };
+    return { error: error.message, provider };
   }
 }
 
@@ -194,7 +276,7 @@ async function showAbout() {
 }
 
 function buildMenu() {
-  const connected = grokKey.length > 0;
+  const connected = activeKey().length > 0;
   const template = [
     {
       label: "McParser",
@@ -244,11 +326,19 @@ function buildMenu() {
       ],
     },
     {
-      label: "Grok",
+      label: "AI Integration",
       submenu: [
         {
-          label: connected ? "Grok connected" : "Connect Grok...",
-          click: () => win.webContents.send("grok-connect"),
+          label: grokKey ? "Grok key saved" : "Connect Grok...",
+          click: () => win.webContents.send("grok-connect", "grok"),
+        },
+        {
+          label: claudeKey ? "Claude key saved" : "Connect Claude...",
+          click: () => win.webContents.send("grok-connect", "claude"),
+        },
+        {
+          label: openaiKey ? "OpenAI key saved" : "Connect OpenAI...",
+          click: () => win.webContents.send("grok-connect", "openai"),
         },
         {
           label: "Forget key",
@@ -310,12 +400,24 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   return { saved: true, path: picked.filePath };
 });
 ipcMain.handle("grok-status", () => grokStatus());
-ipcMain.handle("grok-save", (_event, key) => {
+ipcMain.handle("set-provider", (_event, name) => {
+  if (name !== "grok" && name !== "claude" && name !== "openai") return grokStatus();
+  provider = name;
+  buildMenu();
+  if (!activeKey()) return { ...grokStatus(), error: "Configure this integration." };
+  return grokStatus();
+});
+
+ipcMain.handle("grok-save", (_event, key, name) => {
+  if (name === "claude" || name === "grok" || name === "openai") provider = name;
   const value = String(key || "").trim();
   if (!value) return { connected: false, error: "Enter a key" };
   try {
-    storeKey(value);
-    grokKey = value;
+    const name = provider;
+    storeKey(name, value);
+    if (name === "claude") claudeKey = value;
+    else if (name === "openai") openaiKey = value;
+    else grokKey = value;
     chatShown = true;
     buildMenu();
     return grokStatus();
@@ -328,7 +430,10 @@ ipcMain.handle("grok-forget", () => {
   buildMenu();
   return grokStatus();
 });
-ipcMain.handle("grok-ask", (_event, caseDir, question) => grokAsk(caseDir, question));
+ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
+  if (name === "grok" || name === "claude" || name === "openai") provider = name;
+  return grokAsk(caseDir, question);
+});
 ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
 ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
 ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
