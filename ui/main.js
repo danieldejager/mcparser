@@ -226,7 +226,7 @@ function clip(text) {
 }
 
 async function grokAsk(caseDir, question) {
-  if (provider === "openai" || !activeKey()) return { error: "Configure this integration." };
+  if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
     const stats = await run(["stats", "--case", casePath(caseDir)]);
     const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
@@ -237,15 +237,15 @@ async function grokAsk(caseDir, question) {
     );
     const sql = oneSelect(sqlText);
     const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-    if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql };
+    if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
     const answer = await askModel(
       "Answer the question from these rows only. Do not invent rows.\nQuestion: " + question +
       "\nSQL: " + sql +
       "\nRows:\n" + clip(queried.out || "")
     );
-    return { sql, answer };
+    return { sql, answer, provider };
   } catch (error) {
-    return { error: error.message };
+    return { error: error.message, provider };
   }
 }
 
