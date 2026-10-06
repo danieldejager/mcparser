@@ -4,6 +4,7 @@ const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const summary = document.getElementById("summary");
+const saved = document.getElementById("saved");
 const grok = document.getElementById("grok");
 const transcript = document.getElementById("transcript");
 const ask = document.getElementById("ask");
@@ -68,6 +69,7 @@ async function refresh() {
   fact("Channels", channels.join(", "));
   fact("Providers", providers.join(", "));
   status.textContent = "Case loaded";
+  await loadQueries();
 }
 
 function renderCsv(text) {
@@ -109,6 +111,40 @@ async function exportCsv() {
   if (saved.saved) status.textContent = `exported ${saved.path}`;
 }
 
+
+async function loadQueries() {
+  saved.replaceChildren();
+  const result = await window.mcparser.queries(caseDir());
+  if (!result || result.code !== 0) return;
+  for (const line of result.out.split("\n").filter(Boolean)) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const name = line.slice(0, tab);
+    const sqlText = line.slice(tab + 1).replaceAll("\\n", "\n");
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.textContent = name;
+    button.onclick = () => {
+      sql.value = sqlText;
+      updateLines();
+    };
+    li.append(button);
+    saved.append(li);
+  }
+}
+
+async function saveQuery() {
+  const name = window.prompt("Query name");
+  if (!name || !name.trim()) return;
+  const result = await window.mcparser.saveQuery(caseDir(), name.trim(), sql.value);
+  if (result.code !== 0) {
+    status.textContent = result.err || "save failed";
+    return;
+  }
+  status.textContent = `saved ${name.trim()}`;
+  await loadQueries();
+}
+
 function note(text) {
   const p = document.createElement("p");
   p.textContent = text;
@@ -136,6 +172,7 @@ sql.addEventListener("scroll", () => {
 });
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
+document.getElementById("save-query").onclick = saveQuery;
 document.getElementById("export").onclick = exportCsv;
 document.getElementById("key-cancel").onclick = hideSheet;
 document.getElementById("key-form").onsubmit = async (event) => {
