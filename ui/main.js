@@ -19,21 +19,23 @@ const iconPath = path.join(__dirname, "icon.png");
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
 let win;
 let grokKey = "";
+let claudeKey = "";
+let provider = "grok";
 let chatShown = false;
 
-function keyFile() {
-  return path.join(app.getPath("userData"), "grok-key.bin");
+function keyFile(name) {
+  return path.join(app.getPath("userData"), `${name}-key.bin`);
 }
 
-function storeKey(key) {
+function storeKey(name, key) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
-  const file = keyFile();
+  const file = keyFile(name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, safeStorage.encryptString(key), { mode: 0o600 });
 }
 
 function loadKey() {
-  const file = keyFile();
+  const file = keyFile(name);
   if (!fs.existsSync(file) || !safeStorage.isEncryptionAvailable()) return;
   try {
     grokKey = safeStorage.decryptString(fs.readFileSync(file));
@@ -46,7 +48,7 @@ function loadKey() {
 function forgetKey() {
   grokKey = "";
   chatShown = false;
-  const file = keyFile();
+  const file = keyFile(name);
   if (fs.existsSync(file)) fs.unlinkSync(file);
 }
 
@@ -96,7 +98,8 @@ function run(args) {
 }
 
 function grokStatus() {
-  return { connected: grokKey.length > 0, last4: grokKey.slice(-4) };
+  const key = activeKey();
+  return { connected: key.length > 0, last4: key.slice(-4), provider };
 }
 
 function textFrom(body) {
@@ -127,6 +130,33 @@ async function grok(input) {
   return textFrom(body);
 }
 
+async function claude(input) {
+  const response = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": claudeKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-5-20250929",
+      max_tokens: 1024,
+      messages: [{ role: "user", content: input }],
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("key rejected");
+    throw new Error(body.error && body.error.message ? body.error.message : `HTTP ${response.status}`);
+  }
+  return (body.content || []).map((part) => part.text || "").join("\n");
+}
+
+async function askModel(input) {
+  if (provider === "claude") return claude(input);
+  return grok(input);
+}
+
 function oneSelect(text) {
   const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
   let sql = (fenced ? fenced[1] : text).trim().replace(/;+\s*$/, "");
@@ -144,11 +174,11 @@ function clip(text) {
 }
 
 async function grokAsk(caseDir, question) {
-  if (!grokKey) return { error: "Connect Grok first" };
+  if (!activeKey()) return { error: `Connect ${provider} first` };
   try {
     const stats = await run(["stats", "--case", casePath(caseDir)]);
     const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
-    const sqlText = await grok(
+    const sqlText = await askModel(
       "Return one DuckDB SELECT and no other text. " + schema +
       " Case stats:\n" + clip(stats.out || "") +
       "\nQuestion: " + question
@@ -156,7 +186,7 @@ async function grokAsk(caseDir, question) {
     const sql = oneSelect(sqlText);
     const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
     if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql };
-    const answer = await grok(
+    const answer = await askModel(
       "Answer the question from these rows only. Do not invent rows.\nQuestion: " + question +
       "\nSQL: " + sql +
       "\nRows:\n" + clip(queried.out || "")
@@ -194,7 +224,7 @@ async function showAbout() {
 }
 
 function buildMenu() {
-  const connected = grokKey.length > 0;
+  const connected = activeKey().length > 0;
   const template = [
     {
       label: "McParser",
@@ -247,8 +277,21 @@ function buildMenu() {
       label: "Grok",
       submenu: [
         {
-          label: connected ? "Grok connected" : "Connect Grok...",
-          click: () => win.webContents.send("grok-connect"),
+          label: grokKey ? "Grok key saved" : "Connect Grok...",
+          click: () => win.webContents.send("grok-connect", "grok"),
+        },
+        {
+          label: claudeKey ? "Claude key saved" : "Connect Claude...",
+          click: () => win.webContents.send("grok-connect", "claude"),
+        },
+        {
+          label: provider === "claude" ? "Using Claude" : "Using Grok",
+          enabled: grokKey.length > 0 && claudeKey.length > 0,
+          click: () => {
+            provider = provider === "claude" ? "grok" : "claude";
+            buildMenu();
+            win.webContents.send("grok-status", grokStatus());
+          },
         },
         {
           label: "Forget key",
@@ -310,12 +353,15 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   return { saved: true, path: picked.filePath };
 });
 ipcMain.handle("grok-status", () => grokStatus());
-ipcMain.handle("grok-save", (_event, key) => {
+ipcMain.handle("grok-save", (_event, key, name) => {
+  if (name === "claude" || name === "grok") provider = name;
   const value = String(key || "").trim();
   if (!value) return { connected: false, error: "Enter a key" };
   try {
-    storeKey(value);
-    grokKey = value;
+    const name = provider === "claude" ? "claude" : "grok";
+    storeKey(name, value);
+    if (name === "claude") claudeKey = value;
+    else grokKey = value;
     chatShown = true;
     buildMenu();
     return grokStatus();
