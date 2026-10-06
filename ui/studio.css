@@ -42,3 +42,10 @@ tr:nth-child(even) td { background: #fafafa; }
 #saved button { display: block; width: 100%; margin-top: 6px; text-align: left; }
 
 aside h1:last-of-type { margin-top: 20px; }
+
+aside details { margin-top: 16px; }
+aside summary { font-size: 16px; font-weight: 700; color: #111; cursor: pointer; margin-bottom: 8px; }
+aside label { display: block; margin-top: 10px; color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px solid #d0d0d0; border-radius: 6px; padding: 6px 8px; background: #fff; font: inherit; }
+#hunts, #saved { list-style: none; margin: 8px 0 0; padding: 0; }
+#hunts button, #saved button { display: block; width: 100%; margin-top: 6px; text-align: left; }
