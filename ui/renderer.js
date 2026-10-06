@@ -27,6 +27,48 @@ function listModels(state) {
   models.textContent = configured[vendor.value] ? "Configured." : "Configure this integration.";
 }
 
+
+function fillHunts() {
+  const tactic = document.getElementById("tactic");
+  const technique = document.getElementById("technique");
+  const list = document.getElementById("hunts");
+  if (!tactic || !window.hunts) return;
+  const tactics = [...new Set(window.hunts.map((hunt) => hunt.tactic))];
+  if (!tactic.options.length) {
+    for (const name of tactics) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      tactic.append(option);
+    }
+  }
+  const techniques = [...new Set(window.hunts.filter((hunt) => hunt.tactic === tactic.value).map((hunt) => hunt.technique))];
+  const previous = technique.value;
+  technique.replaceChildren();
+  for (const name of techniques) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    technique.append(option);
+  }
+  if (techniques.includes(previous)) technique.value = previous;
+  list.replaceChildren();
+  for (const hunt of window.hunts.filter((item) => item.tactic === tactic.value && item.technique === technique.value)) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.textContent = hunt.name;
+    button.onclick = () => {
+      sql.value = hunt.sql;
+      document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+updateLines();
+    };
+    li.append(button);
+    list.append(li);
+  }
+}
+
 function caseDir() {
   return caseInput.value.trim();
 }
@@ -146,7 +188,10 @@ async function showNotes() {
       }
       tr.onclick = () => {
         sql.value = (parts[2] || "").replaceAll("\\n", "\n");
-        updateLines();
+        document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+updateLines();
         if (sql.value.trim()) run();
       };
       table.append(tr);
@@ -217,7 +262,10 @@ async function loadQueries() {
     button.textContent = name;
     button.onclick = () => {
       sql.value = sqlText;
-      updateLines();
+      document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+updateLines();
     };
     li.append(button);
     saved.append(li);
@@ -319,7 +367,10 @@ document.getElementById("send").onclick = async () => {
   runSql.textContent = "Run";
   runSql.onclick = () => {
     sql.value = result.sql;
-    updateLines();
+    document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+updateLines();
     run();
   };
   transcript.append(runSql);
@@ -351,6 +402,9 @@ document.getElementById("vendor").onchange = async () => {
   listModels(chosen);
   if (chosen.error) note(chosen.error);
 };
+document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
 updateLines();
 window.mcparser.grokStatus().then(listModels);
 loadNotes().then(() => refresh().then(run));
