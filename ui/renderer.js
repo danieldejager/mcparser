@@ -309,11 +309,12 @@ document.getElementById("send").onclick = async () => {
   ask.value = "";
   const vendor = document.getElementById("vendor").value;
   const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
+  const who = vendor === "openai" ? "OpenAI" : vendor === "claude" ? "Claude" : "Grok";
   if (result.error) {
-    note(result.error);
+    note(`${who}: ${result.error}`);
     return;
   }
-  note(result.sql);
+  note(`${who}: ${result.sql}`);
   const runSql = document.createElement("button");
   runSql.textContent = "Run";
   runSql.onclick = () => {
@@ -322,7 +323,7 @@ document.getElementById("send").onclick = async () => {
     run();
   };
   transcript.append(runSql);
-  note(result.answer);
+  note(`${who}: ${result.answer}`);
 };
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
