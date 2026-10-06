@@ -439,7 +439,7 @@ ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePat
 ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
 ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
 ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
-ipcMain.handle("save-run", (_event, caseDir, rows, sql) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), sql]));
+ipcMain.handle("save-run", (_event, caseDir, rows, sql, label) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), "--label", label || "query", sql]));
 
 ipcMain.handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
 
