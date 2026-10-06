@@ -12,6 +12,7 @@ const sheet = document.getElementById("sheet");
 const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
+let runLabel = "query";
 let confirmed = false;
 let connectProvider = "grok";
 let rowNotes = new Map();
@@ -236,7 +237,8 @@ async function run() {
   lastCsv = result.out;
   const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
-  await window.mcparser.saveRun(caseDir(), rows, sql.value);
+  await window.mcparser.saveRun(caseDir(), rows, sql.value, runLabel);
+  runLabel = "query";
 }
 
 async function exportCsv() {
@@ -298,7 +300,7 @@ async function showRuns() {
   const result = await window.mcparser.runs(caseDir());
   const table = document.createElement("table");
   const head = document.createElement("tr");
-  for (const label of ["#", "when", "rows", "sql"]) {
+  for (const label of ["#", "followed", "label", "when", "rows", "sql"]) {
     const th = document.createElement("th");
     th.textContent = label;
     head.append(th);
@@ -310,8 +312,8 @@ async function showRuns() {
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       const when = new Date(Number(parts[1]) * 1000).toISOString();
-      const sqlText = (parts[3] || "").replaceAll("\\n", "\n");
-      for (const value of [parts[0] || "", when, parts[2] || "", sqlText]) {
+      const sqlText = (parts[5] || "").replaceAll("\\n", "\n");
+      for (const value of [parts[0] || "", parts[3] || "", parts[4] || "", when, parts[2] || "", sqlText]) {
         const td = document.createElement("td");
         td.textContent = value;
         tr.append(td);
