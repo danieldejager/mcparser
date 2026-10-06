@@ -381,8 +381,8 @@ fn save_run(args: &mut impl Iterator<Item = String>) -> ExitCode {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     match case::save_run(&case_dir.join("catalog.sqlite"), sql.trim(), &ran_at.to_string(), row_count, label.trim()) {
-        Ok(()) => {
-            println!("ran rows={row_count}");
+        Ok(id) => {
+            println!("ran id={id} rows={row_count}");
             ExitCode::SUCCESS
         }
         Err(err) => {
