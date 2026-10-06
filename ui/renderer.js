@@ -87,12 +87,12 @@ function renderCsv(text) {
     }
     if (recordIndex >= 0) {
       const node = document.createElement(index === 0 ? "th" : "td");
-      if (index === 0) node.textContent = "note";
-      else {
-        node.textContent = rowNotes.get(row[recordIndex]) || "";
-        node.onclick = () => showNoteSheet(row[recordIndex], node.textContent);
-      }
+      node.textContent = index === 0 ? "note" : rowNotes.get(row[recordIndex]) || "";
       tr.append(node);
+      if (index > 0) {
+        tr.style.cursor = "pointer";
+        tr.onclick = () => showNoteSheet(row[recordIndex], rowNotes.get(row[recordIndex]) || "");
+      }
     }
     table.append(tr);
   });
