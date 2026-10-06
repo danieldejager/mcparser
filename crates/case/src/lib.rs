@@ -163,6 +163,12 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             record_id INTEGER PRIMARY KEY,
             body TEXT NOT NULL,
             query_sql TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS runs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sql TEXT NOT NULL,
+            ran_at TEXT NOT NULL,
+            row_count INTEGER NOT NULL
         )",
     )?;
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN query_sql TEXT NOT NULL DEFAULT ''", []);
@@ -252,6 +258,38 @@ pub fn notes(catalog: &Path) -> Result<Vec<Note>, rusqlite::Error> {
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
         out.push(Note { record_id: row.get(0)?, body: row.get(1)?, query_sql: row.get(2)? });
+    }
+    Ok(out)
+}
+
+pub struct Run {
+    pub id: i64,
+    pub sql: String,
+    pub ran_at: String,
+    pub row_count: i64,
+}
+
+pub fn save_run(catalog: &Path, sql: &str, ran_at: &str, row_count: i64) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO runs (sql, ran_at, row_count) VALUES (?1, ?2, ?3)",
+        rusqlite::params![sql, ran_at, row_count],
+    )?;
+    Ok(())
+}
+
+pub fn runs(catalog: &Path) -> Result<Vec<Run>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT id, sql, ran_at, row_count FROM runs ORDER BY id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Run {
+            id: row.get(0)?,
+            sql: row.get(1)?,
+            ran_at: row.get(2)?,
+            row_count: row.get(3)?,
+        });
     }
     Ok(out)
 }
