@@ -13,6 +13,7 @@ const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
 let confirmed = false;
+let rowNotes = new Map();
 
 function caseDir() {
   return caseInput.value.trim();
@@ -75,6 +76,8 @@ async function refresh() {
 function renderCsv(text) {
   const rows = text.trim().split("\n").filter(Boolean).map((line) => line.split(","));
   const table = document.createElement("table");
+  const headers = rows[0] || [];
+  const recordIndex = headers.indexOf("record_id");
   rows.forEach((row, index) => {
     const tr = document.createElement("tr");
     for (const cell of row) {
@@ -82,10 +85,53 @@ function renderCsv(text) {
       node.textContent = cell;
       tr.append(node);
     }
+    if (recordIndex >= 0) {
+      const node = document.createElement(index === 0 ? "th" : "td");
+      if (index === 0) node.textContent = "note";
+      else {
+        node.textContent = rowNotes.get(row[recordIndex]) || "";
+        node.onclick = () => showNoteSheet(row[recordIndex], node.textContent);
+      }
+      tr.append(node);
+    }
     table.append(tr);
   });
   results.replaceChildren(table);
   return Math.max(rows.length - 1, 0);
+}
+
+async function loadNotes() {
+  rowNotes = new Map();
+  const result = await window.mcparser.notes(caseDir());
+  if (!result || result.code !== 0) return;
+  for (const line of result.out.split("\n").filter(Boolean)) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    rowNotes.set(line.slice(0, tab), line.slice(tab + 1));
+  }
+}
+
+function showNoteSheet(recordId, body) {
+  document.getElementById("note-record").value = recordId || "";
+  document.getElementById("note-body").value = body || "";
+  document.getElementById("note-sheet").hidden = false;
+  document.getElementById("note-body").focus();
+}
+
+async function saveNote(event) {
+  event.preventDefault();
+  const recordId = document.getElementById("note-record").value.trim();
+  const body = document.getElementById("note-body").value.trim();
+  document.getElementById("note-sheet").hidden = true;
+  if (!recordId || !body) return;
+  const result = await window.mcparser.saveNote(caseDir(), recordId, body);
+  if (result.code !== 0) {
+    status.textContent = result.err || "note failed";
+    return;
+  }
+  status.textContent = `noted ${recordId}`;
+  await loadNotes();
+  if (lastCsv) renderCsv(lastCsv);
 }
 
 async function run() {
@@ -184,6 +230,9 @@ document.getElementById("save-query").onclick = showQuerySheet;
 document.getElementById("query-cancel").onclick = () => { document.getElementById("query-sheet").hidden = true; };
 document.getElementById("query-form").onsubmit = saveQuery;
 document.getElementById("export").onclick = exportCsv;
+document.getElementById("note").onclick = () => showNoteSheet("", "");
+document.getElementById("note-cancel").onclick = () => { document.getElementById("note-sheet").hidden = true; };
+document.getElementById("note-form").onsubmit = saveNote;
 document.getElementById("key-cancel").onclick = hideSheet;
 document.getElementById("key-form").onsubmit = async (event) => {
   event.preventDefault();
@@ -243,4 +292,4 @@ window.mcparser.onGrokStatus((grokState) => {
   }
 });
 updateLines();
-refresh().then(run);
+loadNotes().then(() => refresh().then(run));
