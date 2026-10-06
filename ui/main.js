@@ -314,6 +314,7 @@ function buildMenu() {
       label: "Audit",
       submenu: [
         { label: "Notes", click: () => win.webContents.send("show-notes") },
+        { label: "Runs", click: () => win.webContents.send("show-runs") },
       ],
     },
     {
@@ -437,6 +438,9 @@ ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
 ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
 ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
 ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
+ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
+ipcMain.handle("save-run", (_event, caseDir, rows, sql) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), sql]));
+
 ipcMain.handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
 
 
