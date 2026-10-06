@@ -182,10 +182,10 @@ async function askModel(input) {
 function oneSelect(text) {
   const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
   let sql = (fenced ? fenced[1] : text).trim().replace(/;+\s*$/, "");
-  if (sql.includes(";")) throw new Error("Grok returned more than one statement");
-  if (!/^select\b/i.test(sql)) throw new Error("Grok did not return a SELECT");
+  if (sql.includes(";")) throw new Error("The model returned more than one statement");
+  if (!/^select\b/i.test(sql)) throw new Error("The model did not return a SELECT");
   if (/\b(attach|copy|pragma|insert|update|delete|drop|create|alter)\b/i.test(sql)) {
-    throw new Error("Grok returned a statement that is not a read");
+    throw new Error("The model returned a statement that is not a read");
   }
   if (!/\blimit\b/i.test(sql)) sql += " LIMIT 50";
   return sql;
@@ -375,6 +375,19 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   return { saved: true, path: picked.filePath };
 });
 ipcMain.handle("grok-status", () => grokStatus());
+ipcMain.handle("set-provider", (_event, name) => {
+  if (name === "openai") {
+    provider = "openai";
+    buildMenu();
+    return { ...grokStatus(), error: "Configure this integration." };
+  }
+  if (name !== "grok" && name !== "claude") return grokStatus();
+  provider = name;
+  buildMenu();
+  if (!activeKey()) return { ...grokStatus(), error: "Configure this integration." };
+  return grokStatus();
+});
+
 ipcMain.handle("grok-save", (_event, key, name) => {
   if (name === "claude" || name === "grok") provider = name;
   const value = String(key || "").trim();
