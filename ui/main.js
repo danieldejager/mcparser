@@ -20,6 +20,7 @@ const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7
 let win;
 let grokKey = "";
 let claudeKey = "";
+let openaiKey = "";
 let provider = "grok";
 let chatShown = false;
 
@@ -36,15 +37,17 @@ function storeKey(name, key) {
 
 function loadKey() {
   if (!safeStorage.isEncryptionAvailable()) return;
-  for (const providerName of ["grok", "claude"]) {
+  for (const providerName of ["grok", "claude", "openai"]) {
     const file = keyFile(providerName);
     if (!fs.existsSync(file)) continue;
     try {
       const value = safeStorage.decryptString(fs.readFileSync(file));
       if (providerName === "claude") claudeKey = value;
+      else if (providerName === "openai") openaiKey = value;
       else grokKey = value;
     } catch {
       if (providerName === "claude") claudeKey = "";
+      else if (providerName === "openai") openaiKey = "";
       else grokKey = "";
     }
   }
@@ -55,16 +58,19 @@ function loadKey() {
 function forgetKey() {
   grokKey = "";
   claudeKey = "";
+  openaiKey = "";
   provider = "grok";
   chatShown = false;
-  for (const providerName of ["grok", "claude"]) {
+  for (const providerName of ["grok", "claude", "openai"]) {
     const file = keyFile(providerName);
     if (fs.existsSync(file)) fs.unlinkSync(file);
   }
 }
 
 function activeKey() {
-  return provider === "claude" ? claudeKey : grokKey;
+  if (provider === "claude") return claudeKey;
+  if (provider === "openai") return openaiKey;
+  return grokKey;
 }
 
 function parserBinary() {
@@ -94,6 +100,8 @@ function run(args) {
   return new Promise((resolve) => {
     const env = { ...process.env };
     delete env.XAI_API_KEY;
+    delete env.OPENAI_API_KEY;
+    delete env.ANTHROPIC_API_KEY;
     const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
     let out = "";
     let err = "";
@@ -120,7 +128,7 @@ function grokStatus() {
     provider,
     grok: grokKey.length > 0,
     claude: claudeKey.length > 0,
-    openai: false,
+    openai: openaiKey.length > 0,
   };
 }
 
@@ -174,8 +182,30 @@ async function claude(input) {
   return (body.content || []).map((part) => part.text || "").join("\n");
 }
 
+async function openai(input) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${openaiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4.1",
+      messages: [{ role: "user", content: input }],
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("key rejected");
+    throw new Error(body.error && body.error.message ? body.error.message : `HTTP ${response.status}`);
+  }
+  const choice = body.choices && body.choices[0] && body.choices[0].message;
+  return choice && choice.content ? choice.content : "";
+}
+
 async function askModel(input) {
   if (provider === "claude") return claude(input);
+  if (provider === "openai") return openai(input);
   return grok(input);
 }
 
@@ -307,13 +337,8 @@ function buildMenu() {
           click: () => win.webContents.send("grok-connect", "claude"),
         },
         {
-          label: provider === "claude" ? "Using Claude" : "Using Grok",
-          enabled: grokKey.length > 0 && claudeKey.length > 0,
-          click: () => {
-            provider = provider === "claude" ? "grok" : "claude";
-            buildMenu();
-            win.webContents.send("grok-status", grokStatus());
-          },
+          label: openaiKey ? "OpenAI key saved" : "Connect OpenAI...",
+          click: () => win.webContents.send("grok-connect", "openai"),
         },
         {
           label: "Forget key",
@@ -376,12 +401,7 @@ ipcMain.handle("save-csv", async (_event, csv) => {
 });
 ipcMain.handle("grok-status", () => grokStatus());
 ipcMain.handle("set-provider", (_event, name) => {
-  if (name === "openai") {
-    provider = "openai";
-    buildMenu();
-    return { ...grokStatus(), error: "Configure this integration." };
-  }
-  if (name !== "grok" && name !== "claude") return grokStatus();
+  if (name !== "grok" && name !== "claude" && name !== "openai") return grokStatus();
   provider = name;
   buildMenu();
   if (!activeKey()) return { ...grokStatus(), error: "Configure this integration." };
@@ -389,13 +409,14 @@ ipcMain.handle("set-provider", (_event, name) => {
 });
 
 ipcMain.handle("grok-save", (_event, key, name) => {
-  if (name === "claude" || name === "grok") provider = name;
+  if (name === "claude" || name === "grok" || name === "openai") provider = name;
   const value = String(key || "").trim();
   if (!value) return { connected: false, error: "Enter a key" };
   try {
-    const name = provider === "claude" ? "claude" : "grok";
+    const name = provider;
     storeKey(name, value);
     if (name === "claude") claudeKey = value;
+    else if (name === "openai") openaiKey = value;
     else grokKey = value;
     chatShown = true;
     buildMenu();
