@@ -105,10 +105,43 @@ async function loadNotes() {
   const result = await window.mcparser.notes(caseDir());
   if (!result || result.code !== 0) return;
   for (const line of result.out.split("\n").filter(Boolean)) {
-    const tab = line.indexOf("\t");
-    if (tab < 0) continue;
-    rowNotes.set(line.slice(0, tab), line.slice(tab + 1));
+    const parts = line.split("\t");
+    if (parts.length < 2) continue;
+    rowNotes.set(parts[0], parts[1]);
   }
+}
+
+async function showNotes() {
+  await loadNotes();
+  const result = await window.mcparser.notes(caseDir());
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["record", "note", "query"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  if (result && result.code === 0) {
+    for (const line of result.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      for (const value of [parts[0] || "", parts[1] || "", (parts[2] || "").replaceAll("\\n", "\n")]) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.append(td);
+      }
+      tr.onclick = () => {
+        sql.value = (parts[2] || "").replaceAll("\\n", "\n");
+        updateLines();
+        if (sql.value.trim()) run();
+      };
+      table.append(tr);
+    }
+  }
+  results.replaceChildren(table);
+  status.textContent = "Notes";
 }
 
 function showNoteSheet(recordId, body) {
@@ -124,7 +157,7 @@ async function saveNote(event) {
   const body = document.getElementById("note-body").value.trim();
   document.getElementById("note-sheet").hidden = true;
   if (!recordId || !body) return;
-  const result = await window.mcparser.saveNote(caseDir(), recordId, body);
+  const result = await window.mcparser.saveNote(caseDir(), recordId, body, sql.value);
   if (result.code !== 0) {
     status.textContent = result.err || "note failed";
     return;
@@ -284,6 +317,7 @@ window.mcparser.onGrokConnect(() => {
 window.mcparser.onGrokChat((shown) => {
   grok.hidden = !shown;
 });
+window.mcparser.onShowNotes(showNotes);
 window.mcparser.onGrokStatus((grokState) => {
   if (!grokState.connected) {
     grok.hidden = true;
