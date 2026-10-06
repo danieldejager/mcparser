@@ -4,6 +4,7 @@ const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const summary = document.getElementById("summary");
+const saved = document.getElementById("saved");
 const grok = document.getElementById("grok");
 const transcript = document.getElementById("transcript");
 const ask = document.getElementById("ask");
@@ -12,6 +13,7 @@ const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
 let confirmed = false;
+let rowNotes = new Map();
 
 function caseDir() {
   return caseInput.value.trim();
@@ -68,11 +70,14 @@ async function refresh() {
   fact("Channels", channels.join(", "));
   fact("Providers", providers.join(", "));
   status.textContent = "Case loaded";
+  await loadQueries();
 }
 
 function renderCsv(text) {
   const rows = text.trim().split("\n").filter(Boolean).map((line) => line.split(","));
   const table = document.createElement("table");
+  const headers = rows[0] || [];
+  const recordIndex = headers.indexOf("record_id");
   rows.forEach((row, index) => {
     const tr = document.createElement("tr");
     for (const cell of row) {
@@ -80,10 +85,86 @@ function renderCsv(text) {
       node.textContent = cell;
       tr.append(node);
     }
+    if (recordIndex >= 0) {
+      const node = document.createElement(index === 0 ? "th" : "td");
+      node.textContent = index === 0 ? "note" : rowNotes.get(row[recordIndex]) || "";
+      tr.append(node);
+      if (index > 0) {
+        tr.style.cursor = "pointer";
+        tr.onclick = () => showNoteSheet(row[recordIndex], rowNotes.get(row[recordIndex]) || "");
+      }
+    }
     table.append(tr);
   });
   results.replaceChildren(table);
   return Math.max(rows.length - 1, 0);
+}
+
+async function loadNotes() {
+  rowNotes = new Map();
+  const result = await window.mcparser.notes(caseDir());
+  if (!result || result.code !== 0) return;
+  for (const line of result.out.split("\n").filter(Boolean)) {
+    const parts = line.split("\t");
+    if (parts.length < 2) continue;
+    rowNotes.set(parts[0], parts[1]);
+  }
+}
+
+async function showNotes() {
+  await loadNotes();
+  const result = await window.mcparser.notes(caseDir());
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["record", "note", "query"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  if (result && result.code === 0) {
+    for (const line of result.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      for (const value of [parts[0] || "", parts[1] || "", (parts[2] || "").replaceAll("\\n", "\n")]) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.append(td);
+      }
+      tr.onclick = () => {
+        sql.value = (parts[2] || "").replaceAll("\\n", "\n");
+        updateLines();
+        if (sql.value.trim()) run();
+      };
+      table.append(tr);
+    }
+  }
+  results.replaceChildren(table);
+  status.textContent = "Notes";
+}
+
+function showNoteSheet(recordId, body) {
+  document.getElementById("note-record").value = recordId || "";
+  document.getElementById("note-body").value = body || "";
+  document.getElementById("note-sheet").hidden = false;
+  document.getElementById("note-body").focus();
+}
+
+async function saveNote(event) {
+  event.preventDefault();
+  const recordId = document.getElementById("note-record").value.trim();
+  const body = document.getElementById("note-body").value.trim();
+  document.getElementById("note-sheet").hidden = true;
+  if (!recordId || !body) return;
+  const result = await window.mcparser.saveNote(caseDir(), recordId, body, sql.value);
+  if (result.code !== 0) {
+    status.textContent = result.err || "note failed";
+    return;
+  }
+  status.textContent = `noted ${recordId}`;
+  await loadNotes();
+  if (lastCsv) renderCsv(lastCsv);
 }
 
 async function run() {
@@ -107,6 +188,48 @@ async function exportCsv() {
   }
   const saved = await window.mcparser.saveCsv(lastCsv);
   if (saved.saved) status.textContent = `exported ${saved.path}`;
+}
+
+
+async function loadQueries() {
+  saved.replaceChildren();
+  const result = await window.mcparser.queries(caseDir());
+  if (!result || result.code !== 0) return;
+  for (const line of result.out.split("\n").filter(Boolean)) {
+    const tab = line.indexOf("\t");
+    if (tab < 0) continue;
+    const name = line.slice(0, tab);
+    const sqlText = line.slice(tab + 1).replaceAll("\\n", "\n");
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.textContent = name;
+    button.onclick = () => {
+      sql.value = sqlText;
+      updateLines();
+    };
+    li.append(button);
+    saved.append(li);
+  }
+}
+
+function showQuerySheet() {
+  document.getElementById("query-name").value = "";
+  document.getElementById("query-sheet").hidden = false;
+  document.getElementById("query-name").focus();
+}
+
+async function saveQuery(event) {
+  event.preventDefault();
+  const name = document.getElementById("query-name").value.trim();
+  document.getElementById("query-sheet").hidden = true;
+  if (!name) return;
+  const result = await window.mcparser.saveQuery(caseDir(), name, sql.value);
+  if (result.code !== 0) {
+    status.textContent = result.err || "save failed";
+    return;
+  }
+  status.textContent = `saved ${name}`;
+  await loadQueries();
 }
 
 function note(text) {
@@ -136,7 +259,13 @@ sql.addEventListener("scroll", () => {
 });
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
+document.getElementById("save-query").onclick = showQuerySheet;
+document.getElementById("query-cancel").onclick = () => { document.getElementById("query-sheet").hidden = true; };
+document.getElementById("query-form").onsubmit = saveQuery;
 document.getElementById("export").onclick = exportCsv;
+document.getElementById("note").onclick = () => showNoteSheet("", "");
+document.getElementById("note-cancel").onclick = () => { document.getElementById("note-sheet").hidden = true; };
+document.getElementById("note-form").onsubmit = saveNote;
 document.getElementById("key-cancel").onclick = hideSheet;
 document.getElementById("key-form").onsubmit = async (event) => {
   event.preventDefault();
@@ -188,6 +317,7 @@ window.mcparser.onGrokConnect(() => {
 window.mcparser.onGrokChat((shown) => {
   grok.hidden = !shown;
 });
+window.mcparser.onShowNotes(showNotes);
 window.mcparser.onGrokStatus((grokState) => {
   if (!grokState.connected) {
     grok.hidden = true;
@@ -196,4 +326,4 @@ window.mcparser.onGrokStatus((grokState) => {
   }
 });
 updateLines();
-refresh().then(run);
+loadNotes().then(() => refresh().then(run));

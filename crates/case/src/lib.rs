@@ -18,6 +18,11 @@ pub struct Source {
     pub records: i64,
 }
 
+pub struct SavedQuery {
+    pub name: String,
+    pub sql: String,
+}
+
 pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
     let conn = Connection::open(db_path)?;
     conn.execute_batch(
@@ -149,8 +154,18 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             sha256 TEXT PRIMARY KEY,
             source_path TEXT NOT NULL,
             records INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS queries (
+            name TEXT PRIMARY KEY,
+            sql TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS notes (
+            record_id INTEGER PRIMARY KEY,
+            body TEXT NOT NULL,
+            query_sql TEXT NOT NULL DEFAULT ''
         )",
     )?;
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN query_sql TEXT NOT NULL DEFAULT ''", []);
     Ok(conn)
 }
 
@@ -188,4 +203,55 @@ pub fn remove_source(catalog: &Path, sha256: &str) -> Result<(), rusqlite::Error
 pub fn delete_events_for_source(db_path: &Path, sha256: &str) -> Result<usize, duckdb::Error> {
     let conn = Connection::open(db_path)?;
     conn.execute("DELETE FROM events WHERE source_sha256 = ?", [sha256])
+}
+
+pub fn save_query(catalog: &Path, name: &str, sql: &str) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO queries (name, sql) VALUES (?1, ?2)
+         ON CONFLICT(name) DO UPDATE SET sql = excluded.sql",
+        rusqlite::params![name, sql],
+    )?;
+    Ok(())
+}
+
+pub fn queries(catalog: &Path) -> Result<Vec<SavedQuery>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT name, sql FROM queries ORDER BY name")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(SavedQuery {
+            name: row.get(0)?,
+            sql: row.get(1)?,
+        });
+    }
+    Ok(out)
+}
+
+pub struct Note {
+    pub record_id: i64,
+    pub body: String,
+    pub query_sql: String,
+}
+
+pub fn save_note(catalog: &Path, record_id: i64, body: &str, query_sql: &str) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO notes (record_id, body, query_sql) VALUES (?1, ?2, ?3)
+         ON CONFLICT(record_id) DO UPDATE SET body = excluded.body, query_sql = excluded.query_sql",
+        rusqlite::params![record_id, body, query_sql],
+    )?;
+    Ok(())
+}
+
+pub fn notes(catalog: &Path) -> Result<Vec<Note>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT record_id, body, query_sql FROM notes ORDER BY record_id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Note { record_id: row.get(0)?, body: row.get(1)?, query_sql: row.get(2)? });
+    }
+    Ok(out)
 }
