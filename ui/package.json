@@ -18,7 +18,7 @@
     "appId": "com.danieldejager.mcparser",
     "productName": "McParser",
     "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js"],
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js", "hunts.js"],
     "extraResources": [
       {
         "from": "../target/release",
