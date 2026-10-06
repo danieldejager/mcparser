@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.2 — 2026-10-06
+
+A note is a record id and a sentence, stored in the case. Audit, then Notes, lists them after the fact.
+
+### Added
+
+- `mcparser save-note --case <dir> --record <id> [--sql <sql>] "<sentence>"`
+- `mcparser notes --case <dir>`
+- Notes stored in `catalog.sqlite`. The same record id replaces the sentence
+- The note remembers the SQL that was in the editor when it was saved
+- Click a result row to open the note sheet. The row must include `record_id`
+- The grid shows a note column when `record_id` is selected
+- Audit menu, Notes. The screen lists record, sentence, and query. A click loads that SQL and runs it
+
+### Proven
+
+- Record 51, the `fsir` account creation, can be marked as the start of the trail
+- The note survives in the case folder
+
+### Not in this release
+
+- New installer. Build from `notes-in-a-row` to run it
+- A note on a count query. There is no record id to attach it to
+- Rendered provider messages
+
 ## 0.2.1 — 2026-10-06
 
 Saved queries live in the case. Copy the `.mcp` folder and the queries go with it.
