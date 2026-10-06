@@ -253,10 +253,11 @@ function note(text) {
 
 function showSheet(grokState) {
   const name = connectProvider === "claude" ? "Claude" : "Grok";
-  document.querySelector("#key-form h1").textContent = `Connect ${name}`;
+  const label = connectProvider === "claude" ? "Claude" : connectProvider === "openai" ? "OpenAI" : "Grok";
+  document.querySelector("#key-form h1").textContent = `Connect ${label}`;
   keyHint.textContent = grokState.connected && grokState.provider === connectProvider
-    ? `A ${name} key is set, ending ${grokState.last4}. Save replaces it.`
-    : `The ${name} key is encrypted with the macOS keychain.`;
+    ? `A ${label} key is set, ending ${grokState.last4}. Save replaces it.`
+    : `The ${label} key is encrypted with the macOS keychain.`;
   keyInput.value = "";
   sheet.hidden = false;
   keyInput.focus();
@@ -291,7 +292,8 @@ document.getElementById("key-form").onsubmit = async (event) => {
   }
   if (saved.connected) {
     grok.hidden = false;
-    note(`${connectProvider === "claude" ? "Claude" : "Grok"} connected. Ask about this case.`);
+    const label = connectProvider === "claude" ? "Claude" : connectProvider === "openai" ? "OpenAI" : "Grok";
+    note(`${label} connected. Ask about this case.`);
     window.mcparser.grokStatus().then(listModels);
   }
 };
@@ -306,10 +308,6 @@ document.getElementById("send").onclick = async () => {
   note(question);
   ask.value = "";
   const vendor = document.getElementById("vendor").value;
-  if (vendor === "openai") {
-    note("Configure this integration.");
-    return;
-  }
   const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
   if (result.error) {
     note(result.error);
