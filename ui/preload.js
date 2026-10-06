@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   notes: (caseDir) => ipcRenderer.invoke("notes", caseDir),
   saveNote: (caseDir, recordId, body, sql) => ipcRenderer.invoke("save-note", caseDir, recordId, body, sql),
   grokStatus: () => ipcRenderer.invoke("grok-status"),
+  setProvider: (name) => ipcRenderer.invoke("set-provider", name),
   grokSave: (key, provider) => ipcRenderer.invoke("grok-save", key, provider),
   grokForget: () => ipcRenderer.invoke("grok-forget"),
   grokAsk: (caseDir, question) => ipcRenderer.invoke("grok-ask", caseDir, question),
