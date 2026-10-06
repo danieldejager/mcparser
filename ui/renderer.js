@@ -133,15 +133,23 @@ async function loadQueries() {
   }
 }
 
-async function saveQuery() {
-  const name = window.prompt("Query name");
-  if (!name || !name.trim()) return;
-  const result = await window.mcparser.saveQuery(caseDir(), name.trim(), sql.value);
+function showQuerySheet() {
+  document.getElementById("query-name").value = "";
+  document.getElementById("query-sheet").hidden = false;
+  document.getElementById("query-name").focus();
+}
+
+async function saveQuery(event) {
+  event.preventDefault();
+  const name = document.getElementById("query-name").value.trim();
+  document.getElementById("query-sheet").hidden = true;
+  if (!name) return;
+  const result = await window.mcparser.saveQuery(caseDir(), name, sql.value);
   if (result.code !== 0) {
     status.textContent = result.err || "save failed";
     return;
   }
-  status.textContent = `saved ${name.trim()}`;
+  status.textContent = `saved ${name}`;
   await loadQueries();
 }
 
@@ -172,7 +180,9 @@ sql.addEventListener("scroll", () => {
 });
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
-document.getElementById("save-query").onclick = saveQuery;
+document.getElementById("save-query").onclick = showQuerySheet;
+document.getElementById("query-cancel").onclick = () => { document.getElementById("query-sheet").hidden = true; };
+document.getElementById("query-form").onsubmit = saveQuery;
 document.getElementById("export").onclick = exportCsv;
 document.getElementById("key-cancel").onclick = hideSheet;
 document.getElementById("key-form").onsubmit = async (event) => {
