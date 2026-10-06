@@ -6,6 +6,8 @@ contextBridge.exposeInMainWorld("mcparser", {
   saveCsv: (csv) => ipcRenderer.invoke("save-csv", csv),
   queries: (caseDir) => ipcRenderer.invoke("queries", caseDir),
   saveQuery: (caseDir, name, sql) => ipcRenderer.invoke("save-query", caseDir, name, sql),
+  notes: (caseDir) => ipcRenderer.invoke("notes", caseDir),
+  saveNote: (caseDir, recordId, body) => ipcRenderer.invoke("save-note", caseDir, recordId, body),
   grokStatus: () => ipcRenderer.invoke("grok-status"),
   grokSave: (key) => ipcRenderer.invoke("grok-save", key),
   grokForget: () => ipcRenderer.invoke("grok-forget"),
