@@ -19,21 +19,12 @@ let rowNotes = new Map();
 
 function listModels(state) {
   const models = document.getElementById("models");
-  if (!models) return;
+  const vendor = document.getElementById("vendor");
+  if (!models || !vendor) return;
   const current = state || { provider: "grok", grok: false, claude: false, openai: false };
-  const rows = [
-    ["Grok", current.grok, "grok"],
-    ["Claude", current.claude, "claude"],
-    ["OpenAI", current.openai, "openai"],
-  ];
-  models.replaceChildren();
-  for (const [label, configured, id] of rows) {
-    const line = document.createElement("span");
-    const mark = id === current.provider ? "In use. " : "";
-    line.textContent = configured ? `${label}. ${mark}Configured.` : `${label}. Configure this integration.`;
-    line.style.display = "block";
-    models.append(line);
-  }
+  vendor.value = current.provider || "grok";
+  const configured = { grok: current.grok, claude: current.claude, openai: current.openai };
+  models.textContent = configured[vendor.value] ? "Configured." : "Configure this integration.";
 }
 
 function caseDir() {
