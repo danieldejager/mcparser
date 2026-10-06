@@ -236,6 +236,7 @@ async function run() {
   lastCsv = result.out;
   const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
+  await window.mcparser.saveRun(caseDir(), rows, sql.value);
 }
 
 async function exportCsv() {
@@ -290,6 +291,41 @@ async function saveQuery(event) {
   }
   status.textContent = `saved ${name}`;
   await loadQueries();
+}
+
+
+async function showRuns() {
+  const result = await window.mcparser.runs(caseDir());
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["#", "when", "rows", "sql"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  if (result && result.code === 0) {
+    for (const line of result.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      const when = new Date(Number(parts[1]) * 1000).toISOString();
+      const sqlText = (parts[3] || "").replaceAll("\\n", "\n");
+      for (const value of [parts[0] || "", when, parts[2] || "", sqlText]) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.append(td);
+      }
+      tr.onclick = () => {
+        sql.value = sqlText;
+        updateLines();
+        if (sql.value.trim()) run();
+      };
+      table.append(tr);
+    }
+  }
+  results.replaceChildren(table);
+  status.textContent = "Runs";
 }
 
 function note(text) {
@@ -389,6 +425,7 @@ window.mcparser.onGrokChat((shown) => {
   grok.hidden = !shown;
 });
 window.mcparser.onShowNotes(showNotes);
+window.mcparser.onShowRuns(showRuns);
 window.mcparser.onGrokStatus((grokState) => {
   listModels(grokState);
   if (!grokState.connected) {
