@@ -158,6 +158,10 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
         CREATE TABLE IF NOT EXISTS queries (
             name TEXT PRIMARY KEY,
             sql TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS notes (
+            record_id INTEGER PRIMARY KEY,
+            body TEXT NOT NULL
         )",
     )?;
     Ok(conn)
@@ -219,6 +223,32 @@ pub fn queries(catalog: &Path) -> Result<Vec<SavedQuery>, rusqlite::Error> {
             name: row.get(0)?,
             sql: row.get(1)?,
         });
+    }
+    Ok(out)
+}
+
+pub struct Note {
+    pub record_id: i64,
+    pub body: String,
+}
+
+pub fn save_note(catalog: &Path, record_id: i64, body: &str) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO notes (record_id, body) VALUES (?1, ?2)
+         ON CONFLICT(record_id) DO UPDATE SET body = excluded.body",
+        rusqlite::params![record_id, body],
+    )?;
+    Ok(())
+}
+
+pub fn notes(catalog: &Path) -> Result<Vec<Note>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT record_id, body FROM notes ORDER BY record_id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Note { record_id: row.get(0)?, body: row.get(1)? });
     }
     Ok(out)
 }
