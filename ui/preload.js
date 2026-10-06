@@ -7,7 +7,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   queries: (caseDir) => ipcRenderer.invoke("queries", caseDir),
   saveQuery: (caseDir, name, sql) => ipcRenderer.invoke("save-query", caseDir, name, sql),
   notes: (caseDir) => ipcRenderer.invoke("notes", caseDir),
-  saveNote: (caseDir, recordId, body) => ipcRenderer.invoke("save-note", caseDir, recordId, body),
+  saveNote: (caseDir, recordId, body, sql) => ipcRenderer.invoke("save-note", caseDir, recordId, body, sql),
   grokStatus: () => ipcRenderer.invoke("grok-status"),
   grokSave: (key) => ipcRenderer.invoke("grok-save", key),
   grokForget: () => ipcRenderer.invoke("grok-forget"),
@@ -16,4 +16,5 @@ contextBridge.exposeInMainWorld("mcparser", {
   onGrokConnect: (handler) => ipcRenderer.on("grok-connect", () => handler()),
   onGrokChat: (handler) => ipcRenderer.on("grok-chat", (_event, shown) => handler(shown)),
   onGrokStatus: (handler) => ipcRenderer.on("grok-status", (_event, status) => handler(status)),
+  onShowNotes: (handler) => ipcRenderer.on("show-notes", () => handler()),
 });
