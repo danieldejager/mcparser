@@ -335,7 +335,7 @@ fn runs(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::runs(&case_dir.join("catalog.sqlite")) {
         Ok(runs) => {
             for run in runs {
-                println!("{}\t{}\t{}\t{}", run.id, run.ran_at, run.row_count, run.sql.replace('\n', "\\n"));
+                println!("{}\t{}\t{}\t{}\t{}\t{}", run.id, run.ran_at, run.row_count, run.followed.map(|id| id.to_string()).unwrap_or_default(), run.label, run.sql.replace('\n', "\\n"));
             }
             ExitCode::SUCCESS
         }
@@ -362,6 +362,15 @@ fn save_run(args: &mut impl Iterator<Item = String>) -> ExitCode {
         eprintln!("rows must be a number");
         return ExitCode::from(2);
     };
+    let mut label = String::new();
+    if rest.first().map(String::as_str) == Some("--label") {
+        rest.remove(0);
+        if rest.is_empty() {
+            eprintln!("usage: mcparser save-run --case <dir> --rows <n> [--label <name>] \"<sql>\"");
+            return ExitCode::from(2);
+        }
+        label = rest.remove(0);
+    }
     let sql = rest.join(" ");
     if sql.trim().is_empty() {
         eprintln!("sql is required");
@@ -371,7 +380,7 @@ fn save_run(args: &mut impl Iterator<Item = String>) -> ExitCode {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    match case::save_run(&case_dir.join("catalog.sqlite"), sql.trim(), &ran_at.to_string(), row_count) {
+    match case::save_run(&case_dir.join("catalog.sqlite"), sql.trim(), &ran_at.to_string(), row_count, label.trim()) {
         Ok(()) => {
             println!("ran rows={row_count}");
             ExitCode::SUCCESS
