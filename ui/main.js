@@ -35,21 +35,36 @@ function storeKey(name, key) {
 }
 
 function loadKey() {
-  const file = keyFile(name);
-  if (!fs.existsSync(file) || !safeStorage.isEncryptionAvailable()) return;
-  try {
-    grokKey = safeStorage.decryptString(fs.readFileSync(file));
-    chatShown = grokKey.length > 0;
-  } catch {
-    grokKey = "";
+  if (!safeStorage.isEncryptionAvailable()) return;
+  for (const providerName of ["grok", "claude"]) {
+    const file = keyFile(providerName);
+    if (!fs.existsSync(file)) continue;
+    try {
+      const value = safeStorage.decryptString(fs.readFileSync(file));
+      if (providerName === "claude") claudeKey = value;
+      else grokKey = value;
+    } catch {
+      if (providerName === "claude") claudeKey = "";
+      else grokKey = "";
+    }
   }
+  chatShown = activeKey().length > 0;
+  if (claudeKey && !grokKey) provider = "claude";
 }
 
 function forgetKey() {
   grokKey = "";
+  claudeKey = "";
+  provider = "grok";
   chatShown = false;
-  const file = keyFile(name);
-  if (fs.existsSync(file)) fs.unlinkSync(file);
+  for (const providerName of ["grok", "claude"]) {
+    const file = keyFile(providerName);
+    if (fs.existsSync(file)) fs.unlinkSync(file);
+  }
+}
+
+function activeKey() {
+  return provider === "claude" ? claudeKey : grokKey;
 }
 
 function parserBinary() {
