@@ -317,6 +317,9 @@ ipcMain.handle("grok-forget", () => {
   return grokStatus();
 });
 ipcMain.handle("grok-ask", (_event, caseDir, question) => grokAsk(caseDir, question));
+ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", caseDir]));
+ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", caseDir, "--name", name, sql]));
+
 
 app.whenReady().then(() => {
   const icon = appIcon();
