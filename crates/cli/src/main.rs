@@ -10,12 +10,16 @@ fn main() -> ExitCode {
         Some("stats") => stats(&mut args),
         Some("queries") => queries(&mut args),
         Some("save-query") => save_query(&mut args),
+        Some("notes") => notes(&mut args),
+        Some("save-note") => save_note(&mut args),
         _ => {
             eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
             eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
             eprintln!("       mcparser stats --case <dir>");
             eprintln!("       mcparser queries --case <dir>");
             eprintln!("       mcparser save-query --case <dir> --name <name> \"<sql>\"");
+            eprintln!("       mcparser notes --case <dir>");
+            eprintln!("       mcparser save-note --case <dir> --record <id> \"<sentence>\"");
             ExitCode::from(2)
         }
     }
@@ -247,6 +251,59 @@ fn save_query(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::save_query(&case_dir.join("catalog.sqlite"), name.trim(), sql.trim()) {
         Ok(()) => {
             println!("saved {name}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+
+fn notes(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser notes --case <dir>");
+        return ExitCode::from(2);
+    };
+    match case::notes(&case_dir.join("catalog.sqlite")) {
+        Ok(notes) => {
+            for note in notes {
+                println!("{}\t{}", note.record_id, note.body.replace('\n', "\\n"));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn save_note(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser save-note --case <dir> --record <id> \"<sentence>\"");
+        return ExitCode::from(2);
+    };
+    let mut rest: Vec<String> = args.collect();
+    if rest.first().map(String::as_str) != Some("--record") || rest.len() < 3 {
+        eprintln!("usage: mcparser save-note --case <dir> --record <id> \"<sentence>\"");
+        return ExitCode::from(2);
+    }
+    rest.remove(0);
+    let record = rest.remove(0);
+    let Ok(record_id) = record.parse::<i64>() else {
+        eprintln!("record id must be a number");
+        return ExitCode::from(2);
+    };
+    let body = rest.join(" ");
+    if body.trim().is_empty() {
+        eprintln!("a sentence is required");
+        return ExitCode::from(2);
+    }
+    match case::save_note(&case_dir.join("catalog.sqlite"), record_id, body.trim()) {
+        Ok(()) => {
+            println!("noted {record_id}");
             ExitCode::SUCCESS
         }
         Err(err) => {
