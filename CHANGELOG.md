@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.2.1 — 2026-10-06
+
+Saved queries live in the case. Copy the `.mcp` folder and the queries go with it.
+
+### Added
+
+- `mcparser save-query --case <dir> --name <name> "<sql>"`
+- `mcparser queries --case <dir>`
+- Queries stored in `catalog.sqlite`, one name, one SELECT. The same name replaces the SQL
+- Case pane lists saved queries. A click loads the editor. Run still executes it
+- Save query asks for the name in the window. Electron does not show a browser prompt
+- A relative case path in the window resolves from the repo, not from `ui/`
+
+### Proven
+
+- Security fixture re-ingested into `fixtures/data2.mcp`: 2261 events
+- Saved query `fsir` returns 4720, 4722, 4723, 4724, 4738, 4624 (84), 4634 (8), 4647 (36), 4648 (43)
+- The window lists `fsir` and `default` after Save query
+
+### Not in this release
+
+- New installer. Build from `saved-queries` to run it
+- Query runs and notes are not stored yet
+- Rendered provider messages
+
 ## 0.2.0 — 2026-10-06
 
 Grok chat in the desktop app. Ask about the open case in plain language. The `.evtx` file and the DuckDB file stay on the machine.
