@@ -196,7 +196,7 @@ function clip(text) {
 }
 
 async function grokAsk(caseDir, question) {
-  if (!activeKey()) return { error: `Connect ${provider} first` };
+  if (provider === "openai" || !activeKey()) return { error: "Configure this integration." };
   try {
     const stats = await run(["stats", "--case", casePath(caseDir)]);
     const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
