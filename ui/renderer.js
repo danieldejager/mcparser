@@ -16,6 +16,26 @@ let confirmed = false;
 let connectProvider = "grok";
 let rowNotes = new Map();
 
+
+function listModels(state) {
+  const models = document.getElementById("models");
+  if (!models) return;
+  const current = state || { provider: "grok", grok: false, claude: false, openai: false };
+  const rows = [
+    ["Grok", current.grok, "grok"],
+    ["Claude", current.claude, "claude"],
+    ["OpenAI", current.openai, "openai"],
+  ];
+  models.replaceChildren();
+  for (const [label, configured, id] of rows) {
+    const line = document.createElement("span");
+    const mark = id === current.provider ? "In use. " : "";
+    line.textContent = configured ? `${label}. ${mark}Configured.` : `${label}. Configure this integration.`;
+    line.style.display = "block";
+    models.append(line);
+  }
+}
+
 function caseDir() {
   return caseInput.value.trim();
 }
@@ -281,6 +301,7 @@ document.getElementById("key-form").onsubmit = async (event) => {
   if (saved.connected) {
     grok.hidden = false;
     note(`${connectProvider === "claude" ? "Claude" : "Grok"} connected. Ask about this case.`);
+    window.mcparser.grokStatus().then(listModels);
   }
 };
 document.getElementById("send").onclick = async () => {
@@ -323,6 +344,7 @@ window.mcparser.onGrokChat((shown) => {
 });
 window.mcparser.onShowNotes(showNotes);
 window.mcparser.onGrokStatus((grokState) => {
+  listModels(grokState);
   if (!grokState.connected) {
     grok.hidden = true;
     confirmed = false;
