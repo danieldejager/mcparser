@@ -1,0 +1,48 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  macos:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the parser
+        run: cargo build -p mcparser --release
+      - name: Pack the disk image
+        working-directory: ui
+        run: |
+          npm install
+          npm run dist
+      - name: Attach the disk image
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ui/dist/*.dmg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  windows:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the parser
+        run: cargo build -p mcparser --release
+      - name: Pack the installer
+        working-directory: ui
+        run: |
+          npm install
+          npm run dist:win
+      - name: Attach the installer
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ui/dist/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
