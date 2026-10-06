@@ -8,7 +8,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   saveQuery: (caseDir, name, sql) => ipcRenderer.invoke("save-query", caseDir, name, sql),
   notes: (caseDir) => ipcRenderer.invoke("notes", caseDir),
   runs: (caseDir) => ipcRenderer.invoke("runs", caseDir),
-  saveRun: (caseDir, rows, sql) => ipcRenderer.invoke("save-run", caseDir, rows, sql),
+  saveRun: (caseDir, rows, sql, label) => ipcRenderer.invoke("save-run", caseDir, rows, sql, label),
   saveNote: (caseDir, recordId, body, sql) => ipcRenderer.invoke("save-note", caseDir, recordId, body, sql),
   grokStatus: () => ipcRenderer.invoke("grok-status"),
   setProvider: (name) => ipcRenderer.invoke("set-provider", name),
