@@ -36,6 +36,7 @@ LIMIT 20</textarea>
       <header>
         <span class="pane-title">Results</span>
         <span id="status">Ready</span>
+        <button id="note">Note</button>
         <button id="export">Export CSV</button>
       </header>
       <div id="results"></div>
@@ -48,6 +49,17 @@ LIMIT 20</textarea>
     <textarea id="ask" placeholder="Ask about this case"></textarea>
     <button id="send">Ask</button>
   </aside>
+  <div id="note-sheet" class="sheet" hidden>
+    <form id="note-form">
+      <h1>Note</h1>
+      <input id="note-record" placeholder="Record id">
+      <textarea id="note-body" placeholder="Sentence"></textarea>
+      <div class="sheet-actions">
+        <button type="button" id="note-cancel">Cancel</button>
+        <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>
   <div id="query-sheet" class="sheet" hidden>
     <form id="query-form">
       <h1>Save query</h1>
