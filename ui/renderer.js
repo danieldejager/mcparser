@@ -305,7 +305,12 @@ document.getElementById("send").onclick = async () => {
   }
   note(question);
   ask.value = "";
-  const result = await window.mcparser.grokAsk(caseDir(), question);
+  const vendor = document.getElementById("vendor").value;
+  if (vendor === "openai") {
+    note("Configure this integration.");
+    return;
+  }
+  const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
   if (result.error) {
     note(result.error);
     return;
@@ -342,5 +347,11 @@ window.mcparser.onGrokStatus((grokState) => {
     note("Key forgotten.");
   }
 });
+document.getElementById("vendor").onchange = async () => {
+  const chosen = await window.mcparser.setProvider(document.getElementById("vendor").value);
+  listModels(chosen);
+  if (chosen.error) note(chosen.error);
+};
 updateLines();
+window.mcparser.grokStatus().then(listModels);
 loadNotes().then(() => refresh().then(run));
