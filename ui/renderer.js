@@ -13,6 +13,7 @@ const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
 let confirmed = false;
+let connectProvider = "grok";
 let rowNotes = new Map();
 
 function caseDir() {
@@ -240,9 +241,11 @@ function note(text) {
 }
 
 function showSheet(grokState) {
-  keyHint.textContent = grokState.connected
-    ? `A key is set, ending ${grokState.last4}. Save replaces it.`
-    : "The key is encrypted with the macOS keychain.";
+  const name = connectProvider === "claude" ? "Claude" : "Grok";
+  document.querySelector("#key-form h1").textContent = `Connect ${name}`;
+  keyHint.textContent = grokState.connected && grokState.provider === connectProvider
+    ? `A ${name} key is set, ending ${grokState.last4}. Save replaces it.`
+    : `The ${name} key is encrypted with the macOS keychain.`;
   keyInput.value = "";
   sheet.hidden = false;
   keyInput.focus();
@@ -269,7 +272,7 @@ document.getElementById("note-form").onsubmit = saveNote;
 document.getElementById("key-cancel").onclick = hideSheet;
 document.getElementById("key-form").onsubmit = async (event) => {
   event.preventDefault();
-  const saved = await window.mcparser.grokSave(keyInput.value);
+  const saved = await window.mcparser.grokSave(keyInput.value, connectProvider);
   hideSheet();
   if (saved.error) {
     note(saved.error);
@@ -277,7 +280,7 @@ document.getElementById("key-form").onsubmit = async (event) => {
   }
   if (saved.connected) {
     grok.hidden = false;
-    note("Grok connected. Ask about this case.");
+    note(`${connectProvider === "claude" ? "Claude" : "Grok"} connected. Ask about this case.`);
   }
 };
 document.getElementById("send").onclick = async () => {
@@ -311,7 +314,8 @@ window.mcparser.onOpened((opened) => {
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
   refresh().then(run);
 });
-window.mcparser.onGrokConnect(() => {
+window.mcparser.onGrokConnect((name) => {
+  connectProvider = name || "grok";
   window.mcparser.grokStatus().then(showSheet);
 });
 window.mcparser.onGrokChat((shown) => {
