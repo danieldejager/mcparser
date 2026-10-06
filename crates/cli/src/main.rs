@@ -269,7 +269,7 @@ fn notes(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::notes(&case_dir.join("catalog.sqlite")) {
         Ok(notes) => {
             for note in notes {
-                println!("{}\t{}", note.record_id, note.body.replace('\n', "\\n"));
+                println!("{}\t{}\t{}", note.record_id, note.body.replace('\n', "\\n"), note.query_sql.replace('\n', "\\n"));
             }
             ExitCode::SUCCESS
         }
@@ -296,12 +296,21 @@ fn save_note(args: &mut impl Iterator<Item = String>) -> ExitCode {
         eprintln!("record id must be a number");
         return ExitCode::from(2);
     };
+    let mut query_sql = String::new();
+    if rest.first().map(String::as_str) == Some("--sql") {
+        rest.remove(0);
+        if rest.is_empty() {
+            eprintln!("usage: mcparser save-note --case <dir> --record <id> [--sql <sql>] \"<sentence>\"");
+            return ExitCode::from(2);
+        }
+        query_sql = rest.remove(0);
+    }
     let body = rest.join(" ");
     if body.trim().is_empty() {
         eprintln!("a sentence is required");
         return ExitCode::from(2);
     }
-    match case::save_note(&case_dir.join("catalog.sqlite"), record_id, body.trim()) {
+    match case::save_note(&case_dir.join("catalog.sqlite"), record_id, body.trim(), query_sql.trim()) {
         Ok(()) => {
             println!("noted {record_id}");
             ExitCode::SUCCESS
