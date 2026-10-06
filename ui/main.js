@@ -67,6 +67,12 @@ function appIcon() {
   }
 }
 
+function casePath(value) {
+  const given = String(value || "");
+  if (!given || path.isAbsolute(given)) return given;
+  return path.resolve(repo, given);
+}
+
 function run(args) {
   return new Promise((resolve) => {
     const env = { ...process.env };
@@ -140,7 +146,7 @@ function clip(text) {
 async function grokAsk(caseDir, question) {
   if (!grokKey) return { error: "Connect Grok first" };
   try {
-    const stats = await run(["stats", "--case", caseDir]);
+    const stats = await run(["stats", "--case", casePath(caseDir)]);
     const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
     const sqlText = await grok(
       "Return one DuckDB SELECT and no other text. " + schema +
@@ -148,7 +154,7 @@ async function grokAsk(caseDir, question) {
       "\nQuestion: " + question
     );
     const sql = oneSelect(sqlText);
-    const queried = await run(["query", "--case", caseDir, "--format", "csv", sql]);
+    const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
     if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql };
     const answer = await grok(
       "Answer the question from these rows only. Do not invent rows.\nQuestion: " + question +
@@ -285,8 +291,8 @@ function createWindow() {
   });
 }
 
-ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", caseDir]));
-ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", caseDir, "--format", "csv", sql]));
+ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
+ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", sql]));
 ipcMain.handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
     title: "Export results",
@@ -317,8 +323,8 @@ ipcMain.handle("grok-forget", () => {
   return grokStatus();
 });
 ipcMain.handle("grok-ask", (_event, caseDir, question) => grokAsk(caseDir, question));
-ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", caseDir]));
-ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", caseDir, "--name", name, sql]));
+ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
+ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
 
 
 app.whenReady().then(() => {
