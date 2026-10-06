@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.2.0 — 2026-10-06
+
+Grok chat in the desktop app. Ask about the open case in plain language. The `.evtx` file and the DuckDB file stay on the machine.
+
+### Added
+
+- Grok menu between Window and Help: Connect Grok, Forget key, Show chat
+- Chat pane: question, the SELECT that was run, and the answer
+- Run on a reply copies that SQL into the editor and runs it with no row cap
+- The key is encrypted with Electron safeStorage before it is written. macOS uses the login keychain. Windows uses DPAPI. The ciphertext is `grok-key.bin` in the app data folder, not in the case
+- Forget key deletes that file
+- First ask in a session asks the analyst to confirm that row text will leave the machine
+- Only one SELECT is accepted. ATTACH, COPY, PRAGMA, and writes are rejected
+- The local parser runs the SELECT with a 50-row cap. Those rows, the question, and the column names are what may be sent to `https://api.x.ai`
+- The parser process does not inherit `XAI_API_KEY`
+
+### Proven
+
+- Security fixture, event 4624, `TargetUserName = SYSTEM`: 377
+- Account `fsir`: 4720 created, 4722 enabled, 4738 changed, 4724 password reset, 4648 explicit logon from `127.0.0.1`
+- A 403 before credits was a billing refusal. The same question succeeded after credits were added
+
+### Not in this release
+
+- New macOS or Windows installer. The 0.1.0 disk image and setup do not include the chat. Build from this branch to run it
+- Signed or notarised macOS build
+- Intel or x64 Windows installer
+- Ubuntu package
+- Rendered provider messages
+- Saved chats
+
 ## 0.1.0 — 2026-10-05
 
 First release. Offline `.evtx` ingest, SQL query, and desktop apps for macOS and Windows.

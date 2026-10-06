@@ -36,6 +36,24 @@ LIMIT 20</textarea>
       <div id="results"></div>
     </section>
   </main>
+  <aside id="grok" class="chat" hidden>
+    <h1>Grok</h1>
+    <div id="transcript"></div>
+    <label for="ask">Ask</label>
+    <textarea id="ask" placeholder="Ask about this case"></textarea>
+    <button id="send">Ask</button>
+  </aside>
+  <div id="sheet" class="sheet" hidden>
+    <form id="key-form">
+      <h1>Connect Grok</h1>
+      <p id="key-hint">The key stays on this machine. This cut keeps it in memory only.</p>
+      <input id="key" type="password" autocomplete="off">
+      <div class="sheet-actions">
+        <button type="button" id="key-cancel">Cancel</button>
+        <button type="submit" id="key-save">Save</button>
+      </div>
+    </form>
+  </div>
   <script src="renderer.js"></script>
 </body>
 </html>

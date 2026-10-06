@@ -4,7 +4,14 @@ const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const summary = document.getElementById("summary");
+const grok = document.getElementById("grok");
+const transcript = document.getElementById("transcript");
+const ask = document.getElementById("ask");
+const sheet = document.getElementById("sheet");
+const keyInput = document.getElementById("key");
+const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
+let confirmed = false;
 
 function caseDir() {
   return caseInput.value.trim();
@@ -102,6 +109,27 @@ async function exportCsv() {
   if (saved.saved) status.textContent = `exported ${saved.path}`;
 }
 
+function note(text) {
+  const p = document.createElement("p");
+  p.textContent = text;
+  transcript.append(p);
+  transcript.scrollTop = transcript.scrollHeight;
+}
+
+function showSheet(grokState) {
+  keyHint.textContent = grokState.connected
+    ? `A key is set, ending ${grokState.last4}. Save replaces it.`
+    : "The key is encrypted with the macOS keychain.";
+  keyInput.value = "";
+  sheet.hidden = false;
+  keyInput.focus();
+}
+
+function hideSheet() {
+  keyInput.value = "";
+  sheet.hidden = true;
+}
+
 sql.addEventListener("input", updateLines);
 sql.addEventListener("scroll", () => {
   lines.scrollTop = sql.scrollTop;
@@ -109,10 +137,63 @@ sql.addEventListener("scroll", () => {
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
 document.getElementById("export").onclick = exportCsv;
+document.getElementById("key-cancel").onclick = hideSheet;
+document.getElementById("key-form").onsubmit = async (event) => {
+  event.preventDefault();
+  const saved = await window.mcparser.grokSave(keyInput.value);
+  hideSheet();
+  if (saved.error) {
+    note(saved.error);
+    return;
+  }
+  if (saved.connected) {
+    grok.hidden = false;
+    note("Grok connected. Ask about this case.");
+  }
+};
+document.getElementById("send").onclick = async () => {
+  const question = ask.value.trim();
+  if (!question) return;
+  if (!confirmed) {
+    const ok = window.confirm("Row text from this case will leave the machine. The case file stays here.");
+    if (!ok) return;
+    confirmed = true;
+  }
+  note(question);
+  ask.value = "";
+  const result = await window.mcparser.grokAsk(caseDir(), question);
+  if (result.error) {
+    note(result.error);
+    return;
+  }
+  note(result.sql);
+  const runSql = document.createElement("button");
+  runSql.textContent = "Run";
+  runSql.onclick = () => {
+    sql.value = result.sql;
+    updateLines();
+    run();
+  };
+  transcript.append(runSql);
+  note(result.answer);
+};
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
   refresh().then(run);
+});
+window.mcparser.onGrokConnect(() => {
+  window.mcparser.grokStatus().then(showSheet);
+});
+window.mcparser.onGrokChat((shown) => {
+  grok.hidden = !shown;
+});
+window.mcparser.onGrokStatus((grokState) => {
+  if (!grokState.connected) {
+    grok.hidden = true;
+    confirmed = false;
+    note("Key forgotten.");
+  }
 });
 updateLines();
 refresh().then(run);

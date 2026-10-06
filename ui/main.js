@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
@@ -18,6 +18,37 @@ const linkedin = "https://www.linkedin.com/in/daniel-de-jager-544162135/";
 const iconPath = path.join(__dirname, "icon.png");
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
 let win;
+let grokKey = "";
+let chatShown = false;
+
+function keyFile() {
+  return path.join(app.getPath("userData"), "grok-key.bin");
+}
+
+function storeKey(key) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
+  const file = keyFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, safeStorage.encryptString(key), { mode: 0o600 });
+}
+
+function loadKey() {
+  const file = keyFile();
+  if (!fs.existsSync(file) || !safeStorage.isEncryptionAvailable()) return;
+  try {
+    grokKey = safeStorage.decryptString(fs.readFileSync(file));
+    chatShown = grokKey.length > 0;
+  } catch {
+    grokKey = "";
+  }
+}
+
+function forgetKey() {
+  grokKey = "";
+  chatShown = false;
+  const file = keyFile();
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+}
 
 function parserBinary() {
   const name = process.platform === "win32" ? "mcparser.exe" : "mcparser";
@@ -38,7 +69,9 @@ function appIcon() {
 
 function run(args) {
   return new Promise((resolve) => {
-    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo });
+    const env = { ...process.env };
+    delete env.XAI_API_KEY;
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
     let out = "";
     let err = "";
     child.stdout.on("data", (chunk) => {
@@ -54,6 +87,78 @@ function run(args) {
       resolve({ code: 1, out: "", err: error.message });
     });
   });
+}
+
+function grokStatus() {
+  return { connected: grokKey.length > 0, last4: grokKey.slice(-4) };
+}
+
+function textFrom(body) {
+  if (body.output_text) return body.output_text;
+  const parts = [];
+  for (const item of body.output || []) {
+    for (const content of item.content || []) {
+      if (content.text) parts.push(content.text);
+    }
+  }
+  return parts.join("\n");
+}
+
+async function grok(input) {
+  const response = await fetch("https://api.x.ai/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${grokKey}`,
+    },
+    body: JSON.stringify({ model: "grok-4.7", input }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    if (response.status === 401) throw new Error("key rejected");
+    throw new Error(body.error && body.error.message ? body.error.message : `HTTP ${response.status}`);
+  }
+  return textFrom(body);
+}
+
+function oneSelect(text) {
+  const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
+  let sql = (fenced ? fenced[1] : text).trim().replace(/;+\s*$/, "");
+  if (sql.includes(";")) throw new Error("Grok returned more than one statement");
+  if (!/^select\b/i.test(sql)) throw new Error("Grok did not return a SELECT");
+  if (/\b(attach|copy|pragma|insert|update|delete|drop|create|alter)\b/i.test(sql)) {
+    throw new Error("Grok returned a statement that is not a read");
+  }
+  if (!/\blimit\b/i.test(sql)) sql += " LIMIT 50";
+  return sql;
+}
+
+function clip(text) {
+  return text.length > 4000 ? text.slice(0, 4000) : text;
+}
+
+async function grokAsk(caseDir, question) {
+  if (!grokKey) return { error: "Connect Grok first" };
+  try {
+    const stats = await run(["stats", "--case", caseDir]);
+    const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
+    const sqlText = await grok(
+      "Return one DuckDB SELECT and no other text. " + schema +
+      " Case stats:\n" + clip(stats.out || "") +
+      "\nQuestion: " + question
+    );
+    const sql = oneSelect(sqlText);
+    const queried = await run(["query", "--case", caseDir, "--format", "csv", sql]);
+    if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql };
+    const answer = await grok(
+      "Answer the question from these rows only. Do not invent rows.\nQuestion: " + question +
+      "\nSQL: " + sql +
+      "\nRows:\n" + clip(queried.out || "")
+    );
+    return { sql, answer };
+  } catch (error) {
+    return { error: error.message };
+  }
 }
 
 async function openEvtx() {
@@ -83,6 +188,7 @@ async function showAbout() {
 }
 
 function buildMenu() {
+  const connected = grokKey.length > 0;
   const template = [
     {
       label: "McParser",
@@ -126,6 +232,34 @@ function buildMenu() {
       ],
     },
     {
+      label: "Grok",
+      submenu: [
+        {
+          label: connected ? "Grok connected" : "Connect Grok...",
+          click: () => win.webContents.send("grok-connect"),
+        },
+        {
+          label: "Forget key",
+          enabled: connected,
+          click: () => {
+            forgetKey();
+            buildMenu();
+            win.webContents.send("grok-status", grokStatus());
+          },
+        },
+        {
+          label: "Show chat",
+          type: "checkbox",
+          checked: chatShown,
+          enabled: connected,
+          click: (item) => {
+            chatShown = item.checked;
+            win.webContents.send("grok-chat", chatShown);
+          },
+        },
+      ],
+    },
+    {
       label: "Help",
       submenu: [{ label: "About McParser", click: showAbout }],
     },
@@ -146,6 +280,9 @@ function createWindow() {
     },
   });
   win.loadFile("index.html");
+  win.webContents.once("did-finish-load", () => {
+    if (chatShown) win.webContents.send("grok-chat", true);
+  });
 }
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", caseDir]));
@@ -160,10 +297,31 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   fs.writeFileSync(picked.filePath, csv);
   return { saved: true, path: picked.filePath };
 });
+ipcMain.handle("grok-status", () => grokStatus());
+ipcMain.handle("grok-save", (_event, key) => {
+  const value = String(key || "").trim();
+  if (!value) return { connected: false, error: "Enter a key" };
+  try {
+    storeKey(value);
+    grokKey = value;
+    chatShown = true;
+    buildMenu();
+    return grokStatus();
+  } catch (error) {
+    return { connected: false, error: error.message };
+  }
+});
+ipcMain.handle("grok-forget", () => {
+  forgetKey();
+  buildMenu();
+  return grokStatus();
+});
+ipcMain.handle("grok-ask", (_event, caseDir, question) => grokAsk(caseDir, question));
 
 app.whenReady().then(() => {
   const icon = appIcon();
   if (icon && app.dock) app.dock.setIcon(icon);
+  loadKey();
   buildMenu();
   createWindow();
 });
