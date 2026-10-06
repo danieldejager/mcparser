@@ -409,7 +409,10 @@ ipcMain.handle("grok-forget", () => {
   buildMenu();
   return grokStatus();
 });
-ipcMain.handle("grok-ask", (_event, caseDir, question) => grokAsk(caseDir, question));
+ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
+  if (name === "grok" || name === "claude" || name === "openai") provider = name;
+  return grokAsk(caseDir, question);
+});
 ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
 ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
 ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
