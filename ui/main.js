@@ -114,7 +114,14 @@ function run(args) {
 
 function grokStatus() {
   const key = activeKey();
-  return { connected: key.length > 0, last4: key.slice(-4), provider };
+  return {
+    connected: key.length > 0,
+    last4: key.slice(-4),
+    provider,
+    grok: grokKey.length > 0,
+    claude: claudeKey.length > 0,
+    openai: false,
+  };
 }
 
 function textFrom(body) {
@@ -289,7 +296,7 @@ function buildMenu() {
       ],
     },
     {
-      label: "Grok",
+      label: "AI Integration",
       submenu: [
         {
           label: grokKey ? "Grok key saved" : "Connect Grok...",
