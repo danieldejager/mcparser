@@ -4,7 +4,7 @@ Offline Windows event log parser. Point it at `.evtx` files and query them with 
 
 Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6)**.
 
-What is next: [ROADMAP.md](ROADMAP.md). Chat design: [docs/grok-chat.md](docs/grok-chat.md).
+What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1). Chat design: [docs/grok-chat.md](docs/grok-chat.md).
 
 ![McParser stack](docs/Yenbd.jpg)
 
