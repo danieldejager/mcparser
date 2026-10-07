@@ -424,9 +424,8 @@ async function exportTrail() {
 
 
 async function loadChats() {
-  const log = document.getElementById("log");
-  if (!log) return;
-  log.replaceChildren();
+  if (!transcript) return;
+  transcript.replaceChildren();
   const result = await window.mcparser.chats(caseDir());
   if (!result || result.code !== 0) return;
   for (const line of result.out.split("\n").filter(Boolean)) {
