@@ -21,7 +21,14 @@ Download the file for your machine from the [0.2.6 release](https://github.com/d
 | Ubuntu, Intel or AMD | `McParser-0.2.6-amd64.deb` | `sudo apt install ./McParser-0.2.6-amd64.deb` |
 | Ubuntu, ARM | `McParser-0.2.6-arm64.deb` | `sudo apt install ./McParser-0.2.6-arm64.deb` |
 
-The Mac image is unsigned. Gatekeeper warns. Right-click McParser and choose Open. The Windows setup is ARM64. It is not an Intel build. The packages are built by GitHub Actions when a `v*` tag is pushed.
+The Mac image is unsigned. A download from the browser is marked, and Gatekeeper then says the app is damaged. That is the missing signature, not a broken disk image. Clear the mark and open it:
+
+```bash
+xattr -cr /Applications/McParser.app
+open /Applications/McParser.app
+```
+
+Signing and notarisation wait until the product is ready. The Windows setup is ARM64. It is not an Intel build. The packages are built by GitHub Actions when a `v*` tag is pushed.
 
 ## The window
 
