@@ -2,7 +2,7 @@
 
 Offline Windows event log parser. Point it at `.evtx` files and query them with SQL. No Windows Event Log API, so the same tool runs on macOS, Ubuntu, and Windows.
 
-Current release: **[0.2.3](https://github.com/danieldejager/mcparser/releases/tag/v0.2.3)**.
+Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6)**.
 
 What is next: [ROADMAP.md](ROADMAP.md). Chat design: [docs/grok-chat.md](docs/grok-chat.md).
 
@@ -12,13 +12,13 @@ What is next: [ROADMAP.md](ROADMAP.md). Chat design: [docs/grok-chat.md](docs/gr
 
 ### macOS app
 
-Download `McParser-0.2.3-arm64.dmg` from the [0.2.3 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.3). Open it and drag McParser to Applications. The image is unsigned, so Gatekeeper will warn. Right-click McParser and choose Open.
+Download `McParser-0.2.6-arm64.dmg` from the [0.2.6 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6). Open it and drag McParser to Applications. The image is unsigned, so Gatekeeper will warn. Right-click McParser and choose Open.
 
 File → Open EVTX creates a case beside the log and ingests it.
 
 ### Windows app
 
-Download `McParser Setup 0.2.3.exe` from the [0.2.3 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.3). This installer is ARM64. It runs on Windows 11 on Apple silicon. It is not an Intel build.
+Download `McParser Setup 0.2.6.exe` from the [0.2.6 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6). This installer is ARM64. It runs on Windows 11 on Apple silicon. It is not an Intel build.
 
 ### From source
 
@@ -61,19 +61,27 @@ npm install
 npm start
 ```
 
+A version tag builds the disk image and the Windows setup. The workflow is `.github/workflows/release.yml`.
+
 ## Desktop
 
-The app is an Electron shell around the parser. File → Open EVTX creates `<file>.mcp` next to the log. The case pane shows file name, size, SHA-256, event count, unique event ids, time range, channels, and providers. Run SQL in the editor. Export CSV writes the current grid, including the column names.
+The app is an Electron shell around the parser. File → Open EVTX creates `<file>.mcp` next to the log. The case pane shows file name, size, SHA-256, event count, unique event ids, time range, channels, and providers. Case, Queries, and Hunts collapse. Run SQL in the editor. Export CSV writes the current grid, including the column names.
 
-Saved queries live in the case. Save query asks for a name. The list is under Queries. A click loads the SQL. Run executes it. Copying the `.mcp` folder takes the queries with it.
+Saved queries live in the case. Save query asks for a name. A click loads the SQL. Copying the `.mcp` folder takes the queries with it.
 
-A note is a record id and a sentence. Click a result row whose query includes `record_id`. The note remembers the SQL that was open. Audit → Notes lists every note. A click loads that query and runs it.
+Hunts are named queries shipped with the app. Choose a MITRE tactic and technique. A click loads the SQL. The first set is successful logon, network logon, failed logon, explicit credentials, account created, account changed, special privileges, and one account. One account still says `USER`. Replace it.
+
+A note is a record id and a sentence. Click a result row whose query includes `record_id`. The note remembers the SQL that was open. Audit → Notes lists every note.
+
+A successful Run stores the SQL, the time, the row count, the hunt label, the previous run, and the analyst name. A click in Audit → Runs is a replay. Audit → Trail lists notes and runs together. Audit → Export trail writes `trail.csv`.
 
 ## AI Model
 
 AI Integration connects a vendor. The dropdown under AI Model is Grok, Claude, or OpenAI. Each key is encrypted with the macOS keychain or Windows DPAPI, in its own file, not in the case. A vendor with no key says `Configure this integration` and no request is sent.
 
 Ask writes one SELECT. McParser runs it on the open case, capped at 50 rows, and the answer is shown beside the SQL. The first ask in a session asks you to confirm that row text will leave the machine. The `.evtx` file and the DuckDB file stay here. Replies are prefixed with the vendor.
+
+A completed ask is stored in the case: the question, the vendor, the SELECT, and the answer. Opening the case puts those turns back in the pane. The key is not in the case. The other machine can read the transcript and needs its own key to ask again.
 
 ## CLI
 
@@ -89,6 +97,8 @@ mcparser save-query --case case.mcp --name fsir \
 mcparser queries --case case.mcp
 mcparser save-note --case case.mcp --record 51 "fsir account created, start of the trail"
 mcparser notes --case case.mcp
+mcparser runs --case case.mcp
+mcparser chats --case case.mcp
 ```
 
 `--format` is `table` (default), `csv`, or `jsonl`. CSV includes a header row.
@@ -97,9 +107,11 @@ A case directory contains `events.duckdb` and `catalog.sqlite`. Do not commit it
 
 Columns are `source_sha256`, `record_id`, `event_id`, `channel`, `provider`, `computer`, `time_created`, and `event_data`. `event_data` is JSON. Filter a field with `json_extract_string(event_data, '$.TargetUserName')`.
 
-## What 0.2.3 does not do
+A command-line query is not a run. Only the Run button writes the trail.
 
-Rendered message text is not in the `.evtx` file. It lives in the provider DLL, so 0.2.3 does not produce the English sentence. There is no shell. The macOS image is not notarised. The Windows installer is ARM64 only. There is no Ubuntu package. A failed vendor does not fall through to another.
+## What 0.2.6 does not do
+
+Rendered message text is not in the `.evtx` file. It lives in the provider DLL, so 0.2.6 does not produce the English sentence. There is no shell. The macOS image is not notarised. The Windows installer is ARM64 only. There is no Ubuntu package. A failed vendor does not fall through to another. A failed ask is not stored. The transcript is not on the audit trail.
 
 ## Stack
 
@@ -109,9 +121,9 @@ Rendered message text is not in the `.evtx` file. It lives in the provider DLL, 
 | Reader | `evtx` crate |
 | Query | DuckDB |
 | Catalog | SQLite |
-| Commands | `ingest`, `query`, `stats`, `queries`, `save-query`, `notes`, `save-note` |
+| Commands | `ingest`, `query`, `stats`, `queries`, `save-query`, `notes`, `save-note`, `runs`, `chats` |
 | Desktop | Electron, in `ui/` |
-| Chat | Grok, Claude, or OpenAI. Keys in the OS keychain |
+| Chat | Grok, Claude, or OpenAI. Keys in the OS keychain. Transcript in the case |
 
 ```text
 crates/evtx-read
