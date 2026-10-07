@@ -1,3 +1,4 @@
+mod handoff;
 use std::env;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -16,6 +17,8 @@ fn main() -> ExitCode {
         Some("save-run") => save_run(&mut args),
         Some("chats") => chats(&mut args),
         Some("save-chat") => save_chat(&mut args),
+        Some("handoff") => handoff(&mut args),
+        Some("open-handoff") => open_handoff(&mut args),
         _ => {
             eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
             eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
@@ -26,6 +29,8 @@ fn main() -> ExitCode {
             eprintln!("       mcparser save-note --case <dir> --record <id> \"<sentence>\"");
             eprintln!("       mcparser runs --case <dir>");
             eprintln!("       mcparser save-run --case <dir> --rows <n> \"<sql>\"");
+            eprintln!("       mcparser handoff --case <dir> --out <file>");
+            eprintln!("       mcparser open-handoff --file <file> --out <dir>");
             ExitCode::from(2)
         }
     }
@@ -464,6 +469,55 @@ fn save_chat(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::save_chat(&case_dir.join("catalog.sqlite"), vendor.trim(), question.trim(), sql.trim(), answer.trim()) {
         Ok(id) => {
             println!("chat {id}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+
+fn handoff(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser handoff --case <dir> --out <file>");
+        return ExitCode::from(2);
+    };
+    let mut rest: Vec<String> = args.collect();
+    if rest.first().map(String::as_str) != Some("--out") || rest.len() < 2 {
+        eprintln!("usage: mcparser handoff --case <dir> --out <file>");
+        return ExitCode::from(2);
+    }
+    rest.remove(0);
+    let out = rest.remove(0);
+    let password = std::env::var("MCPARSER_HANDOFF_PASSWORD").unwrap_or_default();
+    match handoff::export_handoff(&case_dir, out.as_ref(), &password) {
+        Ok(()) => {
+            println!("handoff {out}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn open_handoff(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let mut rest: Vec<String> = args.collect();
+    if rest.first().map(String::as_str) != Some("--file") || rest.len() < 4 || rest.get(2).map(String::as_str) != Some("--out") {
+        eprintln!("usage: mcparser open-handoff --file <file> --out <dir>");
+        return ExitCode::from(2);
+    }
+    rest.remove(0);
+    let file = rest.remove(0);
+    rest.remove(0);
+    let out = rest.remove(0);
+    let password = std::env::var("MCPARSER_HANDOFF_PASSWORD").unwrap_or_default();
+    match handoff::open_handoff(file.as_ref(), out.as_ref(), &password) {
+        Ok(()) => {
+            println!("opened {out}");
             ExitCode::SUCCESS
         }
         Err(err) => {
