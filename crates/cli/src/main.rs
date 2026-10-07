@@ -12,6 +12,8 @@ fn main() -> ExitCode {
         Some("save-query") => save_query(&mut args),
         Some("notes") => notes(&mut args),
         Some("save-note") => save_note(&mut args),
+        Some("runs") => runs(&mut args),
+        Some("save-run") => save_run(&mut args),
         _ => {
             eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
             eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
@@ -20,6 +22,8 @@ fn main() -> ExitCode {
             eprintln!("       mcparser save-query --case <dir> --name <name> \"<sql>\"");
             eprintln!("       mcparser notes --case <dir>");
             eprintln!("       mcparser save-note --case <dir> --record <id> \"<sentence>\"");
+            eprintln!("       mcparser runs --case <dir>");
+            eprintln!("       mcparser save-run --case <dir> --rows <n> \"<sql>\"");
             ExitCode::from(2)
         }
     }
@@ -269,7 +273,7 @@ fn notes(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::notes(&case_dir.join("catalog.sqlite")) {
         Ok(notes) => {
             for note in notes {
-                println!("{}\t{}\t{}", note.record_id, note.body.replace('\n', "\\n"), note.query_sql.replace('\n', "\\n"));
+                println!("{}\t{}\t{}\t{}", note.record_id, note.created, note.body.replace('\n', "\\n"), note.query_sql.replace('\n', "\\n"));
             }
             ExitCode::SUCCESS
         }
@@ -313,6 +317,81 @@ fn save_note(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::save_note(&case_dir.join("catalog.sqlite"), record_id, body.trim(), query_sql.trim()) {
         Ok(()) => {
             println!("noted {record_id}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+
+fn runs(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser runs --case <dir>");
+        return ExitCode::from(2);
+    };
+    match case::runs(&case_dir.join("catalog.sqlite")) {
+        Ok(runs) => {
+            for run in runs {
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}\t{}", run.id, run.ran_at, run.row_count, run.followed.map(|id| id.to_string()).unwrap_or_default(), run.label, run.analyst, run.kind, run.sql.replace('\n', "\\n"));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn save_run(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser save-run --case <dir> --rows <n> \"<sql>\"");
+        return ExitCode::from(2);
+    };
+    let mut rest: Vec<String> = args.collect();
+    if rest.first().map(String::as_str) != Some("--rows") || rest.len() < 3 {
+        eprintln!("usage: mcparser save-run --case <dir> --rows <n> \"<sql>\"");
+        return ExitCode::from(2);
+    }
+    rest.remove(0);
+    let rows = rest.remove(0);
+    let Ok(row_count) = rows.parse::<i64>() else {
+        eprintln!("rows must be a number");
+        return ExitCode::from(2);
+    };
+    let mut label = String::new();
+    let mut analyst = String::new();
+    let mut kind = String::from("run");
+    while let Some(flag) = rest.first().map(|s| s.as_str()) {
+        if flag == "--label" || flag == "--analyst" || flag == "--kind" {
+            let flag = rest.remove(0);
+            if rest.is_empty() {
+                eprintln!("usage: mcparser save-run --case <dir> --rows <n> [--label <name>] [--analyst <name>] [--kind run|replay] \"<sql>\"");
+                return ExitCode::from(2);
+            }
+            let value = rest.remove(0);
+            if flag == "--label" { label = value; }
+            else if flag == "--analyst" { analyst = value; }
+            else { kind = value; }
+        } else {
+            break;
+        }
+    }
+    let sql = rest.join(" ");
+    if sql.trim().is_empty() {
+        eprintln!("sql is required");
+        return ExitCode::from(2);
+    }
+    let ran_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    match case::save_run(&case_dir.join("catalog.sqlite"), sql.trim(), &ran_at.to_string(), row_count, label.trim(), analyst.trim(), kind.trim()) {
+        Ok(id) => {
+            println!("ran id={id} rows={row_count}");
             ExitCode::SUCCESS
         }
         Err(err) => {

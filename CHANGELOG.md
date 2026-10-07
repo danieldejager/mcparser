@@ -1,5 +1,43 @@
 # Changelog
 
+## 0.2.5 — 2026-10-07
+
+A run is part of the case. Audit lists the trail.
+
+### Added
+
+- A successful Run stores the SQL, the time, and the row count in `catalog.sqlite`
+- Each run records the previous run id, so the list is a chain
+- A hunt click labels the run. An editor run is labelled `query`
+- Analyst name, stored on the run. The field stays in the window
+- A click in Audit → Runs is a `replay`, not a second hunt
+- Notes store a time. Audit → Trail lists notes and runs together
+- Audit → Export trail writes `trail.csv`
+- `mcparser save-run` and `mcparser runs`
+
+### Not in this release
+
+- A command-line query is not a run. Only the Run button writes the trail
+- A trail line does not load the SQL. Audit → Runs does
+- Chat is not on the trail
+- New installer is built by the tag workflow when the runners accept the job
+
+## 0.2.4 — 2026-10-06
+
+Hunts are named SQL, filtered by MITRE tactic and technique. A click loads the query. Run still executes it.
+
+### Added
+
+- Hunts in the case pane: Successful logon, Network logon, Failed logon, Explicit credentials, Account created, Account changed, Special privileges, One account
+- Tactic and technique selectors. The list shows only the hunts for that pair
+- Case, Queries, and Hunts collapse
+- Mappings: T1078, T1021, T1110, T1136, T1098, T1087
+
+### Not in this release
+
+- The other 20 or so Security-log hunts. This is the first set
+- A note on a hunt is still a note on a record id
+
 ## 0.2.3 — 2026-10-06
 
 The chat pane can use Grok, Claude, or OpenAI. The analyst picks the vendor. Each key is stored on its own.

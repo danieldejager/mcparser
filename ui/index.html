@@ -7,12 +7,26 @@
 </head>
 <body>
   <aside>
-    <h1>Case</h1>
-    <input id="case" value="fixtures/data2.mcp">
-    <button id="refresh">Refresh case</button>
-    <dl id="summary"></dl>
-    <h1>Queries</h1>
-    <ul id="saved"></ul>
+    <details open>
+      <summary>Case</summary>
+      <input id="case" value="fixtures/data2.mcp">
+      <label for="analyst">Analyst</label>
+      <input id="analyst" placeholder="Name on the trail">
+      <button id="refresh">Refresh case</button>
+      <dl id="summary"></dl>
+    </details>
+    <details>
+      <summary>Queries</summary>
+      <ul id="saved"></ul>
+    </details>
+    <details open>
+      <summary>Hunts</summary>
+      <label for="tactic">Tactic</label>
+      <select id="tactic"></select>
+      <label for="technique">Technique</label>
+      <select id="technique"></select>
+      <ul id="hunts"></ul>
+    </details>
   </aside>
   <main>
     <section class="editor">
@@ -87,6 +101,7 @@ LIMIT 20</textarea>
       </div>
     </form>
   </div>
+  <script src="hunts.js"></script>
   <script src="renderer.js"></script>
 </body>
 </html>

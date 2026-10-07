@@ -1,7 +1,7 @@
 {
   "name": "mcparser-ui",
   "productName": "McParser",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "private": true,
   "description": "McParser desktop UI.",
   "main": "main.js",
@@ -18,7 +18,7 @@
     "appId": "com.danieldejager.mcparser",
     "productName": "McParser",
     "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js"],
+    "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js", "hunts.js"],
     "extraResources": [
       {
         "from": "../target/release",

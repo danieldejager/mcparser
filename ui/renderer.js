@@ -12,6 +12,8 @@ const sheet = document.getElementById("sheet");
 const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
+let runLabel = "query";
+let runKind = "run";
 let confirmed = false;
 let connectProvider = "grok";
 let rowNotes = new Map();
@@ -25,6 +27,53 @@ function listModels(state) {
   vendor.value = current.provider || "grok";
   const configured = { grok: current.grok, claude: current.claude, openai: current.openai };
   models.textContent = configured[vendor.value] ? "Configured." : "Configure this integration.";
+}
+
+
+function fillHunts() {
+  const tactic = document.getElementById("tactic");
+  const technique = document.getElementById("technique");
+  const list = document.getElementById("hunts");
+  if (!tactic || !window.hunts) return;
+  const tactics = [...new Set(window.hunts.map((hunt) => hunt.tactic))];
+  if (!tactic.options.length) {
+    for (const name of tactics) {
+      const option = document.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      tactic.append(option);
+    }
+  }
+  const techniques = [...new Set(window.hunts.filter((hunt) => hunt.tactic === tactic.value).map((hunt) => hunt.technique))];
+  const previous = technique.value;
+  technique.replaceChildren();
+  for (const name of techniques) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    technique.append(option);
+  }
+  if (techniques.includes(previous)) technique.value = previous;
+  list.replaceChildren();
+  for (const hunt of window.hunts.filter((item) => item.tactic === tactic.value && item.technique === technique.value)) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.textContent = hunt.name;
+    button.onclick = () => {
+      sql.value = hunt.sql;
+      document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
+updateLines();
+    };
+    li.append(button);
+    list.append(li);
+  }
 }
 
 function caseDir() {
@@ -119,7 +168,7 @@ async function loadNotes() {
   for (const line of result.out.split("\n").filter(Boolean)) {
     const parts = line.split("\t");
     if (parts.length < 2) continue;
-    rowNotes.set(parts[0], parts[1]);
+    rowNotes.set(parts[0], parts[2] || parts[1]);
   }
 }
 
@@ -139,14 +188,22 @@ async function showNotes() {
       const parts = line.split("\t");
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      for (const value of [parts[0] || "", parts[1] || "", (parts[2] || "").replaceAll("\\n", "\n")]) {
+      for (const value of [parts[0] || "", parts[2] || "", (parts[3] || "").replaceAll("\\n", "\n")]) {
         const td = document.createElement("td");
         td.textContent = value;
         tr.append(td);
       }
       tr.onclick = () => {
-        sql.value = (parts[2] || "").replaceAll("\\n", "\n");
-        updateLines();
+        sql.value = (parts[3] || "").replaceAll("\\n", "\n");
+        document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
+updateLines();
         if (sql.value.trim()) run();
       };
       table.append(tr);
@@ -191,6 +248,10 @@ async function run() {
   lastCsv = result.out;
   const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
+  const analyst = document.getElementById("analyst").value.trim();
+  await window.mcparser.saveRun(caseDir(), rows, sql.value, runLabel, analyst, runKind);
+  runLabel = "query";
+  runKind = "run";
 }
 
 async function exportCsv() {
@@ -217,7 +278,15 @@ async function loadQueries() {
     button.textContent = name;
     button.onclick = () => {
       sql.value = sqlText;
-      updateLines();
+      document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
+updateLines();
     };
     li.append(button);
     saved.append(li);
@@ -242,6 +311,115 @@ async function saveQuery(event) {
   }
   status.textContent = `saved ${name}`;
   await loadQueries();
+}
+
+
+async function showRuns() {
+  const result = await window.mcparser.runs(caseDir());
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["#", "followed", "label", "when", "rows", "sql"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  if (result && result.code === 0) {
+    for (const line of result.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      const tr = document.createElement("tr");
+      tr.style.cursor = "pointer";
+      const when = new Date(Number(parts[1]) * 1000).toISOString();
+      const sqlText = (parts[5] || "").replaceAll("\\n", "\n");
+      for (const value of [parts[0] || "", parts[3] || "", parts[4] || "", when, parts[2] || "", sqlText]) {
+        const td = document.createElement("td");
+        td.textContent = value;
+        tr.append(td);
+      }
+      tr.onclick = () => {
+        sql.value = sqlText;
+        runKind = "replay";
+        runLabel = parts[4] || "replay";
+        const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
+updateLines();
+        if (sql.value.trim()) run();
+      };
+      table.append(tr);
+    }
+  }
+  results.replaceChildren(table);
+  status.textContent = "Runs";
+}
+
+
+async function showTrail() {
+  const notes = await window.mcparser.notes(caseDir());
+  const runs = await window.mcparser.runs(caseDir());
+  const items = [];
+  if (notes && notes.code === 0) {
+    for (const line of notes.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      items.push({ when: parts[1] || "0", kind: "note", label: `record ${parts[0]}`, detail: parts[2] || "" });
+    }
+  }
+  if (runs && runs.code === 0) {
+    for (const line of runs.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}` });
+    }
+  }
+  items.sort((a, b) => Number(a.when) - Number(b.when));
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["when", "kind", "label", "detail"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  for (const item of items) {
+    const tr = document.createElement("tr");
+    const when = item.when && item.when !== "0" ? new Date(Number(item.when) * 1000).toISOString() : "";
+    for (const value of [when, item.kind, item.label, item.detail]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    table.append(tr);
+  }
+  results.replaceChildren(table);
+  status.textContent = "Trail";
+}
+
+async function exportTrail() {
+  const notes = await window.mcparser.notes(caseDir());
+  const runs = await window.mcparser.runs(caseDir());
+  const lines = ["when,kind,label,detail"];
+  const add = (when, kind, label, detail) => {
+    const stamp = when && when !== "0" ? new Date(Number(when) * 1000).toISOString() : "";
+    lines.push([stamp, kind, label, detail].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","));
+  };
+  if (notes && notes.code === 0) {
+    for (const line of notes.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      add(parts[1], "note", `record ${parts[0]}`, parts[2] || "");
+    }
+  }
+  if (runs && runs.code === 0) {
+    for (const line of runs.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      add(parts[1], parts[6] || "run", parts[4] || "query", `${parts[5] || ""} rows ${parts[2] || ""}`);
+    }
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "trail.csv";
+  link.click();
 }
 
 function note(text) {
@@ -319,7 +497,15 @@ document.getElementById("send").onclick = async () => {
   runSql.textContent = "Run";
   runSql.onclick = () => {
     sql.value = result.sql;
-    updateLines();
+    document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
+updateLines();
     run();
   };
   transcript.append(runSql);
@@ -338,6 +524,9 @@ window.mcparser.onGrokChat((shown) => {
   grok.hidden = !shown;
 });
 window.mcparser.onShowNotes(showNotes);
+window.mcparser.onShowRuns(showRuns);
+window.mcparser.onShowTrail(showTrail);
+window.mcparser.onExportTrail(exportTrail);
 window.mcparser.onGrokStatus((grokState) => {
   listModels(grokState);
   if (!grokState.connected) {
@@ -351,6 +540,14 @@ document.getElementById("vendor").onchange = async () => {
   listModels(chosen);
   if (chosen.error) note(chosen.error);
 };
+document.getElementById("tactic").onchange = fillHunts;
+document.getElementById("technique").onchange = fillHunts;
+fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
 updateLines();
 window.mcparser.grokStatus().then(listModels);
 loadNotes().then(() => refresh().then(run));
