@@ -8,6 +8,8 @@ What is next: [McParser project](https://github.com/users/danieldejager/projects
 
 ![McParser stack](docs/Yenbd.jpg)
 
+![McParser 0.2.6 architecture](docs/architecture.svg)
+
 ## Install
 
 ### macOS app
