@@ -1,91 +1,51 @@
 # McParser
 
-Offline Windows event log parser. Point it at `.evtx` files and query them with SQL. No Windows Event Log API, so the same tool runs on macOS, Ubuntu, and Windows.
+Offline Windows event log parser. Open a `.evtx` file and query it with SQL. The same case runs on macOS, Windows, and Ubuntu. The log never has to be on a Windows machine.
 
 Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6)**.
 
-What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1). Chat design: [docs/grok-chat.md](docs/grok-chat.md).
+What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1).
 
-![McParser stack](docs/Yenbd.jpg)
+![McParser 0.2.6](docs/architecture.png)
 
-![McParser 0.2.6 architecture](docs/architecture.svg)
+A version tag builds the three installers. The workflow is `.github/workflows/release.yml`. You do not package a release by hand.
 
 ## Install
 
-### macOS app
+Download the file for your machine from the [0.2.6 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6).
 
-Download `McParser-0.2.6-arm64.dmg` from the [0.2.6 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6). Open it and drag McParser to Applications. The image is unsigned, so Gatekeeper will warn. Right-click McParser and choose Open.
+| Machine | File | Install |
+| --- | --- | --- |
+| Mac, Apple silicon | `McParser-0.2.6-arm64.dmg` | Open the image and drag McParser to Applications |
+| Windows 11, ARM | `McParser Setup 0.2.6.exe` | Run the setup |
+| Ubuntu, Intel or AMD | `McParser-0.2.6-amd64.deb` | `sudo apt install ./McParser-0.2.6-amd64.deb` |
+| Ubuntu, ARM | `McParser-0.2.6-arm64.deb` | `sudo apt install ./McParser-0.2.6-arm64.deb` |
 
-File → Open EVTX creates a case beside the log and ingests it.
+The Mac image is unsigned. Gatekeeper warns. Right-click McParser and choose Open. The Windows setup is ARM64. It is not an Intel build. The packages are built by GitHub Actions when a `v*` tag is pushed.
 
-### Windows app
+## The window
 
-Download `McParser Setup 0.2.6.exe` from the [0.2.6 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6). This installer is ARM64. It runs on Windows 11 on Apple silicon. It is not an Intel build.
+File, then Open EVTX. Pick a log. McParser creates `<file>.mcp` beside it and ingests the file. That folder is the case. It holds `events.duckdb` and `catalog.sqlite`. Copy the folder and the other analyst has the same case.
 
-### From source
+The left pane collapses.
 
-You need a Rust toolchain. DuckDB and SQLite are compiled into the binary. Do not install them separately. The first build compiles DuckDB and can take several minutes.
+**Case.** Path, file name, size, SHA-256, event count, unique event ids, time range, channels, and providers. Refresh case reads the folder again. Analyst is the name written on the next run.
 
-macOS, with Homebrew:
+**Queries.** Save query asks for a name. A click loads that SQL into the editor. Run executes it.
 
-```bash
-git clone https://github.com/danieldejager/mcparser.git
-cd mcparser
-brew install rust
-cargo build --release
-cp target/release/mcparser /usr/local/bin/mcparser
-```
+**Hunts.** Choose a MITRE tactic, then a technique. A click loads that hunt. The first set is successful logon, network logon, failed logon, explicit credentials, account created, account changed, special privileges, and one account. One account still says `USER`. Replace it before Run.
 
-Ubuntu:
+The editor shows line numbers. Run sends the SQL to the case. Export CSV writes the current grid, including the column names. Click a result row whose query includes `record_id` to write a note.
 
-```bash
-git clone https://github.com/danieldejager/mcparser.git
-cd mcparser
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-source "$HOME/.cargo/env"
-cargo build --release
-```
+**Audit.** Notes lists every note. Runs lists every successful Run: the SQL, the time, the row count, the hunt label, the previous run, the analyst, and whether it was a replay. A click there loads the SQL and marks the next run as a replay. Trail puts notes and runs on one list. Export trail writes `trail.csv`.
 
-Windows ARM64: install Rust from https://rustup.rs and the Visual Studio 2022 Build Tools with the ARM64 C++ workload. In the Developer PowerShell for VS 2022:
+**AI Model.** The dropdown is Grok, Claude, or OpenAI. AI Integration, then Connect, saves that vendor's key. The key is encrypted with the macOS keychain or Windows DPAPI. It is not stored in the case. A vendor with no key says `Configure this integration` and no request is sent.
 
-```powershell
-cargo build --release
-```
+Ask writes one SELECT, runs it, and shows the answer beside the SQL. The first ask in a session asks you to confirm that row text will leave the machine. The `.evtx` file and the DuckDB file stay here. The reply is prefixed with the vendor. A completed ask is stored in the case. Open the case again and the question, the SELECT, and the answer are already in the pane. The other machine can read that transcript. It needs its own key to ask again.
 
-The binary is `target\release\mcparser.exe`.
+## The command line
 
-The desktop app:
-
-```bash
-cargo build -p mcparser
-cd ui
-npm install
-npm start
-```
-
-A version tag builds the disk image and the Windows setup. The workflow is `.github/workflows/release.yml`.
-
-## Desktop
-
-The app is an Electron shell around the parser. File → Open EVTX creates `<file>.mcp` next to the log. The case pane shows file name, size, SHA-256, event count, unique event ids, time range, channels, and providers. Case, Queries, and Hunts collapse. Run SQL in the editor. Export CSV writes the current grid, including the column names.
-
-Saved queries live in the case. Save query asks for a name. A click loads the SQL. Copying the `.mcp` folder takes the queries with it.
-
-Hunts are named queries shipped with the app. Choose a MITRE tactic and technique. A click loads the SQL. The first set is successful logon, network logon, failed logon, explicit credentials, account created, account changed, special privileges, and one account. One account still says `USER`. Replace it.
-
-A note is a record id and a sentence. Click a result row whose query includes `record_id`. The note remembers the SQL that was open. Audit → Notes lists every note.
-
-A successful Run stores the SQL, the time, the row count, the hunt label, the previous run, and the analyst name. A click in Audit → Runs is a replay. Audit → Trail lists notes and runs together. Audit → Export trail writes `trail.csv`.
-
-## AI Model
-
-AI Integration connects a vendor. The dropdown under AI Model is Grok, Claude, or OpenAI. Each key is encrypted with the macOS keychain or Windows DPAPI, in its own file, not in the case. A vendor with no key says `Configure this integration` and no request is sent.
-
-Ask writes one SELECT. McParser runs it on the open case, capped at 50 rows, and the answer is shown beside the SQL. The first ask in a session asks you to confirm that row text will leave the machine. The `.evtx` file and the DuckDB file stay here. Replies are prefixed with the vendor.
-
-A completed ask is stored in the case: the question, the vendor, the SELECT, and the answer. Opening the case puts those turns back in the pane. The key is not in the case. The other machine can read the transcript and needs its own key to ask again.
-
-## CLI
+The app is the usual way in. The `mcparser` binary is the same parser.
 
 ```bash
 mcparser ingest --case case.mcp Security.evtx System.evtx
@@ -103,37 +63,33 @@ mcparser runs --case case.mcp
 mcparser chats --case case.mcp
 ```
 
-`--format` is `table` (default), `csv`, or `jsonl`. CSV includes a header row.
+`--format` is `table`, `csv`, or `jsonl`. CSV includes a header row. Run these from the directory that contains `case.mcp`, or pass a full path. A relative path is resolved from the current directory.
 
-A case directory contains `events.duckdb` and `catalog.sqlite`. Do not commit it. Ingest skips a file whose bytes are already in the catalog. The same path with a new hash replaces the old rows.
+A second ingest of the same bytes is skipped. The same path with a new hash replaces the old rows.
 
 Columns are `source_sha256`, `record_id`, `event_id`, `channel`, `provider`, `computer`, `time_created`, and `event_data`. `event_data` is JSON. Filter a field with `json_extract_string(event_data, '$.TargetUserName')`.
 
-A command-line query is not a run. Only the Run button writes the trail.
+A command-line query is not a run. Only the Run button writes the trail. A failed ask is not stored.
+
+## Build from source
+
+You need Rust. DuckDB and SQLite are compiled into the binary. Do not install them separately.
+
+```bash
+git clone https://github.com/danieldejager/mcparser.git
+cd mcparser
+cargo build --release
+cd ui
+npm install
+npm start
+```
+
+The first build compiles DuckDB and can take several minutes. On Windows ARM, use the ARM64 developer shell so `link.exe` is the ARM64 linker.
+
+Do not commit a case, `node_modules`, or `ui/dist`.
 
 ## What 0.2.6 does not do
 
-Rendered message text is not in the `.evtx` file. It lives in the provider DLL, so 0.2.6 does not produce the English sentence. There is no shell. The macOS image is not notarised. The Windows installer is ARM64 only. There is no Ubuntu package. A failed vendor does not fall through to another. A failed ask is not stored. The transcript is not on the audit trail.
-
-## Stack
-
-| Layer | Choice |
-| --- | --- |
-| Language | Rust parser, Electron desktop shell |
-| Reader | `evtx` crate |
-| Query | DuckDB |
-| Catalog | SQLite |
-| Commands | `ingest`, `query`, `stats`, `queries`, `save-query`, `notes`, `save-note`, `runs`, `chats` |
-| Desktop | Electron, in `ui/` |
-| Chat | Grok, Claude, or OpenAI. Keys in the OS keychain. Transcript in the case |
-
-```text
-crates/evtx-read
-crates/model
-crates/case
-crates/query
-crates/cli
-ui/
-```
+The English sentence is not in the `.evtx` file. It lives in the provider DLL, so the grid does not show the rendered message. There is no Intel Windows installer. A failed vendor does not fall through to another. The transcript is not on the audit trail.
 
 Author: Daniel de Jager. https://github.com/danieldejager/mcparser
