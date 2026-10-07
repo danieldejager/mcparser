@@ -472,20 +472,31 @@ async function exportHandoff() {
   note(result && result.code === 0 ? `Handoff written. ${picked.filePath}` : (result.err || "handoff failed"));
 }
 
+let openingHandoff = false;
+
 async function openHandoff() {
-  const picked = await window.mcparser.pickHandoffOpen();
-  if (!picked || picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
-  const password = await askHandoffPassword("Decrypt");
-  if (!password) return;
-  const folder = await window.mcparser.pickHandoffDir();
-  if (folder.canceled || !folder.filePaths || !folder.filePaths[0]) return;
-  const result = await window.mcparser.openHandoff(picked.filePaths[0], password, folder.filePaths[0]);
-  if (result && result.code === 0) {
-    caseInput.value = folder.filePaths[0];
-    await refresh();
-    await loadChats();
-  } else {
-    note(result.err || "password rejected");
+  if (openingHandoff) return;
+  openingHandoff = true;
+  try {
+    const picked = await window.mcparser.pickHandoffOpen();
+    if (!picked || picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
+    const password = await askHandoffPassword("Decrypt");
+    if (!password) return;
+    const folder = await window.mcparser.pickHandoffDir();
+    if (!folder || folder.canceled || !folder.filePaths || !folder.filePaths[0]) return;
+    const result = await window.mcparser.openHandoff(picked.filePaths[0], password, folder.filePaths[0]);
+    if (result && result.code === 0) {
+      caseInput.value = folder.filePaths[0];
+      await refresh();
+      await loadChats();
+      return;
+    }
+    const message = (result && result.err) || "Password rejected";
+    status.textContent = message.includes("password") ? "Password rejected" : message;
+    note(status.textContent);
+    window.alert(status.textContent);
+  } finally {
+    openingHandoff = false;
   }
 }
 
