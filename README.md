@@ -6,6 +6,8 @@ Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/ta
 
 What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1).
 
+The manual is [docs/manual](docs/manual/README.md).
+
 ![McParser 0.2.6](docs/mcparser2.png)
 
 A version tag builds the three installers. The workflow is `.github/workflows/release.yml`. You do not package a release by hand.
