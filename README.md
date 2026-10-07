@@ -2,7 +2,7 @@
 
 Offline Windows event log parser. Open a `.evtx` file and query it with SQL. The same case runs on macOS, Windows, and Ubuntu. The log never has to be on a Windows machine.
 
-Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6)**.
+Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/tag/v0.2.8)**.
 
 What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1).
 
