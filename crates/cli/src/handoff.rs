@@ -32,12 +32,10 @@ pub fn export_handoff(case_dir: &Path, out: &Path, password: &str) -> Result<(),
 
 pub fn open_handoff(file: &Path, out_dir: &Path, password: &str) -> Result<(), String> {
     let encrypted = fs::read(file).map_err(|err| err.to_string())?;
-    let decryptor = match age::Decryptor::new(&encrypted[..]).map_err(|err| err.to_string())? {
-        age::Decryptor::Passphrase(decryptor) => decryptor,
-        _ => return Err("handoff was not encrypted with a password".into()),
-    };
+    let decryptor = age::Decryptor::new(&encrypted[..]).map_err(|err| err.to_string())?;
+    let identity = age::scrypt::Identity::new(SecretString::from(password.to_string()));
     let mut reader = decryptor
-        .decrypt(&SecretString::from(password.to_string()), None)
+        .decrypt(std::iter::once(&identity as &dyn age::Identity))
         .map_err(|_| "password rejected".to_string())?;
     let mut archive = vec![];
     reader.read_to_end(&mut archive).map_err(|err| err.to_string())?;
