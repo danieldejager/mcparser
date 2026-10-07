@@ -422,6 +422,23 @@ async function exportTrail() {
   link.click();
 }
 
+
+async function loadChats() {
+  const log = document.getElementById("log");
+  if (!log) return;
+  log.replaceChildren();
+  const result = await window.mcparser.chats(caseDir());
+  if (!result || result.code !== 0) return;
+  for (const line of result.out.split("\n").filter(Boolean)) {
+    const parts = line.split("\t");
+    const vendor = parts[2] || "Grok";
+    const who = vendor === "openai" ? "OpenAI" : vendor === "claude" ? "Claude" : "Grok";
+    note(parts[3] || "");
+    note(`${who}: ${(parts[4] || "").replaceAll("\\n", "\n")}`);
+    note(`${who}: ${(parts[5] || "").replaceAll("\\n", "\n")}`);
+  }
+}
+
 function note(text) {
   const p = document.createElement("p");
   p.textContent = text;
@@ -493,6 +510,7 @@ document.getElementById("send").onclick = async () => {
     return;
   }
   note(`${who}: ${result.sql}`);
+  await window.mcparser.saveChat(caseDir(), vendor, question, result.sql || "", result.answer || "");
   const runSql = document.createElement("button");
   runSql.textContent = "Run";
   runSql.onclick = () => {
@@ -550,4 +568,4 @@ if (analyst) {
 }
 updateLines();
 window.mcparser.grokStatus().then(listModels);
-loadNotes().then(() => refresh().then(run));
+loadNotes().then(() => refresh().then(run)).then(loadChats);
