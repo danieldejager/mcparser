@@ -46,3 +46,45 @@ jobs:
           files: ui/dist/*.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the parser
+        run: cargo build -p mcparser --release
+      - name: Pack the deb
+        working-directory: ui
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot dpkg
+          npm install
+          npm run dist:linux
+      - name: Attach the deb
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ui/dist/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  ubuntu-arm:
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build the parser
+        run: cargo build -p mcparser --release
+      - name: Pack the arm64 deb
+        working-directory: ui
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot dpkg
+          npm install
+          npm run dist:linux
+      - name: Attach the arm64 deb
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ui/dist/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
