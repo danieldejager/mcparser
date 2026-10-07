@@ -6,7 +6,7 @@ Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/ta
 
 What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1).
 
-![McParser 0.2.6](docs/architecture.png)
+![McParser 0.2.6](docs/mcparser2.png)
 
 A version tag builds the three installers. The workflow is `.github/workflows/release.yml`. You do not package a release by hand.
 
@@ -88,8 +88,8 @@ The first build compiles DuckDB and can take several minutes. On Windows ARM, us
 
 Do not commit a case, `node_modules`, or `ui/dist`.
 
-## What 0.2.6 does not do
+ 
 
-The English sentence is not in the `.evtx` file. It lives in the provider DLL, so the grid does not show the rendered message. There is no Intel Windows installer. A failed vendor does not fall through to another. The transcript is not on the audit trail.
+ 
 
 Author: Daniel de Jager. https://github.com/danieldejager/mcparser
