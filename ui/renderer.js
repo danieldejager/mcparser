@@ -438,6 +438,33 @@ async function loadChats() {
   }
 }
 
+
+async function exportHandoff() {
+  const password = window.prompt("Password for this handoff. At least 8 characters. It is not stored.");
+  if (!password) return;
+  const picked = await window.mcparser.pickHandoffSave();
+  if (picked.canceled || !picked.filePath) return;
+  const result = await window.mcparser.exportHandoff(caseDir(), password, picked.filePath);
+  note(result && result.code === 0 ? `Handoff written. ${picked.filePath}` : (result.err || "handoff failed"));
+}
+
+async function openHandoff() {
+  const picked = await window.mcparser.pickHandoffOpen();
+  if (picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
+  const password = window.prompt("Password for this handoff.");
+  if (!password) return;
+  const folder = await window.mcparser.pickHandoffDir();
+  if (folder.canceled || !folder.filePaths || !folder.filePaths[0]) return;
+  const result = await window.mcparser.openHandoff(picked.filePaths[0], password, folder.filePaths[0]);
+  if (result && result.code === 0) {
+    caseInput.value = folder.filePaths[0];
+    await refresh();
+    await loadChats();
+  } else {
+    note(result.err || "password rejected");
+  }
+}
+
 function note(text) {
   const p = document.createElement("p");
   p.textContent = text;
@@ -544,6 +571,8 @@ window.mcparser.onShowNotes(showNotes);
 window.mcparser.onShowRuns(showRuns);
 window.mcparser.onShowTrail(showTrail);
 window.mcparser.onExportTrail(exportTrail);
+window.mcparser.onExportHandoff(exportHandoff);
+window.mcparser.onOpenHandoff(openHandoff);
 window.mcparser.onGrokStatus((grokState) => {
   listModels(grokState);
   if (!grokState.connected) {
