@@ -439,9 +439,10 @@ async function loadChats() {
 }
 
 
-function askHandoffPassword() {
+function askHandoffPassword(action) {
   const sheet = document.getElementById("handoff-sheet");
   const input = document.getElementById("handoff-password");
+  document.getElementById("handoff-ok").textContent = action;
   sheet.hidden = false;
   input.value = "";
   input.focus();
@@ -465,7 +466,7 @@ function askHandoffPassword() {
 async function exportHandoff() {
   const picked = await window.mcparser.pickHandoffSave();
   if (!picked || picked.canceled || !picked.filePath) return;
-  const password = await askHandoffPassword();
+  const password = await askHandoffPassword("Encrypt");
   if (!password) return;
   const result = await window.mcparser.exportHandoff(caseDir(), password, picked.filePath);
   note(result && result.code === 0 ? `Handoff written. ${picked.filePath}` : (result.err || "handoff failed"));
@@ -474,7 +475,7 @@ async function exportHandoff() {
 async function openHandoff() {
   const picked = await window.mcparser.pickHandoffOpen();
   if (!picked || picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
-  const password = await askHandoffPassword();
+  const password = await askHandoffPassword("Decrypt");
   if (!password) return;
   const folder = await window.mcparser.pickHandoffDir();
   if (folder.canceled || !folder.filePaths || !folder.filePaths[0]) return;
