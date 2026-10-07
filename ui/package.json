@@ -1,14 +1,15 @@
 {
   "name": "mcparser-ui",
   "productName": "McParser",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "private": true,
   "description": "McParser desktop UI.",
   "main": "main.js",
   "scripts": {
     "start": "node rename-mac.js && electron .",
     "dist": "electron-builder --mac dmg",
-    "dist:win": "electron-builder --win nsis"
+    "dist:win": "electron-builder --win nsis",
+    "dist:linux": "electron-builder --linux deb"
   },
   "devDependencies": {
     "electron": "36.4.0",
@@ -17,26 +18,55 @@
   "build": {
     "appId": "com.danieldejager.mcparser",
     "productName": "McParser",
-    "directories": { "output": "dist" },
-    "files": ["main.js", "preload.js", "renderer.js", "index.html", "studio.css", "rename-mac.js", "hunts.js"],
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer.js",
+      "index.html",
+      "studio.css",
+      "rename-mac.js",
+      "hunts.js"
+    ],
     "extraResources": [
       {
         "from": "../target/release",
         "to": ".",
-        "filter": ["mcparser", "mcparser.exe"]
+        "filter": [
+          "mcparser",
+          "mcparser.exe"
+        ]
       }
     ],
     "mac": {
       "identity": null,
       "category": "public.app-category.developer-tools",
-      "target": ["dmg"]
+      "target": [
+        "dmg"
+      ]
     },
     "win": {
-      "target": ["nsis"]
+      "target": [
+        "nsis"
+      ]
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "deb"
+      ],
+      "category": "Development",
+      "maintainer": "Daniel de Jager <danieldejager@users.noreply.github.com>"
     }
+  },
+  "homepage": "https://github.com/danieldejager/mcparser",
+  "author": {
+    "name": "Daniel de Jager",
+    "email": "danieldejager@users.noreply.github.com"
   }
 }

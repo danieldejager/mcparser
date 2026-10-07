@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.7 — 2026-10-07
+
+A handoff is the case, locked with a password. No account and no server.
+
+### Added
+
+- File → Export handoff writes an encrypted `.mcpz`
+- File → Open handoff decrypts it into a folder and opens that case
+- The file holds the events, saved queries, runs, notes, and chat transcript
+- The API key is not in the file
+- A wrong password stops and says `Password rejected`
+- `mcparser handoff` and `mcparser open-handoff`
+
+### Not in this release
+
+- The password is not recovered if it is lost
+- A command-line query is still not a run
+
 ## 0.2.6 — 2026-10-07
 
 The chat transcript stays in the case. The key does not.

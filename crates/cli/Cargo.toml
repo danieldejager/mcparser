@@ -13,3 +13,5 @@ evtx-read = { path = "../evtx-read" }
 model = { path = "../model" }
 case = { path = "../case" }
 query = { path = "../query" }
+age = "0.11"
+tar = "0.4"
