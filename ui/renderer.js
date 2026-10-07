@@ -439,19 +439,42 @@ async function loadChats() {
 }
 
 
+function askHandoffPassword() {
+  const sheet = document.getElementById("handoff-sheet");
+  const input = document.getElementById("handoff-password");
+  sheet.hidden = false;
+  input.value = "";
+  input.focus();
+  return new Promise((resolve) => {
+    const form = document.getElementById("handoff-form");
+    const cancel = document.getElementById("handoff-cancel");
+    const done = (value) => {
+      sheet.hidden = true;
+      form.onsubmit = null;
+      cancel.onclick = null;
+      resolve(value);
+    };
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      done(input.value);
+    };
+    cancel.onclick = () => done("");
+  });
+}
+
 async function exportHandoff() {
-  const password = window.prompt("Password for this handoff. At least 8 characters. It is not stored.");
-  if (!password) return;
   const picked = await window.mcparser.pickHandoffSave();
-  if (picked.canceled || !picked.filePath) return;
+  if (!picked || picked.canceled || !picked.filePath) return;
+  const password = await askHandoffPassword();
+  if (!password) return;
   const result = await window.mcparser.exportHandoff(caseDir(), password, picked.filePath);
   note(result && result.code === 0 ? `Handoff written. ${picked.filePath}` : (result.err || "handoff failed"));
 }
 
 async function openHandoff() {
   const picked = await window.mcparser.pickHandoffOpen();
-  if (picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
-  const password = window.prompt("Password for this handoff.");
+  if (!picked || picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
+  const password = await askHandoffPassword();
   if (!password) return;
   const folder = await window.mcparser.pickHandoffDir();
   if (folder.canceled || !folder.filePaths || !folder.filePaths[0]) return;
