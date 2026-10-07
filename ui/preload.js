@@ -22,6 +22,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   pickHandoffSave: () => ipcRenderer.invoke("pick-handoff-save"),
   pickHandoffOpen: () => ipcRenderer.invoke("pick-handoff-open"),
   pickHandoffDir: () => ipcRenderer.invoke("pick-handoff-dir"),
+  handoffError: (message) => ipcRenderer.invoke("handoff-error", message),
   onExportHandoff: (handler) => ipcRenderer.on("export-handoff", () => handler()),
   onOpenHandoff: (handler) => ipcRenderer.on("open-handoff", () => handler()),
   onOpened: (handler) => ipcRenderer.on("opened", (_event, payload) => handler(payload)),
