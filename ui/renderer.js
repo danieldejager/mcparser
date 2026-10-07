@@ -13,6 +13,7 @@ const keyInput = document.getElementById("key");
 const keyHint = document.getElementById("key-hint");
 let lastCsv = "";
 let runLabel = "query";
+let runKind = "run";
 let confirmed = false;
 let connectProvider = "grok";
 let rowNotes = new Map();
@@ -63,6 +64,11 @@ function fillHunts() {
       document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
 fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
 updateLines();
     };
     li.append(button);
@@ -162,7 +168,7 @@ async function loadNotes() {
   for (const line of result.out.split("\n").filter(Boolean)) {
     const parts = line.split("\t");
     if (parts.length < 2) continue;
-    rowNotes.set(parts[0], parts[1]);
+    rowNotes.set(parts[0], parts[2] || parts[1]);
   }
 }
 
@@ -182,16 +188,21 @@ async function showNotes() {
       const parts = line.split("\t");
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
-      for (const value of [parts[0] || "", parts[1] || "", (parts[2] || "").replaceAll("\\n", "\n")]) {
+      for (const value of [parts[0] || "", parts[2] || "", (parts[3] || "").replaceAll("\\n", "\n")]) {
         const td = document.createElement("td");
         td.textContent = value;
         tr.append(td);
       }
       tr.onclick = () => {
-        sql.value = (parts[2] || "").replaceAll("\\n", "\n");
+        sql.value = (parts[3] || "").replaceAll("\\n", "\n");
         document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
 fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
 updateLines();
         if (sql.value.trim()) run();
       };
@@ -237,8 +248,10 @@ async function run() {
   lastCsv = result.out;
   const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
-  await window.mcparser.saveRun(caseDir(), rows, sql.value, runLabel);
+  const analyst = document.getElementById("analyst").value.trim();
+  await window.mcparser.saveRun(caseDir(), rows, sql.value, runLabel, analyst, runKind);
   runLabel = "query";
+  runKind = "run";
 }
 
 async function exportCsv() {
@@ -268,6 +281,11 @@ async function loadQueries() {
       document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
 fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
 updateLines();
     };
     li.append(button);
@@ -320,7 +338,14 @@ async function showRuns() {
       }
       tr.onclick = () => {
         sql.value = sqlText;
-        updateLines();
+        runKind = "replay";
+        runLabel = parts[4] || "replay";
+        const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
+updateLines();
         if (sql.value.trim()) run();
       };
       table.append(tr);
@@ -328,6 +353,73 @@ async function showRuns() {
   }
   results.replaceChildren(table);
   status.textContent = "Runs";
+}
+
+
+async function showTrail() {
+  const notes = await window.mcparser.notes(caseDir());
+  const runs = await window.mcparser.runs(caseDir());
+  const items = [];
+  if (notes && notes.code === 0) {
+    for (const line of notes.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      items.push({ when: parts[1] || "0", kind: "note", label: `record ${parts[0]}`, detail: parts[2] || "" });
+    }
+  }
+  if (runs && runs.code === 0) {
+    for (const line of runs.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}` });
+    }
+  }
+  items.sort((a, b) => Number(a.when) - Number(b.when));
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["when", "kind", "label", "detail"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  for (const item of items) {
+    const tr = document.createElement("tr");
+    const when = item.when && item.when !== "0" ? new Date(Number(item.when) * 1000).toISOString() : "";
+    for (const value of [when, item.kind, item.label, item.detail]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    table.append(tr);
+  }
+  results.replaceChildren(table);
+  status.textContent = "Trail";
+}
+
+async function exportTrail() {
+  const notes = await window.mcparser.notes(caseDir());
+  const runs = await window.mcparser.runs(caseDir());
+  const lines = ["when,kind,label,detail"];
+  const add = (when, kind, label, detail) => {
+    const stamp = when && when !== "0" ? new Date(Number(when) * 1000).toISOString() : "";
+    lines.push([stamp, kind, label, detail].map((value) => `"${String(value).replaceAll('"', '""')}"`).join(","));
+  };
+  if (notes && notes.code === 0) {
+    for (const line of notes.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      add(parts[1], "note", `record ${parts[0]}`, parts[2] || "");
+    }
+  }
+  if (runs && runs.code === 0) {
+    for (const line of runs.out.split("\n").filter(Boolean)) {
+      const parts = line.split("\t");
+      add(parts[1], parts[6] || "run", parts[4] || "query", `${parts[5] || ""} rows ${parts[2] || ""}`);
+    }
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "trail.csv";
+  link.click();
 }
 
 function note(text) {
@@ -408,6 +500,11 @@ document.getElementById("send").onclick = async () => {
     document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
 fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
 updateLines();
     run();
   };
@@ -428,6 +525,8 @@ window.mcparser.onGrokChat((shown) => {
 });
 window.mcparser.onShowNotes(showNotes);
 window.mcparser.onShowRuns(showRuns);
+window.mcparser.onShowTrail(showTrail);
+window.mcparser.onExportTrail(exportTrail);
 window.mcparser.onGrokStatus((grokState) => {
   listModels(grokState);
   if (!grokState.connected) {
@@ -444,6 +543,11 @@ document.getElementById("vendor").onchange = async () => {
 document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
 fillHunts();
+const analyst = document.getElementById("analyst");
+if (analyst) {
+  analyst.value = localStorage.getItem("mcparser-analyst") || "";
+  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
+}
 updateLines();
 window.mcparser.grokStatus().then(listModels);
 loadNotes().then(() => refresh().then(run));
