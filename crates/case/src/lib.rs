@@ -176,6 +176,9 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN query_sql TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE runs ADD COLUMN label TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE runs ADD COLUMN followed INTEGER", []);
+    let _ = conn.execute("ALTER TABLE runs ADD COLUMN analyst TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute("ALTER TABLE runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'run'", []);
+    let _ = conn.execute("ALTER TABLE notes ADD COLUMN created TEXT NOT NULL DEFAULT ''", []);
     Ok(conn)
 }
 
@@ -243,25 +246,30 @@ pub struct Note {
     pub record_id: i64,
     pub body: String,
     pub query_sql: String,
+    pub created: String,
 }
 
 pub fn save_note(catalog: &Path, record_id: i64, body: &str, query_sql: &str) -> Result<(), rusqlite::Error> {
     let conn = open_catalog(catalog)?;
+    let created = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
     conn.execute(
-        "INSERT INTO notes (record_id, body, query_sql) VALUES (?1, ?2, ?3)
+        "INSERT INTO notes (record_id, body, query_sql, created) VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT(record_id) DO UPDATE SET body = excluded.body, query_sql = excluded.query_sql",
-        rusqlite::params![record_id, body, query_sql],
+        rusqlite::params![record_id, body, query_sql, created],
     )?;
     Ok(())
 }
 
 pub fn notes(catalog: &Path) -> Result<Vec<Note>, rusqlite::Error> {
     let conn = open_catalog(catalog)?;
-    let mut stmt = conn.prepare("SELECT record_id, body, query_sql FROM notes ORDER BY record_id")?;
+    let mut stmt = conn.prepare("SELECT record_id, body, query_sql, created FROM notes ORDER BY record_id")?;
     let mut rows = stmt.query([])?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
-        out.push(Note { record_id: row.get(0)?, body: row.get(1)?, query_sql: row.get(2)? });
+        out.push(Note { record_id: row.get(0)?, body: row.get(1)?, query_sql: row.get(2)?, created: row.get(3)? });
     }
     Ok(out)
 }
@@ -273,21 +281,23 @@ pub struct Run {
     pub row_count: i64,
     pub label: String,
     pub followed: Option<i64>,
+    pub analyst: String,
+    pub kind: String,
 }
 
-pub fn save_run(catalog: &Path, sql: &str, ran_at: &str, row_count: i64, label: &str) -> Result<i64, rusqlite::Error> {
+pub fn save_run(catalog: &Path, sql: &str, ran_at: &str, row_count: i64, label: &str, analyst: &str, kind: &str) -> Result<i64, rusqlite::Error> {
     let conn = open_catalog(catalog)?;
     let followed: Option<i64> = conn.query_row("SELECT max(id) FROM runs", [], |row| row.get(0)).ok();
     conn.execute(
-        "INSERT INTO runs (sql, ran_at, row_count, label, followed) VALUES (?1, ?2, ?3, ?4, ?5)",
-        rusqlite::params![sql, ran_at, row_count, label, followed],
+        "INSERT INTO runs (sql, ran_at, row_count, label, followed, analyst, kind) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        rusqlite::params![sql, ran_at, row_count, label, followed, analyst, kind],
     )?;
     Ok(conn.last_insert_rowid())
 }
 
 pub fn runs(catalog: &Path) -> Result<Vec<Run>, rusqlite::Error> {
     let conn = open_catalog(catalog)?;
-    let mut stmt = conn.prepare("SELECT id, sql, ran_at, row_count, label, followed FROM runs ORDER BY id")?;
+    let mut stmt = conn.prepare("SELECT id, sql, ran_at, row_count, label, followed, analyst, kind FROM runs ORDER BY id")?;
     let mut rows = stmt.query([])?;
     let mut out = Vec::new();
     while let Some(row) = rows.next()? {
@@ -298,6 +308,8 @@ pub fn runs(catalog: &Path) -> Result<Vec<Run>, rusqlite::Error> {
             row_count: row.get(3)?,
             label: row.get(4)?,
             followed: row.get(5)?,
+            analyst: row.get(6)?,
+            kind: row.get(7)?,
         });
     }
     Ok(out)
