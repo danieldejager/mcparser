@@ -96,12 +96,13 @@ function casePath(value) {
   return path.resolve(repo, given);
 }
 
-function run(args) {
+function run(args, password) {
   return new Promise((resolve) => {
     const env = { ...process.env };
     delete env.XAI_API_KEY;
     delete env.OPENAI_API_KEY;
     delete env.ANTHROPIC_API_KEY;
+    if (password) env.MCPARSER_HANDOFF_PASSWORD = password;
     const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
     let out = "";
     let err = "";
@@ -294,6 +295,8 @@ function buildMenu() {
       label: "File",
       submenu: [
         { label: "Open EVTX...", accelerator: "CmdOrCtrl+O", click: openEvtx },
+        { label: "Export handoff...", click: () => win.webContents.send("export-handoff") },
+        { label: "Open handoff...", click: () => win.webContents.send("open-handoff") },
         { type: "separator" },
         { role: "close" },
       ],
@@ -443,6 +446,12 @@ ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(ca
 ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
 ipcMain.handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));
 ipcMain.handle("save-chat", (_event, caseDir, vendor, question, sql, answer) => run(["save-chat", "--case", casePath(caseDir), "--vendor", vendor, "--question", question, "--sql", sql, "--answer", answer]));
+ipcMain.handle("export-handoff", (_event, caseDir, password, out) => run(["handoff", "--case", casePath(caseDir), "--out", out], password));
+ipcMain.handle("open-handoff", (_event, file, password, out) => run(["open-handoff", "--file", file, "--out", out], password));
+ipcMain.handle("pick-handoff-save", async () => dialog.showSaveDialog({ defaultPath: "handoff.mcpz" }));
+ipcMain.handle("pick-handoff-open", async () => dialog.showOpenDialog({ properties: ["openFile"] }));
+ipcMain.handle("pick-handoff-dir", async () => dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }));
+
 ipcMain.handle("save-run", (_event, caseDir, rows, sql, label, analyst, kind) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), "--label", label || "query", "--analyst", analyst || "", "--kind", kind || "run", sql]));
 
 ipcMain.handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
