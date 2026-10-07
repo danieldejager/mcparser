@@ -492,9 +492,9 @@ async function openHandoff() {
       return;
     }
     const message = (result && result.err) || "Password rejected";
-    status.textContent = message.includes("password") ? "Password rejected" : message;
+    status.textContent = message.toLowerCase().includes("password") ? "Password rejected" : message;
     note(status.textContent);
-    window.alert(status.textContent);
+    await window.mcparser.handoffError(status.textContent);
   } finally {
     openingHandoff = false;
   }
