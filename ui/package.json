@@ -1,7 +1,7 @@
 {
   "name": "mcparser-ui",
   "productName": "McParser",
-  "version": "0.2.7.1",
+  "version": "0.2.8",
   "private": true,
   "description": "McParser desktop UI.",
   "main": "main.js",
