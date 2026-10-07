@@ -60,7 +60,13 @@
       "target": [
         "deb"
       ],
-      "category": "Development"
+      "category": "Development",
+      "maintainer": "Daniel de Jager <danieldejager@users.noreply.github.com>"
     }
+  },
+  "homepage": "https://github.com/danieldejager/mcparser",
+  "author": {
+    "name": "Daniel de Jager",
+    "email": "danieldejager@users.noreply.github.com"
   }
 }
