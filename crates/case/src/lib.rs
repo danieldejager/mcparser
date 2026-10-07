@@ -179,6 +179,17 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
     let _ = conn.execute("ALTER TABLE runs ADD COLUMN analyst TEXT NOT NULL DEFAULT ''", []);
     let _ = conn.execute("ALTER TABLE runs ADD COLUMN kind TEXT NOT NULL DEFAULT 'run'", []);
     let _ = conn.execute("ALTER TABLE notes ADD COLUMN created TEXT NOT NULL DEFAULT ''", []);
+    let _ = conn.execute(
+        "CREATE TABLE IF NOT EXISTS chats (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            asked_at TEXT NOT NULL,
+            vendor TEXT NOT NULL,
+            question TEXT NOT NULL,
+            sql TEXT NOT NULL,
+            answer TEXT NOT NULL
+        )",
+        [],
+    );
     Ok(conn)
 }
 
@@ -310,6 +321,46 @@ pub fn runs(catalog: &Path) -> Result<Vec<Run>, rusqlite::Error> {
             followed: row.get(5)?,
             analyst: row.get(6)?,
             kind: row.get(7)?,
+        });
+    }
+    Ok(out)
+}
+
+pub struct Chat {
+    pub id: i64,
+    pub asked_at: String,
+    pub vendor: String,
+    pub question: String,
+    pub sql: String,
+    pub answer: String,
+}
+
+pub fn save_chat(catalog: &Path, vendor: &str, question: &str, sql: &str, answer: &str) -> Result<i64, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let asked_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
+    conn.execute(
+        "INSERT INTO chats (asked_at, vendor, question, sql, answer) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![asked_at, vendor, question, sql, answer],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn chats(catalog: &Path) -> Result<Vec<Chat>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT id, asked_at, vendor, question, sql, answer FROM chats ORDER BY id")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Chat {
+            id: row.get(0)?,
+            asked_at: row.get(1)?,
+            vendor: row.get(2)?,
+            question: row.get(3)?,
+            sql: row.get(4)?,
+            answer: row.get(5)?,
         });
     }
     Ok(out)

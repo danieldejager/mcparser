@@ -14,6 +14,8 @@ fn main() -> ExitCode {
         Some("save-note") => save_note(&mut args),
         Some("runs") => runs(&mut args),
         Some("save-run") => save_run(&mut args),
+        Some("chats") => chats(&mut args),
+        Some("save-chat") => save_chat(&mut args),
         _ => {
             eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
             eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
@@ -392,6 +394,76 @@ fn save_run(args: &mut impl Iterator<Item = String>) -> ExitCode {
     match case::save_run(&case_dir.join("catalog.sqlite"), sql.trim(), &ran_at.to_string(), row_count, label.trim(), analyst.trim(), kind.trim()) {
         Ok(id) => {
             println!("ran id={id} rows={row_count}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+
+fn chats(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser chats --case <dir>");
+        return ExitCode::from(2);
+    };
+    match case::chats(&case_dir.join("catalog.sqlite")) {
+        Ok(chats) => {
+            for chat in chats {
+                println!(
+                    "{}\t{}\t{}\t{}\t{}\t{}",
+                    chat.id,
+                    chat.asked_at,
+                    chat.vendor,
+                    chat.question.replace('\n', "\\n"),
+                    chat.sql.replace('\n', "\\n"),
+                    chat.answer.replace('\n', "\\n")
+                );
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn save_chat(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser save-chat --case <dir> --vendor <name> --question <text> --sql <sql> --answer <text>");
+        return ExitCode::from(2);
+    };
+    let mut rest: Vec<String> = args.collect();
+    let mut vendor = String::new();
+    let mut question = String::new();
+    let mut sql = String::new();
+    let mut answer = String::new();
+    while let Some(flag) = rest.first().map(|s| s.as_str()) {
+        if flag == "--vendor" || flag == "--question" || flag == "--sql" || flag == "--answer" {
+            let flag = rest.remove(0);
+            if rest.is_empty() {
+                eprintln!("usage: mcparser save-chat --case <dir> --vendor <name> --question <text> --sql <sql> --answer <text>");
+                return ExitCode::from(2);
+            }
+            let value = rest.remove(0);
+            if flag == "--vendor" { vendor = value; }
+            else if flag == "--question" { question = value; }
+            else if flag == "--sql" { sql = value; }
+            else { answer = value; }
+        } else {
+            break;
+        }
+    }
+    if vendor.is_empty() || question.is_empty() {
+        eprintln!("vendor and question are required");
+        return ExitCode::from(2);
+    }
+    match case::save_chat(&case_dir.join("catalog.sqlite"), vendor.trim(), question.trim(), sql.trim(), answer.trim()) {
+        Ok(id) => {
+            println!("chat {id}");
             ExitCode::SUCCESS
         }
         Err(err) => {

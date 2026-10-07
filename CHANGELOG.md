@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.6 — 2026-10-07
+
+The chat transcript stays in the case. The key does not.
+
+### Added
+
+- A completed ask stores the question, the vendor, the SELECT, and the answer in `catalog.sqlite`
+- Opening the case puts those turns back in the AI Model pane
+- `mcparser chats --case <dir>` and `mcparser save-chat`
+- Copying the `.mcp` folder takes the transcript with it
+- The API key stays in the OS keychain. It is not written to the case
+
+### Proven
+
+- Claude, question `is fsir an administrator?`, no rows for event ids 4672, 4732, 4728, 4756
+- The pane restored that turn after a restart
+
+### Not in this release
+
+- A failed ask is not stored
+- The transcript is not on Audit → Trail
+- The installers are built by the tag workflow
+
 ## 0.2.5 — 2026-10-07
 
 A run is part of the case. Audit lists the trail.
