@@ -1,3 +1,10 @@
+
+function keyStore() {
+  if (window.mcparser.platform === "win32") return "Windows DPAPI";
+  if (window.mcparser.platform === "linux") return "the system keyring";
+  return "the macOS keychain";
+}
+
 const caseInput = document.getElementById("case");
 const sql = document.getElementById("sql");
 const lines = document.getElementById("lines");
@@ -513,7 +520,7 @@ function showSheet(grokState) {
   document.querySelector("#key-form h1").textContent = `Connect ${label}`;
   keyHint.textContent = grokState.connected && grokState.provider === connectProvider
     ? `A ${label} key is set, ending ${grokState.last4}. Save replaces it.`
-    : `The ${label} key is encrypted with the macOS keychain.`;
+    : `The ${label} key is encrypted with ${keyStore()}.`;
   keyInput.value = "";
   sheet.hidden = false;
   keyInput.focus();
