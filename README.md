@@ -2,26 +2,17 @@
 
 Offline Windows event log parser. Open a `.evtx` file and query it with SQL. The same case runs on macOS, Windows, and Ubuntu. The log never has to be on a Windows machine.
 
-Current release: **[0.2.6](https://github.com/danieldejager/mcparser/releases/tag/v0.2.8)**.
-
 What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1).
 
 The manual is [docs/manual](docs/manual/README.md).
 
-![McParser 0.2.6](docs/mcparser2.png)
+![McParser](docs/mcparser2.png)
 
 A version tag builds the three installers. The workflow is `.github/workflows/release.yml`. You do not package a release by hand.
 
 ## Install
 
-Download the file for your machine from the [0.2.6 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.6).
-
-| Machine | File | Install |
-| --- | --- | --- |
-| Mac, Apple silicon | `McParser-0.2.6-arm64.dmg` | Open the image and drag McParser to Applications |
-| Windows 11, ARM | `McParser Setup 0.2.6.exe` | Run the setup |
-| Ubuntu, Intel or AMD | `McParser-0.2.6-amd64.deb` | `sudo apt install ./McParser-0.2.6-amd64.deb` |
-| Ubuntu, ARM | `McParser-0.2.6-arm64.deb` | `sudo apt install ./McParser-0.2.6-arm64.deb` |
+Download the package for your machine from the [releases page](https://github.com/danieldejager/mcparser/releases). A Mac disk image, a Windows ARM setup, and Ubuntu packages for amd64 and arm64 are built when a version tag is pushed.
 
 The Mac image is unsigned. A download from the browser is marked, and Gatekeeper then says the app is damaged. That is the missing signature, not a broken disk image. Clear the mark and open it:
 
