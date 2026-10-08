@@ -31,8 +31,31 @@ jobs:
       - name: Test the parser
         run: cargo test
 
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+      - name: Semgrep
+        run: |
+          python3 -m pip install semgrep
+          semgrep scan --config p/javascript --config p/rust --error
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript, rust
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
+
   macos:
-    needs: test
+    needs: [test, security]
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +75,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   windows:
-    needs: test
+    needs: [test, security]
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +95,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu:
-    needs: test
+    needs: [test, security]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +117,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-arm:
-    needs: test
+    needs: [test, security]
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
