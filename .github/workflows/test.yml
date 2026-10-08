@@ -18,3 +18,26 @@ jobs:
             https://github.com/omerbenamram/evtx/raw/master/samples/security.evtx
       - name: Test the parser
         run: cargo test
+
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: cargo audit
+        run: |
+          cargo install cargo-audit --locked
+          cargo audit
+      - name: Semgrep
+        run: |
+          python3 -m pip install semgrep
+          semgrep scan --config p/javascript --config p/rust --error
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript, rust
+      - uses: github/codeql-action/autobuild@v3
+      - uses: github/codeql-action/analyze@v3
