@@ -1,6 +1,7 @@
 {
   "name": "mcparser-ui",
   "productName": "McParser",
+  "license": "LicenseRef-McParser-NonCommercial",
   "version": "0.2.9",
   "private": true,
   "description": "McParser desktop UI.",
