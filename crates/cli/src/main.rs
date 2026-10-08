@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
-    let mut args = env::args().skip(1);
+    let mut args = env::args().skip(1); // nosemgrep: rust.lang.security.args.args -- command names only, the handoff password is not read from argv
     match args.next().as_deref() {
         Some("ingest") => ingest(&mut args),
         Some("query") => query(&mut args),
