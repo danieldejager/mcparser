@@ -34,7 +34,7 @@ fn main() -> ExitCode {
 
 fn print_help() {
     println!(
-        "McParser reads an offline Windows .evtx file and queries it with SQL.
+        r#"McParser reads an offline Windows .evtx file and queries it with SQL.
 
 Usage: mcparser <command> [options]
 
@@ -103,7 +103,8 @@ open-handoff:
     Set MCPARSER_HANDOFF_PASSWORD. A wrong password is rejected.
 
 A case directory holds events.duckdb and catalog.sqlite.
-The API key is not in the case."
+The API key is not in the case.
+"#
     );
 }
 
