@@ -9,7 +9,30 @@ permissions:
   contents: write
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Tag is on main
+        if: github.event_name == 'push'
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+      - name: Dispatch is from main
+        if: github.event_name == 'workflow_dispatch'
+        run: test "${GITHUB_REF}" = "refs/heads/main"
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Download the Security fixture
+        run: |
+          mkdir -p fixtures/evtx
+          wget -O fixtures/evtx/security.evtx             https://github.com/omerbenamram/evtx/raw/master/samples/security.evtx
+      - name: Test the parser
+        run: cargo test
+
   macos:
+    needs: test
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -29,6 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   windows:
+    needs: test
     runs-on: windows-11-arm
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +72,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu:
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,6 +94,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   ubuntu-arm:
+    needs: test
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
