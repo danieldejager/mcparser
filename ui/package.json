@@ -28,6 +28,7 @@
       "index.html",
       "studio.css",
       "rename-mac.js",
+      "hunts.js"
       "hunts.js",
       "icon.png"
     ],
@@ -46,12 +47,14 @@
       "category": "public.app-category.developer-tools",
       "target": [
         "dmg"
+      ]
       ],
       "icon": "icon.png"
     },
     "win": {
       "target": [
         "nsis"
+      ]
       ],
       "icon": "icon.png"
     },
@@ -64,6 +67,8 @@
         "deb"
       ],
       "category": "Development",
+      "maintainer": "Daniel de Jager <danieldejager@users.noreply.github.com>"
+    }
       "maintainer": "Daniel de Jager <danieldejager@users.noreply.github.com>",
       "icon": "icon.png"
     },
