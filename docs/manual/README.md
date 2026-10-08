@@ -16,3 +16,4 @@ Current packages are on the [0.2.8 release](https://github.com/danieldejager/mcp
 8. [Handoff](08-handoff.md)
 9. [The command line](09-cli.md)
 10. [What this release does not do](10-limits.md)
+11. [How a change gets to a release](11-cicd.md)
