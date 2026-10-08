@@ -19,21 +19,92 @@ fn main() -> ExitCode {
         Some("save-chat") => save_chat(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
-        _ => {
-            eprintln!("usage: mcparser ingest --case <dir> <file.evtx> [more.evtx...]");
-            eprintln!("       mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
-            eprintln!("       mcparser stats --case <dir>");
-            eprintln!("       mcparser queries --case <dir>");
-            eprintln!("       mcparser save-query --case <dir> --name <name> \"<sql>\"");
-            eprintln!("       mcparser notes --case <dir>");
-            eprintln!("       mcparser save-note --case <dir> --record <id> \"<sentence>\"");
-            eprintln!("       mcparser runs --case <dir>");
-            eprintln!("       mcparser save-run --case <dir> --rows <n> \"<sql>\"");
-            eprintln!("       mcparser handoff --case <dir> --out <file>");
-            eprintln!("       mcparser open-handoff --file <file> --out <dir>");
+        Some("-h" | "--help" | "help") | None => {
+            print_help();
+            ExitCode::SUCCESS
+        }
+        Some(other) => {
+            eprintln!("unknown command: {other}");
+            eprintln!();
+            print_help();
             ExitCode::from(2)
         }
     }
+}
+
+fn print_help() {
+    println!(
+        "McParser reads an offline Windows .evtx file and queries it with SQL.
+
+Usage: mcparser <command> [options]
+
+Commands:
+  ingest         Read one or more .evtx files into a case
+  query          Run SQL against the events in a case
+  stats          Channels, providers, event ids, and the time range
+  queries        List saved queries
+  save-query     Store a named query in the case
+  notes          List notes
+  save-note      Attach a sentence to a record id
+  runs           List successful Run-button trails
+  save-run       Store a run without the window
+  chats          List stored vendor turns
+  save-chat      Store a question, a SELECT, and an answer
+  handoff        Write a password-locked copy of the case
+  open-handoff   Unpack a handoff into a folder
+  help           Show this help
+
+Options:
+  -h, --help     Show this help
+
+ingest:
+  mcparser ingest --case <dir> <file.evtx> [more.evtx...]
+    A file whose bytes are already in the case is skipped.
+    The same path with a new hash replaces the old rows.
+
+query:
+  mcparser query --case <dir> [--format table|csv|jsonl] "<sql>"
+    --format is table by default. csv includes a header row.
+    A command-line query is not written to the run trail.
+
+stats:
+  mcparser stats --case <dir>
+
+queries:
+  mcparser queries --case <dir>
+
+save-query:
+  mcparser save-query --case <dir> --name <name> "<sql>"
+
+notes:
+  mcparser notes --case <dir>
+
+save-note:
+  mcparser save-note --case <dir> --record <id> [--sql <sql>] "<sentence>"
+
+runs:
+  mcparser runs --case <dir>
+
+save-run:
+  mcparser save-run --case <dir> --rows <n> [--label <name>] [--analyst <name>] [--kind run|replay] "<sql>"
+
+chats:
+  mcparser chats --case <dir>
+
+save-chat:
+  mcparser save-chat --case <dir> --vendor <name> --question <text> --sql <sql> --answer <text>
+
+handoff:
+  mcparser handoff --case <dir> --out <file>
+    Set MCPARSER_HANDOFF_PASSWORD. At least 8 characters. It is not stored.
+
+open-handoff:
+  mcparser open-handoff --file <file> --out <dir>
+    Set MCPARSER_HANDOFF_PASSWORD. A wrong password is rejected.
+
+A case directory holds events.duckdb and catalog.sqlite.
+The API key is not in the case."
+    );
 }
 
 fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
