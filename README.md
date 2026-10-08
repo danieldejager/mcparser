@@ -93,3 +93,5 @@ Do not commit a case, `node_modules`, or `ui/dist`.
  
 
 Author: Daniel de Jager. https://github.com/danieldejager/mcparser
+
+Licence: free for personal and non-profit use. A for-profit company, paid work, or a paid product needs a commercial licence. See [LICENSE](LICENSE).
