@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.9 — 2026-10-08
+
+The connect dialog names the key store for the machine it is running on.
+
+### Fixed
+
+- macOS still says the keychain
+- Windows says DPAPI
+- Ubuntu says the system keyring
+
 ## 0.2.8 — 2026-10-07
 
 Icon fix, retagged. The packager rejects a four-part version, so 0.2.7.1 did not build.
