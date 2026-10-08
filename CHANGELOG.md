@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.2.8 — 2026-10-07
+
+Icon fix, retagged. The packager rejects a four-part version, so 0.2.7.1 did not build.
+
+### Fixed
+
+- Mac, Windows, and Ubuntu packages use `ui/icon.png` instead of the Electron icon
+- The window and tray look for that same file
+
+## 0.2.7.1 — 2026-10-07
+
+Icon fix. No change to the case or the handoff.
+
+### Fixed
+
+- Mac, Windows, and Ubuntu packages use `ui/icon.png` instead of the Electron icon
+- The window and tray look for that same file
+
 ## 0.2.7 — 2026-10-07
 
 A handoff is the case, locked with a password. No account and no server.
