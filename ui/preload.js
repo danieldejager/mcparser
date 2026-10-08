@@ -1,6 +1,7 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("mcparser", {
+  platform: process.platform,
   stats: (caseDir) => ipcRenderer.invoke("stats", caseDir),
   query: (caseDir, sql) => ipcRenderer.invoke("query", caseDir, sql),
   saveCsv: (csv) => ipcRenderer.invoke("save-csv", csv),
