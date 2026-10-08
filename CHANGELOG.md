@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.2.8 — 2026-10-07
+
+Icon fix, retagged. The packager rejects a four-part version, so 0.2.7.1 did not build.
+
+### Fixed
+
+- Mac, Windows, and Ubuntu packages use `ui/icon.png` instead of the Electron icon
+- The window and tray look for that same file
+
+## 0.2.7.1 — 2026-10-07
+
+Icon fix. No change to the case or the handoff.
+
+### Fixed
+
+- Mac, Windows, and Ubuntu packages use `ui/icon.png` instead of the Electron icon
+- The window and tray look for that same file
+
+## 0.2.7 — 2026-10-07
+
+A handoff is the case, locked with a password. No account and no server.
+
+### Added
+
+- File → Export handoff writes an encrypted `.mcpz`
+- File → Open handoff decrypts it into a folder and opens that case
+- The file holds the events, saved queries, runs, notes, and chat transcript
+- The API key is not in the file
+- A wrong password stops and says `Password rejected`
+- `mcparser handoff` and `mcparser open-handoff`
+
+### Not in this release
+
+- The password is not recovered if it is lost
+- A command-line query is still not a run
+
 ## 0.2.6 — 2026-10-07
 
 The chat transcript stays in the case. The key does not.

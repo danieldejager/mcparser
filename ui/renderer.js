@@ -438,6 +438,68 @@ async function loadChats() {
   }
 }
 
+
+function askHandoffPassword(action) {
+  const sheet = document.getElementById("handoff-sheet");
+  const input = document.getElementById("handoff-password");
+  document.getElementById("handoff-ok").textContent = action;
+  sheet.hidden = false;
+  input.value = "";
+  input.focus();
+  return new Promise((resolve) => {
+    const form = document.getElementById("handoff-form");
+    const cancel = document.getElementById("handoff-cancel");
+    const done = (value) => {
+      sheet.hidden = true;
+      form.onsubmit = null;
+      cancel.onclick = null;
+      resolve(value);
+    };
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      done(input.value);
+    };
+    cancel.onclick = () => done("");
+  });
+}
+
+async function exportHandoff() {
+  const picked = await window.mcparser.pickHandoffSave();
+  if (!picked || picked.canceled || !picked.filePath) return;
+  const password = await askHandoffPassword("Encrypt");
+  if (!password) return;
+  const result = await window.mcparser.exportHandoff(caseDir(), password, picked.filePath);
+  note(result && result.code === 0 ? `Handoff written. ${picked.filePath}` : (result.err || "handoff failed"));
+}
+
+let openingHandoff = false;
+
+async function openHandoff() {
+  if (openingHandoff) return;
+  openingHandoff = true;
+  try {
+    const picked = await window.mcparser.pickHandoffOpen();
+    if (!picked || picked.canceled || !picked.filePaths || !picked.filePaths[0]) return;
+    const password = await askHandoffPassword("Decrypt");
+    if (!password) return;
+    const folder = await window.mcparser.pickHandoffDir();
+    if (!folder || folder.canceled || !folder.filePaths || !folder.filePaths[0]) return;
+    const result = await window.mcparser.openHandoff(picked.filePaths[0], password, folder.filePaths[0]);
+    if (result && result.code === 0) {
+      caseInput.value = folder.filePaths[0];
+      await refresh();
+      await loadChats();
+      return;
+    }
+    const message = (result && result.err) || "Password rejected";
+    status.textContent = message.toLowerCase().includes("password") ? "Password rejected" : message;
+    note(status.textContent);
+    await window.mcparser.handoffError(status.textContent);
+  } finally {
+    openingHandoff = false;
+  }
+}
+
 function note(text) {
   const p = document.createElement("p");
   p.textContent = text;
@@ -544,6 +606,8 @@ window.mcparser.onShowNotes(showNotes);
 window.mcparser.onShowRuns(showRuns);
 window.mcparser.onShowTrail(showTrail);
 window.mcparser.onExportTrail(exportTrail);
+window.mcparser.onExportHandoff(exportHandoff);
+window.mcparser.onOpenHandoff(openHandoff);
 window.mcparser.onGrokStatus((grokState) => {
   listModels(grokState);
   if (!grokState.connected) {

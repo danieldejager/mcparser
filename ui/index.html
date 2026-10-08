@@ -69,6 +69,16 @@ LIMIT 20</textarea>
     <textarea id="ask" placeholder="Ask about this case"></textarea>
     <button id="send">Ask</button>
   </aside>
+  <div id="handoff-sheet" class="sheet" hidden>
+    <form id="handoff-form">
+      <h1>Handoff password</h1>
+      <input id="handoff-password" type="password" placeholder="At least 8 characters">
+      <div class="sheet-actions">
+        <button type="button" id="handoff-cancel">Cancel</button>
+        <button type="submit" id="handoff-ok">Encrypt</button>
+      </div>
+    </form>
+  </div>
   <div id="note-sheet" class="sheet" hidden>
     <form id="note-form">
       <h1>Note</h1>

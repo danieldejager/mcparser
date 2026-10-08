@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1100" height="640" viewBox="0 0 1100 640">
+  <rect width="1100" height="640" fill="#ffffff"/>
+  <text x="550" y="42" text-anchor="middle" font-family="Georgia, serif" font-size="34">McParser 0.2.6</text>
+  <rect x="30" y="70" width="250" height="300" rx="10" fill="#fff" stroke="#222"/>
+  <text x="50" y="98" font-family="sans-serif" font-size="16" font-weight="700">Case folder .mcp</text>
+  <text x="50" y="128" font-family="sans-serif" font-size="14">events.duckdb</text>
+  <text x="50" y="152" font-family="sans-serif" font-size="14">catalog.sqlite</text>
+  <text x="50" y="186" font-family="sans-serif" font-size="14">saved queries</text>
+  <text x="50" y="208" font-family="sans-serif" font-size="14">notes</text>
+  <text x="50" y="230" font-family="sans-serif" font-size="14">runs</text>
+  <text x="50" y="252" font-family="sans-serif" font-size="14">chat transcript</text>
+  <rect x="30" y="390" width="250" height="60" rx="10" fill="#fff" stroke="#222"/>
+  <text x="50" y="426" font-family="sans-serif" font-size="14">offline .evtx files</text>
+  <rect x="340" y="70" width="250" height="300" rx="10" fill="#fff" stroke="#222"/>
+  <text x="360" y="98" font-family="sans-serif" font-size="16" font-weight="700">Rust parser</text>
+  <text x="360" y="140" font-family="sans-serif" font-size="14">evtx reader</text>
+  <text x="360" y="190" font-family="sans-serif" font-size="14">DuckDB query</text>
+  <text x="360" y="240" font-family="sans-serif" font-size="14">SQLite catalog</text>
+  <rect x="650" y="70" width="250" height="300" rx="10" fill="#fff" stroke="#222"/>
+  <text x="670" y="98" font-family="sans-serif" font-size="16" font-weight="700">Electron window</text>
+  <text x="670" y="140" font-family="sans-serif" font-size="14">Case, SQL editor, Results</text>
+  <text x="670" y="164" font-family="sans-serif" font-size="14">Hunts, Audit trail</text>
+  <text x="670" y="188" font-family="sans-serif" font-size="14">AI Model</text>
+  <rect x="650" y="400" width="250" height="110" rx="10" fill="#fff" stroke="#222"/>
+  <text x="670" y="428" font-family="sans-serif" font-size="16" font-weight="700">OS keychain</text>
+  <text x="670" y="456" font-family="sans-serif" font-size="14">Grok, Claude, OpenAI</text>
+  <text x="670" y="480" font-family="sans-serif" font-size="12">keys never enter the case</text>
+  <rect x="930" y="150" width="140" height="150" rx="10" fill="#fff" stroke="#222"/>
+  <text x="948" y="180" font-family="sans-serif" font-size="14">Grok</text>
+  <text x="948" y="206" font-family="sans-serif" font-size="14">Claude</text>
+  <text x="948" y="232" font-family="sans-serif" font-size="14">OpenAI</text>
+  <text x="948" y="270" font-family="sans-serif" font-size="11">question, columns, 50 rows</text>
+  <path d="M280 180 H340" stroke="#222" marker-end="url(#a)"/>
+  <path d="M590 180 H650" stroke="#222" marker-end="url(#a)"/>
+  <path d="M155 390 V370" stroke="#222" marker-end="url(#a)"/>
+  <path d="M900 220 H930" stroke="#222" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <path d="M775 400 V370" stroke="#222" stroke-dasharray="5 4" marker-end="url(#a)"/>
+  <text x="550" y="560" text-anchor="middle" font-family="sans-serif" font-size="14">case file never leaves the machine</text>
+  <text x="550" y="600" text-anchor="middle" font-family="sans-serif" font-size="14">macOS dmg  |  Windows ARM64 setup  |  Ubuntu deb</text>
+  <defs><marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6" fill="#222"/></marker></defs>
+</svg>
