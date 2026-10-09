@@ -121,6 +121,7 @@ function bytes(value) {
 }
 
 let loading = false;
+let importedIn = "";
 
 function setLoading(on, label, pct) {
   loading = on;
@@ -167,8 +168,8 @@ async function refresh() {
   await loadHosts();
   await loadQueries();
   const took = loadSeconds(started);
-  fact("Loaded", took);
-  status.textContent = "Case loaded in " + took;
+  fact(importedIn ? "Imported" : "Loaded", importedIn || took);
+  status.textContent = importedIn ? "Collection imported in " + importedIn : "Case loaded in " + took;
   markCase();
   } finally {
     setLoading(false);
@@ -739,8 +740,10 @@ window.mcparser.onImportCollection(async () => {
     }
     dir = made.dir;
   }
+  const importStarted = performance.now();
   setLoading(true, "Hashing collector", 1);
   const result = await window.mcparser.collect(dir, picked.filePaths[0], name);
+  importedIn = loadSeconds(importStarted);
   setLoading(false);
   caseInput.value = dir;
   if (result.code !== 0) {
@@ -749,7 +752,8 @@ window.mcparser.onImportCollection(async () => {
     return;
   }
   showImported(result.out);
-  status.textContent = "Collection imported";
+  fact("Imported", importedIn);
+  status.textContent = "Collection imported in " + importedIn;
   markCase();
   await loadHosts();
 });
@@ -796,6 +800,9 @@ window.mcparser.onImportEvtx(async (payload) => {
 
 function showImported(text) {
   const lines = text.trim().split("\n").filter(Boolean);
+  const kept = lines.filter((line) => line.startsWith("kept ")).length;
+  const shown = lines.filter((line) => !line.startsWith("kept "));
+  if (kept) shown.push("kept " + kept + " files");
   const table = document.createElement("table");
   const head = document.createElement("tr");
   for (const label of ["Kind", "Host or session", "Collected", "File", "SHA256"]) {
@@ -804,7 +811,7 @@ function showImported(text) {
     head.append(cell);
   }
   table.append(head);
-  for (const line of lines) {
+  for (const line of shown) {
     const parts = line.split(" ");
     const row = document.createElement("tr");
     const kind = document.createElement("td");
