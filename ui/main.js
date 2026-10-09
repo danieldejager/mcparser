@@ -273,7 +273,7 @@ async function grokAsk(caseDir, question) {
       sql = oneSelect(await askModel(
         schema + "\n" + context +
         "\nThe previous query returned no rows: " + sql +
-        "\nWrite a new SELECT using a host_id and log_name from the case context.\nQuestion: " + question
+        "\nWrite a new SELECT. Use events for a logon or account question, and prefetch, userassist or amcache for a program question.\nQuestion: " + question
       ));
       queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
       if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
