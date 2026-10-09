@@ -554,7 +554,8 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
         for i in 0..nested.len() {
             let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
             let entry_name = entry.name().to_string();
-            if entry_name.ends_with('/') || !keep_raw(&entry_name) || entry.size() >= 80_000_000 { continue; }
+            let from_tasks = name.to_ascii_lowercase().contains("task");
+            if entry_name.ends_with('/') || entry.size() >= 80_000_000 || !(from_tasks || keep_raw(&entry_name)) { continue; }
             let mut body = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
             match write_kept(case_dir, &sha, &format!("{name}/{entry_name}"), &body) {
@@ -1414,7 +1415,7 @@ fn task_files(root: &Path) -> Vec<std::path::PathBuf> {
             let path = entry.path();
             if path.is_dir() { pending.push(path); continue; }
             let text = path.to_string_lossy().to_ascii_lowercase();
-            if text.ends_with(".xml") || text.contains("/tasks/") || text.contains("\\tasks\\") {
+            if text.ends_with(".xml") || text.contains("/tasks/") || text.contains("\\tasks\\") || text.contains("tasks.zip") {
                 found.push(path);
             }
         }
@@ -1431,14 +1432,14 @@ fn load_task_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result
         return load_task_json(db, host_id, &body);
     }
     let lower = body.to_ascii_lowercase();
-    if !lower.contains("<command") && !lower.contains("<task") {
+    if !lower.contains("<command") && !lower.contains("<task") && !lower.contains("<comhandler") {
         return Ok(0);
     }
-    let command = xml_tag(&body, "Command");
+    let command = {
+        let command = xml_tag(&body, "Command");
+        if !command.is_empty() { command } else { xml_tag(&body, "ClassId") }
+    };
     let arguments = xml_tag(&body, "Arguments");
-    if command.is_empty() && arguments.is_empty() {
-        return Ok(0);
-    }
     db.execute(
         "INSERT INTO tasks (host_id, path, command, arguments, user_id, enabled) VALUES (?, ?, ?, ?, ?, ?)",
         duckdb::params![host_id, path.display().to_string(), command, arguments, xml_tag(&body, "UserId"), xml_tag(&body, "Enabled")],
@@ -1467,9 +1468,9 @@ fn load_task_json(db: &duckdb::Connection, host_id: &str, body: &str) -> Result<
     }
     let mut inserted = 0;
     for row in rows {
-        let command = json_text(&row, &["Command", "command"]);
-        let path = json_text(&row, &["FullPath", "TaskName", "Path", "OSPath"]);
-        if command.is_empty() && path.is_empty() { continue; }
+        let command = json_text(&row, &["Command", "command", "Task"]);
+        let path = json_text(&row, &["FullPath", "TaskName", "Path", "OSPath", "Name"]);
+        if command.is_empty() && path.is_empty() && !row.get("Actions").is_some() { continue; }
         db.execute(
             "INSERT INTO tasks (host_id, path, command, arguments, user_id, enabled) VALUES (?, ?, ?, ?, ?, ?)",
             duckdb::params![host_id, path, command, json_text(&row, &["Arguments", "arguments"]), json_text(&row, &["UserId", "Principal", "user_id"]), json_text(&row, &["Enabled", "enabled"])],
