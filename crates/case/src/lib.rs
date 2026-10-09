@@ -785,7 +785,7 @@ fn filetime_iso(filetime: i64) -> String {
     let secs = (filetime - 116444736000000000) / 10_000_000;
     if secs < 0 { return String::new(); }
     let z = secs + 719468;
-    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let era = (if z >= 0 { z } else { z - 146096 }) / 146097;
     let doe = (z - era * 146097) as u64;
     let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
     let y = yoe as i64 + era * 400;
