@@ -233,6 +233,8 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                 ("services", case::ingest_services),
                 ("tasks", case::ingest_tasks),
                 ("shimcache", case::ingest_shimcache),
+                ("userassist", case::ingest_userassist),
+                ("amcache", case::ingest_amcache),
                 ("srum", case::ingest_srum),
             ] {
                 if case::artifact_done(&catalog, name, &sha).unwrap_or(false) {
