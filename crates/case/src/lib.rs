@@ -854,9 +854,9 @@ fn load_amcache_hive(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Res
             builder.with_transaction_log(log);
         }
     }
-    let mut parser = builder.build().map_err(|err| err.to_string())?;
+    let parser = builder.build().map_err(|err| err.to_string())?;
     let mut inserted = 0;
-    for key in parser.iter() {
+    for key in notatin::parser::ParserIterator::new(&parser) {
         let kind = amcache_kind(&key.path);
         if kind.is_empty() { continue; }
         let values = key_strings(&key);
