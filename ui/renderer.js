@@ -380,7 +380,7 @@ async function showRuns() {
       const tr = document.createElement("tr");
       tr.style.cursor = "pointer";
       const when = new Date(Number(parts[1]) * 1000).toISOString();
-      const sqlText = (parts[5] || "").replaceAll("\\n", "\n");
+      const sqlText = (parts[7] || "").replaceAll("\\n", "\n");
       for (const value of [parts[0] || "", parts[3] || "", parts[4] || "", when, parts[2] || "", sqlText]) {
         const td = document.createElement("td");
         td.textContent = value;
@@ -390,12 +390,7 @@ async function showRuns() {
         sql.value = sqlText;
         runKind = "replay";
         runLabel = parts[4] || "replay";
-        const analyst = document.getElementById("analyst");
-if (analyst) {
-  analyst.value = localStorage.getItem("mcparser-analyst") || "";
-  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
-}
-updateLines();
+        updateLines();
         if (sql.value.trim()) run();
       };
       table.append(tr);
@@ -419,7 +414,7 @@ async function showTrail() {
   if (runs && runs.code === 0) {
     for (const line of runs.out.split("\n").filter(Boolean)) {
       const parts = line.split("\t");
-      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}` });
+      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}  ${(parts[7] || "").replaceAll("\\n", " ")}` });
     }
   }
   items.sort((a, b) => Number(a.when) - Number(b.when));
@@ -462,7 +457,7 @@ async function exportTrail() {
   if (runs && runs.code === 0) {
     for (const line of runs.out.split("\n").filter(Boolean)) {
       const parts = line.split("\t");
-      add(parts[1], parts[6] || "run", parts[4] || "query", `${parts[5] || ""} rows ${parts[2] || ""}`);
+      add(parts[1], parts[6] || "run", parts[4] || "query", `${parts[5] || ""} rows ${parts[2] || ""} ${(parts[7] || "").replaceAll("\\n", " ")}`);
     }
   }
   const blob = new Blob([lines.join("\n")], { type: "text/csv" });
