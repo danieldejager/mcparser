@@ -35,10 +35,12 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
             computer VARCHAR,
             time_created VARCHAR,
             event_data VARCHAR,
-            host_id VARCHAR
+            host_id VARCHAR,
+            log_name VARCHAR
         )",
     )?;
     let _ = conn.execute_batch("ALTER TABLE events ADD COLUMN IF NOT EXISTS host_id VARCHAR");
+    let _ = conn.execute_batch("ALTER TABLE events ADD COLUMN IF NOT EXISTS log_name VARCHAR");
     let mut appender = conn.appender("events")?;
     for event in events {
         appender.append_row(params![
@@ -50,6 +52,7 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
             event.computer,
             event.time_created,
             event.event_data,
+            "",
             "",
         ])?;
     }
@@ -679,32 +682,37 @@ pub fn eventlog_payloads(zip_path: &Path) -> Result<Vec<LogPayload>, String> {
             raw.push(LogPayload { name, bytes });
         }
     }
-    if !artifact.is_empty() {
-        let mut logs = Vec::new();
-        for (zip_name, bytes) in artifact {
-            let cursor = std::io::Cursor::new(bytes);
-            let mut nested = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
-            for i in 0..nested.len() {
-                let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
-                let entry_name = entry.name().to_string();
-                if !entry_name.to_ascii_lowercase().ends_with(".evtx") || entry.size() >= 200_000_000 { continue; }
-                let mut body = Vec::new();
-                std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
-                logs.push(LogPayload { name: format!("{zip_name}/{entry_name}"), bytes: body });
-            }
+    let mut logs = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for (zip_name, bytes) in artifact {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut nested = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
+        for i in 0..nested.len() {
+            let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
+            let entry_name = entry.name().to_string();
+            if !entry_name.to_ascii_lowercase().ends_with(".evtx") || entry.size() >= 200_000_000 { continue; }
+            let mut body = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
+            let sha = sha256_bytes(&body);
+            if !seen.insert(sha) { continue; }
+            logs.push(LogPayload { name: format!("{zip_name}/{entry_name}"), bytes: body });
         }
-        return Ok(logs);
     }
-    Ok(raw)
+    for log in raw {
+        let sha = sha256_bytes(&log.bytes);
+        if !seen.insert(sha) { continue; }
+        logs.push(log);
+    }
+    Ok(logs)
 }
 
-pub fn ingest_for_host(db_path: &Path, source_sha256: &str, host_id: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
+pub fn ingest_for_host(db_path: &Path, source_sha256: &str, host_id: &str, log_name: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
     let inserted = ingest(db_path, source_sha256, events)?;
-    if host_id.is_empty() || inserted == 0 { return Ok(inserted); }
+    if inserted == 0 { return Ok(inserted); }
     let conn = Connection::open(db_path)?;
     conn.execute(
-        "UPDATE events SET host_id = ?1 WHERE source_sha256 = ?2 AND (host_id IS NULL OR host_id = '')",
-        params![host_id, source_sha256],
+        "UPDATE events SET host_id = ?1, log_name = ?2 WHERE source_sha256 = ?3 AND (host_id IS NULL OR host_id = '')",
+        params![host_id, log_name, source_sha256],
     )?;
     Ok(inserted)
 }

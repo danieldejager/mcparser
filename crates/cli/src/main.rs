@@ -200,8 +200,9 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                                 }
                             }
                         }
-                        match case::ingest_for_host(&db, &sha, &host_id, &events) {
-                            Ok(inserted) => println!("events {} inserted={inserted} host={host_id}", log.name),
+                        let log_name = log.name.rsplit(['/', '\\']).next().unwrap_or(&log.name).to_string();
+                        match case::ingest_for_host(&db, &sha, &host_id, &log_name, &events) {
+                            Ok(inserted) => println!("events {} inserted={inserted} host={host_id} log={log_name}", log.name),
                             Err(err) => {
                                 eprintln!("{err}");
                                 return ExitCode::from(1);

@@ -149,9 +149,10 @@ fn eventlogs_zip_lands_on_the_timeline_once() {
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout);
     assert!(text.contains("events results/eventlogs.zip/Security.evtx"), "{text}");
+    assert!(text.contains("log=Security.evtx"), "{text}");
     assert!(!text.contains("uploads/Security.evtx"), "{text}");
-    let count = bin().args(["query", "--case"]).arg(&dir).arg("SELECT count(*) FROM events").output().unwrap();
-    assert!(String::from_utf8_lossy(&count.stdout).contains("2261"), "{}", String::from_utf8_lossy(&count.stdout));
+    let count = bin().args(["query", "--case"]).arg(&dir).arg("SELECT log_name, count(*) FROM events GROUP BY log_name").output().unwrap();
+    assert!(String::from_utf8_lossy(&count.stdout).contains("Security.evtx\t2261"), "{}", String::from_utf8_lossy(&count.stdout));
     let hosts = bin().args(["query", "--case"]).arg(&dir).arg("SELECT host_id, count(*) FROM events GROUP BY host_id").output().unwrap();
     assert!(String::from_utf8_lossy(&hosts.stdout).contains("H1\t2261"), "{}", String::from_utf8_lossy(&hosts.stdout));
 
