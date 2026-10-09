@@ -190,6 +190,22 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
         )",
         [],
     );
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS hosts (
+            host_id TEXT PRIMARY KEY,
+            hostname TEXT NOT NULL,
+            fqdn TEXT NOT NULL,
+            os TEXT NOT NULL,
+            arch TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS collections (
+            session_id TEXT PRIMARY KEY,
+            host_id TEXT NOT NULL,
+            collected_at TEXT NOT NULL,
+            zip_sha256 TEXT NOT NULL,
+            source_name TEXT NOT NULL
+        )",
+    )?;
     Ok(conn)
 }
 
@@ -364,4 +380,187 @@ pub fn chats(catalog: &Path) -> Result<Vec<Chat>, rusqlite::Error> {
         });
     }
     Ok(out)
+}
+
+
+pub struct Host {
+    pub host_id: String,
+    pub hostname: String,
+    pub fqdn: String,
+    pub os: String,
+    pub arch: String,
+}
+
+pub struct Collection {
+    pub session_id: String,
+    pub host_id: String,
+    pub collected_at: String,
+    pub zip_sha256: String,
+    pub source_name: String,
+}
+
+pub fn hosts(catalog: &Path) -> Result<Vec<Host>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT host_id, hostname, fqdn, os, arch FROM hosts ORDER BY hostname")?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Host {
+            host_id: row.get(0)?,
+            hostname: row.get(1)?,
+            fqdn: row.get(2)?,
+            os: row.get(3)?,
+            arch: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn collections(catalog: &Path) -> Result<Vec<Collection>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare(
+        "SELECT session_id, host_id, collected_at, zip_sha256, source_name FROM collections ORDER BY collected_at",
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Collection {
+            session_id: row.get(0)?,
+            host_id: row.get(1)?,
+            collected_at: row.get(2)?,
+            zip_sha256: row.get(3)?,
+            source_name: row.get(4)?,
+        })
+    })?;
+    rows.collect()
+}
+
+pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Collection>), String> {
+    let sha = file_sha256(zip_path).map_err(|err| err.to_string())?;
+    let file = std::fs::File::open(zip_path).map_err(|err| err.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|err| err.to_string())?;
+    let mut found: Vec<(String, Host, Collection)> = Vec::new();
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
+        let name = entry.name().to_string();
+        if name.ends_with("client_info.json") {
+            let mut body = String::new();
+            std::io::Read::read_to_string(&mut entry, &mut body).map_err(|err| err.to_string())?;
+            let host = host_from_client_info(&body)?;
+            let session = collection_from_same_zip(&mut archive, &name, &host.host_id, &sha, zip_path)?;
+            found.push((name, host, session));
+        } else if name.ends_with(".zip") && entry.size() < 80_000_000 {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
+            if let Some(hit) = nested_collector(&bytes, &sha, &name) {
+                found.push(hit);
+            }
+        }
+    }
+    let Some((_, host, _)) = found.first() else {
+        return Err("no client_info.json in collector zip".into());
+    };
+    let host = host.clone_host();
+    let mut saved = Vec::new();
+    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+    conn.execute(
+        "INSERT INTO hosts (host_id, hostname, fqdn, os, arch) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(host_id) DO UPDATE SET hostname = excluded.hostname, fqdn = excluded.fqdn, os = excluded.os, arch = excluded.arch",
+        rusqlite::params![host.host_id, host.hostname, host.fqdn, host.os, host.arch],
+    ).map_err(|err| err.to_string())?;
+    for (_, _, collection) in &found {
+        conn.execute(
+            "INSERT INTO collections (session_id, host_id, collected_at, zip_sha256, source_name) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(session_id) DO UPDATE SET host_id = excluded.host_id, collected_at = excluded.collected_at, zip_sha256 = excluded.zip_sha256, source_name = excluded.source_name",
+            rusqlite::params![collection.session_id, host.host_id, collection.collected_at, collection.zip_sha256, collection.source_name],
+        ).map_err(|err| err.to_string())?;
+        saved.push(Collection {
+            session_id: collection.session_id.clone(),
+            host_id: host.host_id.clone(),
+            collected_at: collection.collected_at.clone(),
+            zip_sha256: collection.zip_sha256.clone(),
+            source_name: collection.source_name.clone(),
+        });
+    }
+    Ok((host, saved))
+}
+
+fn host_from_client_info(body: &str) -> Result<Host, String> {
+    let value: serde_json::Value = serde_json::from_str(body).map_err(|err| err.to_string())?;
+    let text = |key: &str| value.get(key).and_then(|item| item.as_str()).unwrap_or("").to_string();
+    let host_id = text("HostID");
+    if host_id.is_empty() {
+        return Err("client_info.json has no HostID".into());
+    }
+    Ok(Host {
+        host_id,
+        hostname: text("Hostname"),
+        fqdn: text("Fqdn"),
+        os: text("Platform"),
+        arch: text("Architecture"),
+    })
+}
+
+fn collection_from_same_zip(archive: &mut zip::ZipArchive<std::fs::File>, client_info_name: &str, host_id: &str, sha: &str, zip_path: &Path) -> Result<Collection, String> {
+    let context_name = client_info_name.replace("client_info.json", "collection_context.json");
+    let mut collected_at = String::new();
+    let mut session_id = String::new();
+    if let Ok(mut entry) = archive.by_name(&context_name) {
+        let mut body = String::new();
+        std::io::Read::read_to_string(&mut entry, &mut body).map_err(|err| err.to_string())?;
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
+            session_id = value.get("session_id").and_then(|item| item.as_str()).unwrap_or("").to_string();
+        }
+    }
+    if session_id.is_empty() {
+        session_id = format!("zip:{}", zip_path.file_name().and_then(|name| name.to_str()).unwrap_or("collector"));
+    }
+    if collected_at.is_empty() {
+        collected_at = client_start_from(archive, client_info_name);
+    }
+    Ok(Collection {
+        session_id,
+        host_id: host_id.to_string(),
+        collected_at,
+        zip_sha256: sha.to_string(),
+        source_name: zip_path.file_name().and_then(|name| name.to_str()).unwrap_or("collector").to_string(),
+    })
+}
+
+fn client_start_from(archive: &mut zip::ZipArchive<std::fs::File>, client_info_name: &str) -> String {
+    let Ok(mut entry) = archive.by_name(client_info_name) else { return String::new() };
+    let mut body = String::new();
+    if std::io::Read::read_to_string(&mut entry, &mut body).is_err() { return String::new() }
+    serde_json::from_str::<serde_json::Value>(&body).ok().and_then(|value| value.get("ClientStart").and_then(|item| item.as_str()).map(|s| s.to_string())).unwrap_or_default()
+}
+
+fn nested_collector(bytes: &[u8], sha: &str, name: &str) -> Option<(String, Host, Collection)> {
+    let cursor = std::io::Cursor::new(bytes);
+    let mut archive = zip::ZipArchive::new(cursor).ok()?;
+    let mut client = String::new();
+    let mut context = String::new();
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).ok()?;
+        let entry_name = entry.name().to_string();
+        if entry_name.ends_with("client_info.json") {
+            std::io::Read::read_to_string(&mut entry, &mut client).ok()?;
+        } else if entry_name.ends_with("collection_context.json") {
+            std::io::Read::read_to_string(&mut entry, &mut context).ok()?;
+        }
+    }
+    if client.is_empty() { return None }
+    let host = host_from_client_info(&client).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&context).unwrap_or(serde_json::Value::Null);
+    let session_id = value.get("session_id").and_then(|item| item.as_str()).unwrap_or("").to_string();
+    let start = serde_json::from_str::<serde_json::Value>(&client).ok().and_then(|item| item.get("ClientStart").and_then(|v| v.as_str()).map(|s| s.to_string())).unwrap_or_default();
+    let source_name = name.rsplit('/').next().unwrap_or(name).to_string();
+    Some((name.to_string(), host, Collection {
+        session_id: if session_id.is_empty() { source_name.clone() } else { session_id },
+        host_id: String::new(),
+        collected_at: start,
+        zip_sha256: sha.to_string(),
+        source_name,
+    }))
+}
+
+impl Host {
+    fn clone_host(&self) -> Host {
+        Host { host_id: self.host_id.clone(), hostname: self.hostname.clone(), fqdn: self.fqdn.clone(), os: self.os.clone(), arch: self.arch.clone() }
+    }
 }

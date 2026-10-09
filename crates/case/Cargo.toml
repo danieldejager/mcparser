@@ -8,4 +8,6 @@ license.workspace = true
 duckdb = { version = "1.4", features = ["bundled"] }
 model = { path = "../model" }
 rusqlite = { version = "0.32", features = ["bundled"] }
+serde_json = "1"
 sha2 = "0.10"
+zip = "2"

@@ -17,6 +17,8 @@ fn main() -> ExitCode {
         Some("save-run") => save_run(&mut args),
         Some("chats") => chats(&mut args),
         Some("save-chat") => save_chat(&mut args),
+        Some("collect") => collect(&mut args),
+        Some("hosts") => hosts(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
         Some("-h" | "--help" | "help") | None => {
@@ -40,6 +42,8 @@ Usage: mcparser <command> [options]
 
 Commands:
   ingest         Read one or more .evtx files into a case
+  collect        Read a Velociraptor offline zip into the case catalog
+  hosts          List hosts recorded in a case
   query          Run SQL against the events in a case
   stats          Channels, providers, event ids, and the time range
   queries        List saved queries
@@ -59,6 +63,13 @@ Options:
 
 ingest:
   mcparser ingest --case <dir> <file.evtx> [more.evtx...]
+
+collect:
+  mcparser collect --case <dir> <collector.zip>
+    Records the host and collection. It does not ingest events yet.
+
+hosts:
+  mcparser hosts --case <dir>
     A file whose bytes are already in the case is skipped.
     The same path with a new hash replaces the old rows.
 
@@ -106,6 +117,53 @@ A case directory holds events.duckdb and catalog.sqlite.
 The API key is not in the case.
 "#
     );
+}
+
+fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser collect --case <dir> <collector.zip>");
+        return ExitCode::from(2);
+    };
+    let Some(zip_path) = args.next() else {
+        eprintln!("usage: mcparser collect --case <dir> <collector.zip>");
+        return ExitCode::from(2);
+    };
+    if let Err(err) = std::fs::create_dir_all(&case_dir) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::import_collector(&case_dir.join("catalog.sqlite"), zip_path.as_ref()) {
+        Ok((host, collections)) => {
+            println!("host {} {} {} {}", host.host_id, host.hostname, host.os, host.arch);
+            for collection in collections {
+                println!("collection {} {} {}", collection.session_id, collection.collected_at, collection.source_name);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn hosts(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser hosts --case <dir>");
+        return ExitCode::from(2);
+    };
+    match case::hosts(&case_dir.join("catalog.sqlite")) {
+        Ok(rows) => {
+            for host in rows {
+                println!("{}\t{}\t{}\t{}\t{}", host.host_id, host.hostname, host.fqdn, host.os, host.arch);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
 }
 
 fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
