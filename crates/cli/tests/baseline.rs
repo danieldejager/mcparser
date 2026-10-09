@@ -20,7 +20,7 @@ fn help_lists_every_command() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff"] {
+    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect"] {
         assert!(text.contains(command), "{command} missing from help");
     }
 }
@@ -72,4 +72,17 @@ fn handoff_rejects_a_bad_password() {
     let wrong = bin().env("MCPARSER_HANDOFF_PASSWORD", "wrong-password").args(["open-handoff", "--file"]).arg(&out).args(["--out"]).arg(&opened).output().unwrap();
     assert!(!wrong.status.success());
     assert!(String::from_utf8_lossy(&wrong.stderr).to_lowercase().contains("password"));
+}
+
+#[test]
+fn save_case_stores_the_analyst() {
+    let dir = case("save-case");
+    let missing = bin().args(["save-analyst", "--case"]).arg(&dir).args(["--name", ""]).output().unwrap();
+    assert!(!missing.status.success());
+    assert!(String::from_utf8_lossy(&missing.stderr).contains("analyst name is required"));
+    let saved = bin().args(["save-analyst", "--case"]).arg(&dir).args(["--name", "Daniel de Jager"]).output().unwrap();
+    assert!(saved.status.success(), "{}", String::from_utf8_lossy(&saved.stderr));
+    assert!(String::from_utf8_lossy(&saved.stdout).contains("saved analyst"));
+    let again = bin().args(["save-analyst", "--case"]).arg(&dir).args(["--name", "Daniel de Jager"]).output().unwrap();
+    assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
 }

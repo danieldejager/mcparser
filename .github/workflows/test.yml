@@ -18,6 +18,8 @@ jobs:
             https://github.com/omerbenamram/evtx/raw/master/samples/security.evtx
       - name: Test the parser
         run: cargo test
+      - name: Save Case CLI
+        run: cargo test -p mcparser --test baseline save_case_stores_the_analyst
 
   security:
     runs-on: ubuntu-latest
