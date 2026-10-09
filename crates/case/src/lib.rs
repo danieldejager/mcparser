@@ -756,6 +756,7 @@ pub fn ingest_prefetch(catalog: &Path, db_path: &Path) -> Result<usize, String> 
             inserted += 1;
         }
     }
+    eprintln!("userassist keys={seen} hive={}", hive.display());
     Ok(inserted)
 }
 
@@ -949,7 +950,9 @@ pub fn ingest_userassist(catalog: &Path, db_path: &Path) -> Result<usize, String
         let root = case_dir.join("files").join(&sha);
         if !root.exists() { continue; }
         db.execute("DELETE FROM userassist WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
-        for hive in ntuser_hives(&root) {
+        let hives = ntuser_hives(&root);
+        eprintln!("userassist hives={} root={}", hives.len(), root.display());
+        for hive in hives {
             inserted += load_userassist(&db, &host_id, &hive)?;
         }
     }
@@ -978,9 +981,11 @@ fn load_userassist(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Resul
         .build()
         .map_err(|err| err.to_string())?;
     let mut inserted = 0;
+    let mut seen = 0;
     for key in notatin::parser::ParserIterator::new(&parser) {
-        let lower = key.path.to_ascii_lowercase();
-        if !lower.contains("explorer\\userassist") || !lower.ends_with("\\count") { continue; }
+        let lower = key.path.to_ascii_lowercase().replace('/', "\\");
+        if !lower.contains("userassist") || !lower.contains("count") { continue; }
+        seen += 1;
         let guid = key.path.rsplit('\\').nth(1).unwrap_or("").to_string();
         for value in key.value_iter() {
             let (content, _) = value.get_content();
