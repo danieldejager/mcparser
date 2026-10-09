@@ -7,8 +7,8 @@
 </head>
 <body>
   <header id="toolbar">
-    <button id="tb-new" type="button" title="New Query">New Query</button>
-    <button id="tb-run" type="button" title="Execute">Execute</button>
+    <button id="tb-new" type="button" class="icon" title="New Query" aria-label="New Query">＋</button>
+    <button id="tb-run" type="button" class="icon" title="Execute" aria-label="Execute">▶</button>
     <span class="tb-sep"></span>
     <span id="tb-case">No case</span>
   </header>
@@ -19,7 +19,7 @@
       <input id="case" value="" placeholder="No case loaded">
       <label for="analyst">Analyst</label>
       <input id="analyst" placeholder="Name on the trail">
-      <button id="refresh">Refresh case</button>
+      <button id="refresh" class="icon" title="Refresh case" aria-label="Refresh case">↻</button>
       <dl id="summary"></dl>
     </details>
     <details open>
@@ -41,8 +41,8 @@
       <header>
         <span class="pane-title">SQL Editor</span>
         <span class="editor-actions">
-          <button id="save-query">Save query</button>
-          <button id="run">Run</button>
+          <button id="save-query" class="icon" title="Save query" aria-label="Save query">💾</button>
+          <button id="run" class="icon" title="Run" aria-label="Run">▶</button>
         </span>
       </header>
       <div class="editor-body">
@@ -58,7 +58,7 @@ LIMIT 20</textarea>
       <header>
         <span class="pane-title">Results</span>
         <span id="status">Ready</span>
-        <button id="export">Export CSV</button>
+        <button id="export" class="icon" title="Export CSV" aria-label="Export CSV">⬇</button>
       </header>
       <div id="results"></div>
     </section>
@@ -75,7 +75,7 @@ LIMIT 20</textarea>
     <div id="transcript"></div>
     <label for="ask">Ask</label>
     <textarea id="ask" placeholder="Ask about this case"></textarea>
-    <button id="send">Ask</button>
+    <button id="send" class="icon" title="Ask" aria-label="Ask">➤</button>
   </aside>
   <div id="handoff-sheet" class="sheet" hidden>
     <form id="handoff-form">

@@ -17,7 +17,6 @@ dd { margin: 2px 0 0; color: #111; word-break: break-all; }
 .results { flex: 1; }
 header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eee; }
 .results header { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; column-gap: 12px; }
-#export { width: 108px; }
 .editor-body { display: flex; min-height: 140px; }
 .lines { margin: 0; padding: 12px 8px; width: 36px; text-align: right; color: #8a8a8a; background: #f7f7f7; border-right: 1px solid #eee; overflow: hidden; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
 textarea { flex: 1; border: 0; margin: 0; min-height: 140px; resize: vertical; padding: 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
@@ -67,7 +66,7 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 @keyframes dots { to { width: 0; } }
 
 #toolbar { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #d0d0d0; flex: 0 0 auto; }
-#toolbar button { height: 26px; padding: 0 10px; }
+#toolbar button { width: 28px; height: 26px; padding: 0; }
 #tb-run { background: #0b6a0b; color: #fff; border-color: #0b6a0b; }
 #tb-run:hover { background: #095809; }
 .tb-sep { width: 1px; height: 18px; background: #d0d0d0; margin: 0 6px; }
@@ -80,3 +79,6 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 
 .ioc-trash { border: 0; background: transparent; padding: 0 6px; font-size: 14px; cursor: pointer; }
 .ioc-trash:hover { background: #fdecec; }
+
+button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place-items: center; font-size: 14px; line-height: 1; }
+#send.icon { align-self: flex-end; }
