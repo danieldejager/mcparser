@@ -40,3 +40,11 @@ pub fn records_json(path: &Path) -> Result<Vec<String>, evtx::err::EvtxError> {
     }
     Ok(out)
 }
+pub fn records_json_from_bytes(bytes: &[u8]) -> Result<Vec<String>, evtx::err::EvtxError> {
+    let mut parser = EvtxParser::from_buffer(bytes.to_vec())?;
+    let mut out = Vec::new();
+    for record in parser.records_json() {
+        out.push(record?.data);
+    }
+    Ok(out)
+}

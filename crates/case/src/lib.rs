@@ -34,9 +34,11 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
             provider VARCHAR,
             computer VARCHAR,
             time_created VARCHAR,
-            event_data VARCHAR
+            event_data VARCHAR,
+            host_id VARCHAR
         )",
     )?;
+    let _ = conn.execute_batch("ALTER TABLE events ADD COLUMN IF NOT EXISTS host_id VARCHAR");
     let mut appender = conn.appender("events")?;
     for event in events {
         appender.append_row(params![
@@ -48,6 +50,7 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
             event.computer,
             event.time_created,
             event.event_data,
+            "",
         ])?;
     }
     appender.flush()?;
@@ -642,4 +645,72 @@ pub fn record_host(catalog: &Path, host: &Host) -> Result<(), rusqlite::Error> {
         rusqlite::params![host.host_id, host.hostname, host.fqdn, host.os, host.arch],
     )?;
     Ok(())
+}
+
+fn is_raw_channel_log(name: &str) -> bool {
+    matches!(name.rsplit(['/', '\\']).next().unwrap_or(name).to_ascii_lowercase().as_str(), "security.evtx" | "system.evtx" | "application.evtx")
+}
+
+fn is_eventlogs_zip(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".zip") && lower.contains("eventlog")
+}
+
+pub struct LogPayload {
+    pub name: String,
+    pub bytes: Vec<u8>,
+}
+
+pub fn eventlog_payloads(zip_path: &Path) -> Result<Vec<LogPayload>, String> {
+    let file = std::fs::File::open(zip_path).map_err(|err| err.to_string())?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|err| err.to_string())?;
+    let mut artifact = Vec::new();
+    let mut raw = Vec::new();
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
+        let name = entry.name().to_string();
+        if is_eventlogs_zip(&name) && entry.size() < 200_000_000 {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
+            artifact.push((name, bytes));
+        } else if is_raw_channel_log(&name) && entry.size() < 200_000_000 {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
+            raw.push(LogPayload { name, bytes });
+        }
+    }
+    if !artifact.is_empty() {
+        let mut logs = Vec::new();
+        for (zip_name, bytes) in artifact {
+            let cursor = std::io::Cursor::new(bytes);
+            let mut nested = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
+            for i in 0..nested.len() {
+                let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
+                let entry_name = entry.name().to_string();
+                if !entry_name.to_ascii_lowercase().ends_with(".evtx") || entry.size() >= 200_000_000 { continue; }
+                let mut body = Vec::new();
+                std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
+                logs.push(LogPayload { name: format!("{zip_name}/{entry_name}"), bytes: body });
+            }
+        }
+        return Ok(logs);
+    }
+    Ok(raw)
+}
+
+pub fn ingest_for_host(db_path: &Path, source_sha256: &str, host_id: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
+    let inserted = ingest(db_path, source_sha256, events)?;
+    if host_id.is_empty() || inserted == 0 { return Ok(inserted); }
+    let conn = Connection::open(db_path)?;
+    conn.execute(
+        "UPDATE events SET host_id = ?1 WHERE source_sha256 = ?2 AND (host_id IS NULL OR host_id = '')",
+        params![host_id, source_sha256],
+    )?;
+    Ok(inserted)
+}
+
+pub fn sha256_bytes(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }

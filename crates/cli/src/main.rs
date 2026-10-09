@@ -1,6 +1,6 @@
 mod handoff;
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -172,6 +172,51 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             }
             for path in kept {
                 println!("kept {}", path.display());
+            }
+            let host_id = hosts.first().map(|host| host.host_id.clone()).unwrap_or_default();
+            let db = case_dir.join("events.duckdb");
+            match case::eventlog_payloads(zip_path.as_ref()) {
+                Ok(logs) => {
+                    for log in logs {
+                        let sha = case::sha256_bytes(&log.bytes);
+                        if case::already_ingested(&catalog, &sha).unwrap_or(false) {
+                            println!("skipped {} sha256={sha}", log.name);
+                            continue;
+                        }
+                        let records = match evtx_read::records_json_from_bytes(&log.bytes) {
+                            Ok(records) => records,
+                            Err(err) => {
+                                eprintln!("{}: {err}", log.name);
+                                return ExitCode::from(1);
+                            }
+                        };
+                        let mut events = Vec::new();
+                        for json in &records {
+                            match model::from_json(json) {
+                                Ok(event) => events.push(event),
+                                Err(err) => {
+                                    eprintln!("{}: {err}", log.name);
+                                    return ExitCode::from(1);
+                                }
+                            }
+                        }
+                        match case::ingest_for_host(&db, &sha, &host_id, &events) {
+                            Ok(inserted) => println!("events {} inserted={inserted} host={host_id}", log.name),
+                            Err(err) => {
+                                eprintln!("{err}");
+                                return ExitCode::from(1);
+                            }
+                        }
+                        if let Err(err) = case::record_source(&catalog, Path::new(&log.name), &sha, events.len() as i64) {
+                            eprintln!("{err}");
+                            return ExitCode::from(1);
+                        }
+                    }
+                }
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::from(1);
+                }
             }
             ExitCode::SUCCESS
         }
