@@ -443,7 +443,8 @@ pub fn collections(catalog: &Path) -> Result<Vec<Collection>, rusqlite::Error> {
 
 fn keep_raw(name: &str) -> bool {
     let lower = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
-    lower == "ntuser.dat" || lower == "software.hiv" || lower.ends_with(".pf")
+    lower == "ntuser.dat" || lower == "software.hiv" || lower == "system" || lower == "system.hiv"
+        || lower == "amcache.hve" || lower.ends_with(".pf") || lower.ends_with(".json") || lower.ends_with(".jsonl")
 }
 
 fn safe_name(name: &str) -> String {
@@ -1027,4 +1028,175 @@ fn rot13(text: &str) -> String {
         'A'..='Z' => char::from(b'A' + (ch as u8 - b'A' + 13) % 26),
         other => other,
     }).collect()
+}
+
+
+pub fn ingest_shimcache(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS shimcache (
+            host_id VARCHAR, path VARCHAR, modified VARCHAR, position INTEGER, executed VARCHAR, control_set VARCHAR
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM shimcache WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for path in shimcache_files(&root) {
+            inserted += load_shimcache_file(&db, &host_id, &path)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn shimcache_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+            if name.ends_with(".json") || name.ends_with(".jsonl") || name == "system" || name == "system.hiv" {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_shimcache_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+    if name == "system" || name == "system.hiv" {
+        return load_shimcache_hive(db, host_id, path);
+    }
+    let body = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
+    let mut rows = Vec::new();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
+        if let Some(list) = value.as_array() {
+            rows.extend(list.iter().cloned());
+        } else if value.get("Path").is_some() || value.get("Name").is_some() {
+            rows.push(value);
+        }
+    }
+    if rows.is_empty() {
+        for line in body.lines() {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+                if value.get("Path").is_some() || value.get("Name").is_some() {
+                    rows.push(value);
+                }
+            }
+        }
+    }
+    let mut inserted = 0;
+    for row in rows {
+        let path_value = json_text(&row, &["Path", "Name", "path"]);
+        if path_value.is_empty() { continue; }
+        let modified = json_text(&row, &["ModificationTime", "LastMod", "modified"]);
+        let position = row.get("Position").and_then(|item| item.as_i64()).unwrap_or(-1);
+        let executed = json_text(&row, &["ExecutionFlag", "Executed", "Execution"]);
+        let control = json_text(&row, &["ControlSet", "control_set"]);
+        db.execute(
+            "INSERT INTO shimcache (host_id, path, modified, position, executed, control_set) VALUES (?, ?, ?, ?, ?, ?)",
+            duckdb::params![host_id, path_value, modified, position, executed, control],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+fn json_text(value: &serde_json::Value, keys: &[&str]) -> String {
+    for key in keys {
+        if let Some(item) = value.get(*key) {
+            if let Some(text) = item.as_str() {
+                if !text.is_empty() { return text.to_string(); }
+            } else if !item.is_null() {
+                let rendered = item.to_string();
+                if rendered != "null" { return rendered.trim_matches('"').to_string(); }
+            }
+        }
+    }
+    String::new()
+}
+
+fn load_shimcache_hive(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Result<usize, String> {
+    let parser = notatin::parser_builder::ParserBuilder::from_path(hive.to_path_buf())
+        .build()
+        .map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for key in parser.iter_keys().flatten() {
+        if !key.path.to_ascii_lowercase().contains("appcompatcache") { continue; }
+        for value in key.value_iter() {
+            if !value.get_pretty_name().eq_ignore_ascii_case("appcompatcache") { continue; }
+            let (content, _) = value.get_content();
+            let notatin::cell_value::CellValue::Binary(bytes) = content else { continue; };
+            for row in parse_shimcache_blob(&bytes) {
+                db.execute(
+                    "INSERT INTO shimcache (host_id, path, modified, position, executed, control_set) VALUES (?, ?, ?, ?, ?, ?)",
+                    duckdb::params![host_id, row.0, row.1, row.2, row.3, ""],
+                ).map_err(|err| err.to_string())?;
+                inserted += 1;
+            }
+        }
+    }
+    Ok(inserted)
+}
+
+fn parse_shimcache_blob(bytes: &[u8]) -> Vec<(String, String, i64, String)> {
+    let mut rows = Vec::new();
+    let mut index = 0;
+    let mut position = 0i64;
+    while index + 14 < bytes.len() {
+        if &bytes[index..index + 4] != b"10ts" {
+            index += 1;
+            continue;
+        }
+        if index + 14 > bytes.len() { break; }
+        let entry_len = u32::from_le_bytes(bytes[index + 8..index + 12].try_into().unwrap()) as usize;
+        let path_len = u16::from_le_bytes(bytes[index + 12..index + 14].try_into().unwrap()) as usize;
+        let path_at = index + 14;
+        if entry_len < 14 || path_at + path_len + 8 > bytes.len() || path_len == 0 || path_len > 1024 {
+            index += 4;
+            continue;
+        }
+        let path = String::from_utf16_lossy(
+            &bytes[path_at..path_at + path_len]
+                .chunks(2)
+                .filter_map(|pair| if pair.len() == 2 { Some(u16::from_le_bytes([pair[0], pair[1]])) } else { None })
+                .collect::<Vec<_>>(),
+        ).trim_end_matches('\u{0}').to_string();
+        if !path.contains('\\') && !path.contains('/') {
+            index += 4;
+            continue;
+        }
+        let time_at = path_at + path_len;
+        let filetime = i64::from_le_bytes(bytes[time_at..time_at + 8].try_into().unwrap());
+        let data_at = time_at + 8;
+        let mut executed = String::new();
+        if data_at + 2 <= bytes.len() {
+            let data_len = u16::from_le_bytes(bytes[data_at..data_at + 2].try_into().unwrap()) as usize;
+            if data_len >= 4 && data_at + 2 + data_len <= bytes.len() {
+                let data = &bytes[data_at + 2..data_at + 2 + data_len];
+                let flag = u32::from_le_bytes(data[data.len() - 4..].try_into().unwrap());
+                executed = if flag == 1 { "yes".into() } else { "no".into() };
+            }
+        }
+        rows.push((path, filetime_iso(filetime), position, executed));
+        position += 1;
+        index += if entry_len > 4 { entry_len } else { 4 };
+    }
+    rows
 }
