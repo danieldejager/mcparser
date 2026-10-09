@@ -435,22 +435,32 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Co
     let sha = file_sha256(zip_path).map_err(|err| err.to_string())?;
     let file = std::fs::File::open(zip_path).map_err(|err| err.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|err| err.to_string())?;
-    let mut found: Vec<(String, Host, Collection)> = Vec::new();
+    let mut client_info_names = Vec::new();
+    let mut nested_zips = Vec::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
         let name = entry.name().to_string();
         if name.ends_with("client_info.json") {
-            let mut body = String::new();
-            std::io::Read::read_to_string(&mut entry, &mut body).map_err(|err| err.to_string())?;
-            let host = host_from_client_info(&body)?;
-            let session = collection_from_same_zip(&mut archive, &name, &host.host_id, &sha, zip_path)?;
-            found.push((name, host, session));
+            client_info_names.push(name);
         } else if name.ends_with(".zip") && entry.size() < 80_000_000 {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
-            if let Some(hit) = nested_collector(&bytes, &sha, &name) {
-                found.push(hit);
-            }
+            nested_zips.push((name, bytes));
+        }
+    }
+    let mut found: Vec<(String, Host, Collection)> = Vec::new();
+    for name in client_info_names {
+        let mut entry = archive.by_name(&name).map_err(|err| err.to_string())?;
+        let mut body = String::new();
+        std::io::Read::read_to_string(&mut entry, &mut body).map_err(|err| err.to_string())?;
+        drop(entry);
+        let host = host_from_client_info(&body)?;
+        let session = collection_from_same_zip(&mut archive, &name, &host.host_id, &sha, zip_path)?;
+        found.push((name, host, session));
+    }
+    for (name, bytes) in nested_zips {
+        if let Some(hit) = nested_collector(&bytes, &sha, &name) {
+            found.push(hit);
         }
     }
     let Some((_, host, _)) = found.first() else {
