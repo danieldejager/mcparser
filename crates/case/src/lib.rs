@@ -493,7 +493,7 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
             nested_zips.push((name, bytes));
-        } else if keep_raw(&name) && entry.size() < 80_000_000 {
+        } else if !name.ends_with('/') && !name.ends_with('\\') && keep_raw(&name) && entry.size() < 80_000_000 {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
             raw_files.push((name, bytes));
@@ -545,6 +545,7 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
     let mut kept = Vec::new();
     for (name, bytes) in raw_files {
+        if name.ends_with('/') || name.ends_with('\\') { continue; }
         kept.push(write_kept(case_dir, &sha, &name, &bytes)?);
     }
     for (name, bytes) in &nested_zips {
