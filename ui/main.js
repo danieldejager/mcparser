@@ -288,8 +288,8 @@ async function coverage(caseDir) {
   const samples = [
     ["events", "SELECT event_id, count(*) AS events FROM events GROUP BY event_id ORDER BY events DESC LIMIT 3"],
     ["prefetch", "SELECT executable, run_count, last_run FROM prefetch ORDER BY run_count DESC LIMIT 3"],
-    ["userassist", "SELECT name, run_count FROM userassist WHERE name NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 3"],
-    ["amcache", "SELECT name, sha1, path FROM amcache WHERE kind = 'file' AND sha1 <> '' LIMIT 3"],
+    ["userassist", "SELECT \"name\", run_count FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 3"],
+    ["amcache", "SELECT \"name\", sha1, path FROM amcache WHERE kind = 'file' LIMIT 3"],
     ["shimcache", "SELECT position, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 3"],
     ["srum", "SELECT app, bytes_sent FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 3"],
     ["services", "SELECT name, start_mode, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
@@ -298,7 +298,7 @@ async function coverage(caseDir) {
   const parts = [];
   for (const [name, sql] of samples) {
     const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "not loaded"));
+    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + (queried.err || queried.out || "unknown")));
   }
   return parts.join("\n");
 }
