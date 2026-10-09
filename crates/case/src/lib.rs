@@ -503,9 +503,11 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
     let mut client_info_names = Vec::new();
     let mut nested_zips = Vec::new();
     let mut raw_files = Vec::new();
+    let entry_total = archive.len().max(1);
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
         let name = entry.name().to_string();
+        report_progress((2 + (i * 10 / entry_total)) as u8, &format!("Reading collector {}/{} {name}", i + 1, archive.len()));
         if name.ends_with("client_info.json") {
             client_info_names.push(name);
         } else if name.ends_with(".zip") && entry.size() < 80_000_000 {
@@ -528,7 +530,9 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
         let session = collection_from_same_zip(&mut archive, &name, &host.host_id, &sha, zip_path)?;
         found.push((name, host, session));
     }
-    for (name, bytes) in &nested_zips {
+    let nested_total = nested_zips.len().max(1);
+    for (index, (name, bytes)) in nested_zips.iter().enumerate() {
+        report_progress((12 + (index * 4 / nested_total)) as u8, &format!("Reading {name}"));
         if let Some(hit) = nested_collector(&bytes, &sha, &name) {
             found.push(hit);
         }
