@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.3.0 — 2026-10-09
+
+A case holds hosts and collections. One Velociraptor offline collector zip loads into the same DuckDB case as the event logs.
+
+### Added
+
+- Import a collector zip. Hosts are keyed by HostID, collections by session id
+- Prefetch, shimcache, SRUM, services, scheduled tasks, UserAssist and Amcache sit beside the events
+- The case window lists hosts and collections, and the import shows progress
+- Ask reads a sample from each loaded source. The progress line counts seconds while the model thinks
+- IOC matching against the timeline, kept in the case and carried in the handoff
+
+### Fixed
+
+- A second import of the same zip skips artifacts already recorded
+- UserAssist and Amcache are written by the collection import, not only by a separate command
+
+
 ## 0.2.9 — 2026-10-08
 
 The connect dialog names the key store for the machine it is running on.
