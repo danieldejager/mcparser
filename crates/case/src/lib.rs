@@ -191,7 +191,11 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
         [],
     );
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS hosts (
+        "CREATE TABLE IF NOT EXISTS case_info (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS hosts (
             host_id TEXT PRIMARY KEY,
             hostname TEXT NOT NULL,
             fqdn TEXT NOT NULL,
@@ -573,4 +577,14 @@ impl Host {
     fn clone_host(&self) -> Host {
         Host { host_id: self.host_id.clone(), hostname: self.hostname.clone(), fqdn: self.fqdn.clone(), os: self.os.clone(), arch: self.arch.clone() }
     }
+}
+
+pub fn save_analyst(catalog: &Path, name: &str) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO case_info (key, value) VALUES ('analyst', ?1)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [name],
+    )?;
+    Ok(())
 }

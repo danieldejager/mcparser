@@ -632,6 +632,64 @@ updateLines();
   transcript.append(runSql);
   note(`${who}: ${result.answer}`);
 };
+window.mcparser.onImportCollection(async () => {
+  const name = document.getElementById("analyst").value.trim();
+  if (!name) {
+    status.textContent = "Add your name before saving the case";
+    document.getElementById("analyst").focus();
+    await window.mcparser.handoffError("Add your name before saving the case");
+    return;
+  }
+  const picked = await window.mcparser.pickCollection();
+  if (!picked || picked.canceled || !picked.filePaths[0]) return;
+  const saved = await window.mcparser.pickCaseSave();
+  if (!saved || saved.canceled || !saved.filePaths[0]) return;
+  const dir = saved.filePaths[0];
+  const result = await window.mcparser.collect(dir, picked.filePaths[0]);
+  caseInput.value = dir;
+  if (result.code !== 0) {
+    status.textContent = "Import failed";
+    results.replaceChildren(document.createTextNode(result.err || result.out || "Import failed"));
+    return;
+  }
+  const named = await window.mcparser.saveAnalyst(dir, name);
+  if (named.code !== 0) {
+    status.textContent = "Case not saved";
+    results.replaceChildren(document.createTextNode(named.err || "Analyst name was not saved"));
+    return;
+  }
+  showImported(result.out);
+  status.textContent = "Collection imported";
+  await loadHosts();
+});
+
+function showImported(text) {
+  const lines = text.trim().split("\n").filter(Boolean);
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["Kind", "Host or session", "Collected", "File"]) {
+    const cell = document.createElement("th");
+    cell.textContent = label;
+    head.append(cell);
+  }
+  table.append(head);
+  for (const line of lines) {
+    const parts = line.split(" ");
+    const row = document.createElement("tr");
+    const kind = document.createElement("td");
+    kind.textContent = parts[0] || "";
+    const id = document.createElement("td");
+    id.textContent = parts[1] || "";
+    const when = document.createElement("td");
+    when.textContent = parts[0] === "host" ? parts.slice(2).join(" ") : (parts[2] || "");
+    const file = document.createElement("td");
+    file.textContent = parts[0] === "collection" ? (parts[3] || "") : "";
+    row.append(kind, id, when, file);
+    table.append(row);
+  }
+  results.replaceChildren(table);
+}
+
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;

@@ -295,6 +295,7 @@ function buildMenu() {
       label: "File",
       submenu: [
         { label: "Open EVTX...", accelerator: "CmdOrCtrl+O", click: openEvtx },
+        { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
         { label: "Export handoff...", click: () => win.webContents.send("export-handoff") },
         { label: "Open handoff...", click: () => win.webContents.send("open-handoff") },
         { type: "separator" },
@@ -395,6 +396,18 @@ function createWindow() {
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
 ipcMain.handle("hosts", (_event, caseDir) => run(["hosts", "--case", casePath(caseDir)]));
+ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
+  title: "Import Velociraptor collection",
+  properties: ["openFile"],
+  filters: [{ name: "Collector zip", extensions: ["zip"] }],
+}));
+ipcMain.handle("pick-case-save", async () => dialog.showOpenDialog(win, {
+  title: "Save case",
+  properties: ["openDirectory", "createDirectory"],
+  buttonLabel: "Save case",
+}));
+ipcMain.handle("collect", (_event, caseDir, file) => run(["collect", "--case", casePath(caseDir), file]));
+ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", sql]));
 ipcMain.handle("save-csv", async (_event, csv) => {

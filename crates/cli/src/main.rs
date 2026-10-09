@@ -20,6 +20,7 @@ fn main() -> ExitCode {
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
+        Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
         Some("-h" | "--help" | "help") | None => {
@@ -46,6 +47,7 @@ Commands:
   collect        Read a Velociraptor offline zip into the case catalog
   hosts          List hosts recorded in a case
   collections    List collections recorded in a case
+  save-analyst   Store the analyst name on the case
   query          Run SQL against the events in a case
   stats          Channels, providers, event ids, and the time range
   queries        List saved queries
@@ -181,6 +183,37 @@ fn collections(args: &mut impl Iterator<Item = String>) -> ExitCode {
             for collection in rows {
                 println!("{}\t{}\t{}\t{}", collection.session_id, collection.host_id, collection.collected_at, collection.source_name);
             }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn save_analyst(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser save-analyst --case <dir> --name <analyst>");
+        return ExitCode::from(2);
+    };
+    let mut name = String::new();
+    let mut rest = args.collect::<Vec<_>>();
+    if rest.first().map(String::as_str) == Some("--name") {
+        rest.remove(0);
+        name = rest.first().cloned().unwrap_or_default();
+    }
+    if name.trim().is_empty() {
+        eprintln!("analyst name is required");
+        return ExitCode::from(2);
+    }
+    if let Err(err) = std::fs::create_dir_all(&case_dir) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::save_analyst(&case_dir.join("catalog.sqlite"), name.trim()) {
+        Ok(()) => {
+            println!("saved analyst");
             ExitCode::SUCCESS
         }
         Err(err) => {
