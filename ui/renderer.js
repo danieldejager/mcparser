@@ -184,11 +184,40 @@ async function loadHosts() {
   }
 }
 
+function parseCsv(text) {
+  return text.trim().split("\n").filter(Boolean).map((line) => {
+    const cells = [];
+    let current = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i += 1) {
+      const char = line[i];
+      if (char === "\"") {
+        if (quoted && line[i + 1] === "\"") {
+          current += "\"";
+          i += 1;
+        } else quoted = !quoted;
+      } else if (char === "," && !quoted) {
+        cells.push(current);
+        current = "";
+      } else current += char;
+    }
+    cells.push(current);
+    return cells;
+  });
+}
+
+function rowKey(row) {
+  let hash = 0;
+  const text = row.join("|");
+  for (let i = 0; i < text.length; i += 1) hash = (hash * 33 + text.charCodeAt(i)) >>> 0;
+  return String(hash || 1);
+}
+
 function renderCsv(text) {
-  const rows = text.trim().split("\n").filter(Boolean).map((line) => line.split(","));
+  const rows = parseCsv(text);
   const table = document.createElement("table");
   const headers = rows[0] || [];
-  const recordIndex = headers.findIndex((header) => header.trim() === "record_id");
+  const recordIndex = headers.findIndex((header) => header.trim().replaceAll("\"", "") === "record_id");
   rows.forEach((row, index) => {
     const tr = document.createElement("tr");
     for (const cell of row) {
@@ -196,13 +225,13 @@ function renderCsv(text) {
       node.textContent = cell;
       tr.append(node);
     }
-    const recordId = recordIndex >= 0 ? (row[recordIndex] || "") : "";
+    const recordId = index === 0 ? "" : (recordIndex >= 0 && row[recordIndex] ? row[recordIndex] : rowKey(row));
     const node = document.createElement(index === 0 ? "th" : "td");
     node.textContent = index === 0 ? "note" : rowNotes.get(recordId) || "";
     tr.append(node);
     if (index > 0) {
       tr.style.cursor = "pointer";
-      tr.onclick = () => showNoteSheet(recordId, rowNotes.get(recordId) || "");
+      tr.onclick = () => showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
     }
     table.append(tr);
   });
@@ -262,9 +291,17 @@ updateLines();
   status.textContent = "Notes";
 }
 
-function showNoteSheet(recordId, body) {
+function showNoteSheet(recordId, body, rowText) {
   document.getElementById("note-record").value = recordId || "";
   document.getElementById("note-body").value = body || "";
+  const form = document.getElementById("note-form");
+  let row = document.getElementById("note-row");
+  if (!row) {
+    row = document.createElement("p");
+    row.id = "note-row";
+    form.insertBefore(row, document.getElementById("note-record"));
+  }
+  row.textContent = rowText || "";
   document.getElementById("note-sheet").hidden = false;
   document.getElementById("note-body").focus();
 }
@@ -274,10 +311,17 @@ async function saveNote(event) {
   const recordId = document.getElementById("note-record").value.trim();
   const body = document.getElementById("note-body").value.trim();
   document.getElementById("note-sheet").hidden = true;
-  if (!recordId || !body) return;
+  if (!caseDir()) {
+    status.textContent = "Open a case before saving a note";
+    return;
+  }
+  if (!recordId || !body) {
+    status.textContent = "A note needs a record id and a sentence";
+    return;
+  }
   const result = await window.mcparser.saveNote(caseDir(), recordId, body, sql.value);
-  if (result.code !== 0) {
-    status.textContent = result.err || "note failed";
+  if (!result || result.code !== 0) {
+    status.textContent = (result && (result.err || result.out)) || "note failed";
     return;
   }
   status.textContent = `noted ${recordId}`;
