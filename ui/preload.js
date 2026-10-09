@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   collections: (caseDir) => ipcRenderer.invoke("collections", caseDir),
   pickCollection: () => ipcRenderer.invoke("pick-collection"),
   pickCaseSave: () => ipcRenderer.invoke("pick-case-save"),
+  makeCaseDir: (parent, name) => ipcRenderer.invoke("make-case-dir", parent, name),
   collect: (caseDir, file) => ipcRenderer.invoke("collect", caseDir, file),
   saveAnalyst: (caseDir, name) => ipcRenderer.invoke("save-analyst", caseDir, name),
   onImportCollection: (handler) => ipcRenderer.on("import-collection", () => handler()),

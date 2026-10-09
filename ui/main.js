@@ -406,6 +406,13 @@ ipcMain.handle("pick-case-save", async () => dialog.showOpenDialog(win, {
   properties: ["openDirectory", "createDirectory"],
   buttonLabel: "Save case",
 }));
+ipcMain.handle("make-case-dir", (_event, parent, name) => {
+  const safe = String(name || "").replace(/[\\/:*?"<>|]/g, "-").trim();
+  if (!safe) return { error: "Case name is required" };
+  const dir = path.join(parent, safe.endsWith(".mcp") ? safe : safe + ".mcp");
+  fs.mkdirSync(dir, { recursive: true });
+  return { dir };
+});
 ipcMain.handle("collect", (_event, caseDir, file) => run(["collect", "--case", casePath(caseDir), file]));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));

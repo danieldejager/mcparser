@@ -642,9 +642,16 @@ window.mcparser.onImportCollection(async () => {
   }
   const picked = await window.mcparser.pickCollection();
   if (!picked || picked.canceled || !picked.filePaths[0]) return;
+  const caseName = await askCaseName();
+  if (!caseName) return;
   const saved = await window.mcparser.pickCaseSave();
   if (!saved || saved.canceled || !saved.filePaths[0]) return;
-  const dir = saved.filePaths[0];
+  const made = await window.mcparser.makeCaseDir(saved.filePaths[0], caseName);
+  if (!made || made.error) {
+    status.textContent = made && made.error ? made.error : "Case name is required";
+    return;
+  }
+  const dir = made.dir;
   const result = await window.mcparser.collect(dir, picked.filePaths[0]);
   caseInput.value = dir;
   if (result.code !== 0) {
@@ -732,3 +739,59 @@ if (analyst) {
 updateLines();
 window.mcparser.grokStatus().then(listModels);
 loadNotes().then(() => refresh().then(run)).then(loadChats);
+
+function askCaseName() {
+  const sheet = document.getElementById("case-sheet");
+  const form = document.getElementById("case-form");
+  const input = document.getElementById("case-name");
+  sheet.hidden = false;
+  input.value = "";
+  input.focus();
+  return new Promise((resolve) => {
+    function finish(value) {
+      sheet.hidden = true;
+      form.onsubmit = null;
+      document.getElementById("case-cancel").onclick = null;
+      resolve(value);
+    }
+    form.onsubmit = (event) => {
+      event.preventDefault();
+      finish(input.value.trim());
+    };
+    document.getElementById("case-cancel").onclick = () => finish("");
+  });
+}
+
+function restoreWidth(pane, key) {
+  const saved = localStorage.getItem(key);
+  if (!saved) return;
+  pane.style.width = saved;
+  pane.style.flexBasis = saved;
+}
+
+function splitter(handle, pane, edge, key) {
+  restoreWidth(pane, key);
+  handle.onpointerdown = (event) => {
+    event.preventDefault();
+    handle.classList.add("dragging");
+    const startX = event.clientX;
+    const start = pane.getBoundingClientRect().width;
+    function move(next) {
+      const delta = next.clientX - startX;
+      const width = Math.max(180, Math.min(720, edge === "left" ? start + delta : start - delta));
+      pane.style.width = width + "px";
+      pane.style.flexBasis = width + "px";
+    }
+    function up() {
+      handle.classList.remove("dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      localStorage.setItem(key, pane.style.width);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+}
+
+splitter(document.getElementById("split-left"), document.getElementById("case-pane"), "left", "mcparser-case-width");
+splitter(document.getElementById("split-right"), document.getElementById("grok"), "right", "mcparser-chat-width");

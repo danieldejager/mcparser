@@ -6,7 +6,7 @@
   <link rel="stylesheet" href="studio.css">
 </head>
 <body>
-  <aside>
+  <aside id="case-pane">
     <details open>
       <summary>Case</summary>
       <input id="case" value="fixtures/data2.mcp">
@@ -32,6 +32,7 @@
       <ul id="hunts"></ul>
     </details>
   </aside>
+  <div class="split" id="split-left" title="Drag to resize"></div>
   <main>
     <section class="editor">
       <header>
@@ -60,6 +61,7 @@ LIMIT 20</textarea>
       <div id="results"></div>
     </section>
   </main>
+  <div class="split" id="split-right" title="Drag to resize"></div>
   <aside id="grok" class="chat" hidden>
     <h1>AI Model</h1>
     <select id="vendor">
@@ -101,6 +103,16 @@ LIMIT 20</textarea>
       <div class="sheet-actions">
         <button type="button" id="query-cancel">Cancel</button>
         <button type="submit">Save</button>
+      </div>
+    </form>
+  </div>
+  <div id="case-sheet" class="sheet" hidden>
+    <form id="case-form">
+      <h1>Case name</h1>
+      <input id="case-name" placeholder="DPW-AUS-pVnn0Tq" required>
+      <div class="sheet-actions">
+        <button type="button" id="case-cancel">Cancel</button>
+        <button type="submit">Save case</button>
       </div>
     </form>
   </div>
