@@ -454,13 +454,26 @@ fn safe_name(name: &str) -> String {
 }
 
 fn write_kept(case_dir: &Path, sha: &str, name: &str, bytes: &[u8]) -> Result<std::path::PathBuf, String> {
+    if name.ends_with('/') || name.ends_with('\\') { return Err("directory entry".into()); }
     let relative = safe_name(name);
     if relative.is_empty() { return Err("empty archive name".into()); }
     let path = case_dir.join("files").join(sha).join(&relative);
-    if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    if path.is_dir() {
+        std::fs::remove_dir_all(&path).map_err(|err| format!("{}: {err}", path.display()))?;
     }
-    std::fs::write(&path, bytes).map_err(|err| err.to_string())?;
+    if let Some(parent) = path.parent() {
+        let mut cursor = parent.to_path_buf();
+        let mut blocked = Vec::new();
+        while !cursor.exists() {
+            blocked.push(cursor.clone());
+            if !cursor.pop() { break; }
+        }
+        if cursor.is_file() {
+            std::fs::remove_file(&cursor).map_err(|err| format!("{}: {err}", cursor.display()))?;
+        }
+        std::fs::create_dir_all(parent).map_err(|err| format!("{}: {err}", parent.display()))?;
+    }
+    std::fs::write(&path, bytes).map_err(|err| format!("{}: {err}", path.display()))?;
     Ok(path)
 }
 
@@ -540,10 +553,14 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
         for i in 0..nested.len() {
             let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
             let entry_name = entry.name().to_string();
-            if !keep_raw(&entry_name) || entry.size() >= 80_000_000 { continue; }
+            if entry_name.ends_with('/') || !keep_raw(&entry_name) || entry.size() >= 80_000_000 { continue; }
             let mut body = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
-            kept.push(write_kept(case_dir, &sha, &format!("{name}/{entry_name}"), &body)?);
+            match write_kept(case_dir, &sha, &format!("{name}/{entry_name}"), &body) {
+                Ok(path) => kept.push(path),
+                Err(err) if err == "directory entry" => {}
+                Err(err) => return Err(err),
+            }
         }
     }
     Ok((hosts, saved, kept))
