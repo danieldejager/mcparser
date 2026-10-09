@@ -134,10 +134,9 @@ async function refresh() {
   const channels = section(result.out, "channels").map((row) => row[0]);
   const providers = section(result.out, "providers").map((row) => row[0]);
   const eventIds = section(result.out, "event ids");
-  const source = section(result.out, "sources")[0] || [];
-  fact("File", source[0] ? source[0].split("/").pop() : "-");
-  fact("Size", bytes(source[2]));
-  fact("SHA256", source[1]);
+  const collected = await window.mcparser.collections(caseDir());
+  const collectionCount = collected.code === 0 ? collected.out.trim().split("\n").filter(Boolean).length : 0;
+  fact("Collections", String(collectionCount || 1));
   fact("Events", range[2]);
   fact("Unique event IDs", String(eventIds.length));
   fact("First", range[0]);
