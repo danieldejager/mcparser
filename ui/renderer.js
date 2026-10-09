@@ -188,7 +188,7 @@ function renderCsv(text) {
   const rows = text.trim().split("\n").filter(Boolean).map((line) => line.split(","));
   const table = document.createElement("table");
   const headers = rows[0] || [];
-  const recordIndex = headers.indexOf("record_id");
+  const recordIndex = headers.findIndex((header) => header.trim() === "record_id");
   rows.forEach((row, index) => {
     const tr = document.createElement("tr");
     for (const cell of row) {
@@ -196,14 +196,13 @@ function renderCsv(text) {
       node.textContent = cell;
       tr.append(node);
     }
-    if (recordIndex >= 0) {
-      const node = document.createElement(index === 0 ? "th" : "td");
-      node.textContent = index === 0 ? "note" : rowNotes.get(row[recordIndex]) || "";
-      tr.append(node);
-      if (index > 0) {
-        tr.style.cursor = "pointer";
-        tr.onclick = () => showNoteSheet(row[recordIndex], rowNotes.get(row[recordIndex]) || "");
-      }
+    const recordId = recordIndex >= 0 ? (row[recordIndex] || "") : "";
+    const node = document.createElement(index === 0 ? "th" : "td");
+    node.textContent = index === 0 ? "note" : rowNotes.get(recordId) || "";
+    tr.append(node);
+    if (index > 0) {
+      tr.style.cursor = "pointer";
+      tr.onclick = () => showNoteSheet(recordId, rowNotes.get(recordId) || "");
     }
     table.append(tr);
   });
@@ -296,6 +295,7 @@ async function run() {
     return;
   }
   lastCsv = result.out;
+  await loadNotes();
   const rows = renderCsv(result.out);
   status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
   const analyst = document.getElementById("analyst").value.trim();
