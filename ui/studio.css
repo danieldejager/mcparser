@@ -82,3 +82,6 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 
 button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place-items: center; font-size: 14px; line-height: 1; }
 #send.icon { align-self: flex-end; }
+
+#toolbar svg { width: 16px; height: 16px; display: block; }
+#tb-run { font-size: 12px; }

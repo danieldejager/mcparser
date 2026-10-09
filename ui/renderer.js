@@ -1052,6 +1052,8 @@ document.getElementById("tb-new").onclick = () => {
   updateLines();
   sql.focus();
 };
+document.getElementById("tb-save").onclick = showQuerySheet;
+document.getElementById("tb-save-all").onclick = showQuerySheet;
 document.getElementById("tb-run").onclick = run;
 
 const iocSheet = document.getElementById("ioc-sheet");
