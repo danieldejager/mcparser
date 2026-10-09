@@ -252,10 +252,10 @@ async function caseContext(caseDir) {
     "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30"]);
   const prefetchText = prefetch.code === 0 ? prefetch.out || "" : "prefetch table is not loaded";
   const userassist = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, run_count, last_run, name FROM userassist WHERE name NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30"]);
+    "SELECT host_id, run_count, last_run, \"name\" FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30"]);
   const userassistText = userassist.code === 0 ? userassist.out || "" : "userassist table is not loaded";
   const amcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT kind, name, sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30"]);
+    "SELECT kind, \"name\", sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30"]);
   const amcacheText = amcache.code === 0 ? amcache.out || "" : "amcache table is not loaded";
   const events = await run(["query", "--case", casePath(caseDir), "--format", "csv",
     "SELECT event_id, channel, count(*) AS events FROM events GROUP BY event_id, channel ORDER BY events DESC LIMIT 20"]);
