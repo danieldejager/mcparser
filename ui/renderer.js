@@ -652,17 +652,11 @@ window.mcparser.onImportCollection(async () => {
     return;
   }
   const dir = made.dir;
-  const result = await window.mcparser.collect(dir, picked.filePaths[0]);
+  const result = await window.mcparser.collect(dir, picked.filePaths[0], name);
   caseInput.value = dir;
   if (result.code !== 0) {
     status.textContent = "Import failed";
     results.replaceChildren(document.createTextNode(result.err || result.out || "Import failed"));
-    return;
-  }
-  const named = await window.mcparser.saveAnalyst(dir, name);
-  if (named.code !== 0) {
-    status.textContent = "Case not saved";
-    results.replaceChildren(document.createTextNode(named.err || "Analyst name was not saved"));
     return;
   }
   showImported(result.out);
@@ -670,11 +664,50 @@ window.mcparser.onImportCollection(async () => {
   await loadHosts();
 });
 
+window.mcparser.onImportEvtx(async (payload) => {
+  const name = document.getElementById("analyst").value.trim();
+  if (!name) {
+    status.textContent = "Add your name before saving the case";
+    document.getElementById("analyst").focus();
+    await window.mcparser.handoffError("Add your name before saving the case");
+    return;
+  }
+  let dir = caseDir();
+  if (dir) {
+    const choice = await window.mcparser.chooseCaseTarget(dir);
+    if (!choice || choice.response === 2) return;
+    if (choice.response === 1) dir = "";
+  }
+  if (!dir) {
+    const caseName = await askCaseName();
+    if (!caseName) return;
+    const saved = await window.mcparser.pickCaseSave();
+    if (!saved || saved.canceled || !saved.filePaths[0]) return;
+    const made = await window.mcparser.makeCaseDir(saved.filePaths[0], caseName);
+    if (!made || made.error) {
+      status.textContent = made && made.error ? made.error : "Case name is required";
+      return;
+    }
+    dir = made.dir;
+  }
+  const result = await window.mcparser.ingest(dir, payload.file);
+  caseInput.value = dir;
+  if (result.code !== 0) {
+    status.textContent = "Import failed";
+    results.replaceChildren(document.createTextNode(result.err || result.out || "Import failed"));
+    return;
+  }
+  await window.mcparser.saveAnalyst(dir, name);
+  showImported(result.out);
+  status.textContent = "Event log imported";
+  await loadHosts();
+});
+
 function showImported(text) {
   const lines = text.trim().split("\n").filter(Boolean);
   const table = document.createElement("table");
   const head = document.createElement("tr");
-  for (const label of ["Kind", "Host or session", "Collected", "File"]) {
+  for (const label of ["Kind", "Host or session", "Collected", "File", "SHA256"]) {
     const cell = document.createElement("th");
     cell.textContent = label;
     head.append(cell);
@@ -690,8 +723,10 @@ function showImported(text) {
     const when = document.createElement("td");
     when.textContent = parts[0] === "host" ? parts.slice(2).join(" ") : (parts[2] || "");
     const file = document.createElement("td");
-    file.textContent = parts[0] === "collection" ? (parts[3] || "") : "";
-    row.append(kind, id, when, file);
+    file.textContent = parts[0] === "collection" ? (parts[3] || "") : (parts[0] === "file" ? (parts[1] || "") : "");
+    const sha = document.createElement("td");
+    sha.textContent = parts[0] === "collection" ? (parts[4] || "") : (line.includes("sha256=") ? line.split("sha256=")[1].split(" ")[0] : "");
+    row.append(kind, id, when, file, sha);
     table.append(row);
   }
   results.replaceChildren(table);

@@ -588,3 +588,13 @@ pub fn save_analyst(catalog: &Path, name: &str) -> Result<(), rusqlite::Error> {
     )?;
     Ok(())
 }
+
+pub fn record_host(catalog: &Path, host: &Host) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "INSERT INTO hosts (host_id, hostname, fqdn, os, arch) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(host_id) DO UPDATE SET hostname = excluded.hostname, fqdn = excluded.fqdn, os = excluded.os, arch = excluded.arch",
+        rusqlite::params![host.host_id, host.hostname, host.fqdn, host.os, host.arch],
+    )?;
+    Ok(())
+}

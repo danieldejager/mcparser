@@ -128,22 +128,45 @@ The API key is not in the case.
 
 fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser collect --case <dir> <collector.zip>");
+        eprintln!("usage: mcparser collect --case <dir> [--analyst <name>] <collector.zip>");
         return ExitCode::from(2);
     };
-    let Some(zip_path) = args.next() else {
-        eprintln!("usage: mcparser collect --case <dir> <collector.zip>");
+    let mut rest: Vec<String> = args.collect();
+    let mut analyst = String::new();
+    if rest.first().map(String::as_str) == Some("--analyst") {
+        rest.remove(0);
+        analyst = rest.first().cloned().unwrap_or_default();
+        if !rest.is_empty() {
+            rest.remove(0);
+        }
+    }
+    let Some(zip_path) = rest.first().cloned() else {
+        eprintln!("usage: mcparser collect --case <dir> [--analyst <name>] <collector.zip>");
         return ExitCode::from(2);
     };
     if let Err(err) = std::fs::create_dir_all(&case_dir) {
         eprintln!("{err}");
         return ExitCode::from(1);
     }
-    match case::import_collector(&case_dir.join("catalog.sqlite"), zip_path.as_ref()) {
+    let catalog = case_dir.join("catalog.sqlite");
+    if !analyst.trim().is_empty() {
+        if let Err(err) = case::save_analyst(&catalog, analyst.trim()) {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    }
+    let sha = match case::file_sha256(zip_path.as_ref()) {
+        Ok(sha) => sha,
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    };
+    match case::import_collector(&catalog, zip_path.as_ref()) {
         Ok((host, collections)) => {
             println!("host {} {} {} {}", host.host_id, host.hostname, host.os, host.arch);
             for collection in collections {
-                println!("collection {} {} {}", collection.session_id, collection.collected_at, collection.source_name);
+                println!("collection {} {} {} {}", collection.session_id, collection.collected_at, collection.source_name, sha);
             }
             ExitCode::SUCCESS
         }
@@ -310,7 +333,14 @@ fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
             eprintln!("{err}");
             return ExitCode::from(1);
         }
-        println!("inserted={inserted} file={path}");
+        let computer = events.iter().find(|event| !event.computer.is_empty()).map(|event| event.computer.clone()).unwrap_or_else(|| path.clone());
+        let host = case::Host { host_id: format!("evtx:{computer}"), hostname: computer.clone(), fqdn: computer, os: "Windows event log".into(), arch: String::new() };
+        if let Err(err) = case::record_host(&catalog, &host) {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+        println!("host {} {} {} {}", host.host_id, host.hostname, host.os, host.arch);
+        println!("file {path} sha256={sha256} inserted={inserted}");
     }
     ExitCode::SUCCESS
 }
