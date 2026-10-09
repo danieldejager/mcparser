@@ -1,6 +1,8 @@
 # The case
 
-A case is a folder. McParser creates it beside the log you open, and it names the folder after that file, with `.mcp` on the end. If you opened `Security.evtx`, the folder is `Security.evtx.mcp`.
+A case is a folder. Opening an `.evtx` creates it beside that file, named `<file>.mcp`. A collector import uses the folder you pass to `collect`. One case can hold more than one host.
+
+`events.duckdb` holds the events and the collection tables: `prefetch`, `userassist`, `amcache`, `shimcache`, `srum`, `services`, and `tasks`. `catalog.sqlite` holds the hosts, the collections, and the work you did. The raw collector files stay under `files/`.
 
 Two files live in that folder.
 

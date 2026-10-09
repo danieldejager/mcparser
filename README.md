@@ -1,14 +1,23 @@
 # McParser
 
-Offline Windows event log parser. Open a `.evtx` file and query it with SQL. The same case runs on macOS, Windows, and Ubuntu. The log never has to be on a Windows machine.
+![McParser](docs/banner.png)
 
-What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1).
+McParser is for the host you cannot put an agent on. A one-shot collector zip, or a copied `.evtx`, leaves on a USB. The analysis runs on your Mac, Windows machine, or Ubuntu box, off the plant network. The case stays a folder on that machine. SQL runs locally. Notes, hunts, the run trail, and the chat transcript travel with the case. The API key does not.
 
-The manual is [docs/manual](docs/manual/README.md).
+A case can hold more than one host. Event logs, Prefetch, Amcache, Shimcache, UserAssist, SRUM, services, and scheduled tasks sit on one timeline, keyed by host. You query them with the same SQL, mark a row, and hand the folder to the next analyst as an encrypted `.mcpz`.
 
-![McParser](docs/mcparser2.png)
+What is next: [McParser project](https://github.com/users/danieldejager/projects/2/views/1). The manual is [docs/manual](docs/manual/README.md).
 
-A version tag builds the three installers. The workflow is `.github/workflows/release.yml`. You do not package a release by hand.
+## Built
+
+- Open an offline `.evtx` and query it with SQL. `event_data` is JSON, so a field such as `TargetUserName` is filterable.
+- Import a Velociraptor offline collector zip. Hosts are keyed by HostID, collections by session id.
+- Prefetch, shimcache, SRUM, services, scheduled tasks, UserAssist, and Amcache load beside the events. A second import of the same zip skips what is already recorded.
+- Stats, saved queries, and MITRE hunts. Results export as a table, CSV, or JSONL.
+- A note on a row, and a run trail with a label and the previous run.
+- Ask Grok, Claude, or OpenAI about the case. The key stays in the OS keychain. The question, the SELECT, and the answer stay in the case.
+- File → Export handoff writes an encrypted `.mcpz`. The key is not in the file.
+- Installers for macOS, Windows ARM64, and Ubuntu amd64 and arm64, built when a version tag is pushed.
 
 ## Install
 
@@ -48,6 +57,10 @@ Ask writes one SELECT, runs it, and shows the answer beside the SQL. The first a
 The app is the usual way in. The `mcparser` binary is the same parser.
 
 ```bash
+mcparser collect --case Emerio7.mcp /path/to/collector.zip
+mcparser hosts --case Emerio7.mcp
+mcparser query --case Emerio7.mcp \
+  "SELECT executable, run_count FROM prefetch ORDER BY run_count DESC LIMIT 20"
 mcparser ingest --case case.mcp Security.evtx System.evtx
 mcparser stats --case case.mcp
 mcparser query --case case.mcp \

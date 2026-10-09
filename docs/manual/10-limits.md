@@ -10,4 +10,6 @@ A failed ask is not stored. A command-line query is not a run. The chat transcri
 
 There is no server, and there is no account. Two analysts share a case by copying the folder or by exchanging a handoff file. They do not sign in to McParser.
 
-Those are the edges of this release. The work inside them is the case, the query, the hunt, the note, the trail, the ask, and the handoff.
+A collector zip is imported from the command line with `collect`. The window still opens an `.evtx` from File. Rendered Event Viewer sentences are still not in the file.
+
+Those are the edges of this release. The work inside them is the case, the query, the hunt, the note, the trail, the ask, the handoff, and the collector import.

@@ -4,7 +4,7 @@ This is the long version. The page at the root of the repository is only the dow
 
 McParser reads Windows event logs on a Mac, on Windows, or on Ubuntu. The log does not have to stay on the machine that wrote it. You open the file, you ask it questions in SQL, and you keep the notes in the same folder as the events.
 
-Current packages are on the [0.2.8 release](https://github.com/danieldejager/mcparser/releases/tag/v0.2.8). The log-mark icon is on the rebuilt [0.2.7 packages](https://github.com/danieldejager/mcparser/releases/tag/v0.2.7) as well.
+Current packages are on the [releases page](https://github.com/danieldejager/mcparser/releases). 0.3.0 adds hosts and a collector zip to the case.
 
 1. [The case](01-case.md)
 2. [Install](02-install.md)
