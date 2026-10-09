@@ -487,7 +487,7 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Co
         let session = collection_from_same_zip(&mut archive, &name, &host.host_id, &sha, zip_path)?;
         found.push((name, host, session));
     }
-    for (name, bytes) in nested_zips {
+    for (name, bytes) in &nested_zips {
         if let Some(hit) = nested_collector(&bytes, &sha, &name) {
             found.push(hit);
         }
