@@ -22,6 +22,7 @@ fn main() -> ExitCode {
         Some("collections") => collections(&mut args),
         Some("prefetch") => prefetch(&mut args),
         Some("amcache") => amcache(&mut args),
+        Some("userassist") => userassist(&mut args),
         Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
@@ -891,6 +892,32 @@ fn amcache(args: &mut impl Iterator<Item = String>) -> ExitCode {
         return ExitCode::from(1);
     }
     match case::query(&db, "SELECT host_id, kind, name, sha1, modified, path FROM amcache ORDER BY modified DESC") {
+        Ok(rows) => {
+            print_rows(&[], &rows, "table");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn userassist(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser userassist --case <dir>");
+        return ExitCode::from(2);
+    };
+    let catalog = case_dir.join("catalog.sqlite");
+    let db = case_dir.join("events.duckdb");
+    match case::ingest_userassist(&catalog, &db) {
+        Ok(count) => println!("userassist inserted={count}"),
+        Err(err) => {
+            eprintln!("{err}");
+            return ExitCode::from(1);
+        }
+    }
+    match case::query(&db, "SELECT host_id, run_count, last_run, name FROM userassist ORDER BY run_count DESC") {
         Ok(rows) => {
             print_rows(&[], &rows, "table");
             ExitCode::SUCCESS

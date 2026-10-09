@@ -926,3 +926,95 @@ fn amcache_sha(raw: String) -> String {
         raw
     }
 }
+
+
+pub fn ingest_userassist(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS userassist (
+            host_id VARCHAR, guid VARCHAR, name VARCHAR, run_count INTEGER, last_run VARCHAR
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM userassist WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for hive in ntuser_hives(&root) {
+            inserted += load_userassist(&db, &host_id, &hive)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn ntuser_hives(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            if name.eq_ignore_ascii_case("NTUSER.DAT") {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_userassist(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Result<usize, String> {
+    let parser = notatin::parser_builder::ParserBuilder::from_path(hive.to_path_buf())
+        .build()
+        .map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for key in notatin::parser::ParserIterator::new(&parser) {
+        let lower = key.path.to_ascii_lowercase();
+        if !lower.contains("explorer\\userassist") || !lower.ends_with("\\count") { continue; }
+        let guid = key.path.rsplit('\\').nth(1).unwrap_or("").to_string();
+        for value in key.value_iter() {
+            let (content, _) = value.get_content();
+            let notatin::cell_value::CellValue::Binary(bytes) = content else { continue; };
+            let (run_count, last_run) = userassist_counts(&bytes);
+            let name = rot13(&value.get_pretty_name());
+            if name.is_empty() || name.starts_with("UEME_") { continue; }
+            db.execute(
+                "INSERT INTO userassist (host_id, guid, name, run_count, last_run) VALUES (?, ?, ?, ?, ?)",
+                duckdb::params![host_id, guid, name, run_count, last_run],
+            ).map_err(|err| err.to_string())?;
+            inserted += 1;
+        }
+    }
+    Ok(inserted)
+}
+
+fn userassist_counts(bytes: &[u8]) -> (i64, String) {
+    if bytes.len() < 8 { return (0, String::new()); }
+    let run_count = i64::from(u32::from_le_bytes(bytes[4..8].try_into().unwrap_or([0; 4])));
+    let last = if bytes.len() >= 68 {
+        i64::from_le_bytes(bytes[60..68].try_into().unwrap_or([0; 8]))
+    } else if bytes.len() >= 16 {
+        i64::from_le_bytes(bytes[8..16].try_into().unwrap_or([0; 8]))
+    } else {
+        0
+    };
+    (run_count, filetime_iso(last))
+}
+
+fn rot13(text: &str) -> String {
+    text.chars().map(|ch| match ch {
+        'a'..='z' => char::from(b'a' + (ch as u8 - b'a' + 13) % 26),
+        'A'..='Z' => char::from(b'A' + (ch as u8 - b'A' + 13) % 26),
+        other => other,
+    }).collect()
+}
