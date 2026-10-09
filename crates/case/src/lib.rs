@@ -442,9 +442,11 @@ pub fn collections(catalog: &Path) -> Result<Vec<Collection>, rusqlite::Error> {
 }
 
 fn keep_raw(name: &str) -> bool {
-    let lower = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+    let lower_path = name.to_ascii_lowercase();
+    let lower = lower_path.rsplit(['/', '\\']).next().unwrap_or(&lower_path);
     lower == "ntuser.dat" || lower == "software.hiv" || lower == "system" || lower == "system.hiv"
         || lower == "amcache.hve" || lower == "srudb.dat" || lower.ends_with(".pf") || lower.ends_with(".json") || lower.ends_with(".jsonl")
+        || lower.ends_with(".xml") || lower_path.contains("/tasks/") || lower_path.contains("\\tasks\\")
 }
 
 fn safe_name(name: &str) -> String {
@@ -1352,6 +1354,109 @@ fn load_srudb(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usi
             }
         }
         Err(err) => eprintln!("srum app {}: {err}", path.display()),
+    }
+    Ok(inserted)
+}
+
+
+pub fn ingest_tasks(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS tasks (
+            host_id VARCHAR, path VARCHAR, command VARCHAR, arguments VARCHAR, user_id VARCHAR, enabled VARCHAR
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM tasks WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for path in task_files(&root) {
+            inserted += load_task_file(&db, &host_id, &path)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn task_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let text = path.to_string_lossy().to_ascii_lowercase();
+            if text.ends_with(".xml") || text.contains("/tasks/") || text.contains("\\tasks\\") {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_task_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let body = match std::fs::read_to_string(path) {
+        Ok(body) => body,
+        Err(_) => return Ok(0),
+    };
+    if body.trim_start().starts_with('{') || body.trim_start().starts_with('[') {
+        return load_task_json(db, host_id, &body);
+    }
+    let lower = body.to_ascii_lowercase();
+    if !lower.contains("<command") && !lower.contains("<task") {
+        return Ok(0);
+    }
+    let command = xml_tag(&body, "Command");
+    let arguments = xml_tag(&body, "Arguments");
+    if command.is_empty() && arguments.is_empty() {
+        return Ok(0);
+    }
+    db.execute(
+        "INSERT INTO tasks (host_id, path, command, arguments, user_id, enabled) VALUES (?, ?, ?, ?, ?, ?)",
+        duckdb::params![host_id, path.display().to_string(), command, arguments, xml_tag(&body, "UserId"), xml_tag(&body, "Enabled")],
+    ).map_err(|err| err.to_string())?;
+    Ok(1)
+}
+
+fn xml_tag(body: &str, tag: &str) -> String {
+    let open = format!("<{tag}");
+    let Some(start) = body.to_ascii_lowercase().find(&open.to_ascii_lowercase()) else { return String::new() };
+    let Some(gt) = body[start..].find('>') else { return String::new() };
+    let from = start + gt + 1;
+    let close = format!("</{tag}>");
+    let Some(end) = body[from..].to_ascii_lowercase().find(&close.to_ascii_lowercase()) else { return String::new() };
+    body[from..from + end].trim().to_string()
+}
+
+fn load_task_json(db: &duckdb::Connection, host_id: &str, body: &str) -> Result<usize, String> {
+    let mut rows = Vec::new();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
+        if let Some(list) = value.as_array() {
+            rows.extend(list.iter().cloned());
+        } else if value.get("Command").is_some() || value.get("FullPath").is_some() {
+            rows.push(value);
+        }
+    }
+    let mut inserted = 0;
+    for row in rows {
+        let command = json_text(&row, &["Command", "command"]);
+        let path = json_text(&row, &["FullPath", "TaskName", "Path", "OSPath"]);
+        if command.is_empty() && path.is_empty() { continue; }
+        db.execute(
+            "INSERT INTO tasks (host_id, path, command, arguments, user_id, enabled) VALUES (?, ?, ?, ?, ?, ?)",
+            duckdb::params![host_id, path, command, json_text(&row, &["Arguments", "arguments"]), json_text(&row, &["UserId", "Principal", "user_id"]), json_text(&row, &["Enabled", "enabled"])],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
     }
     Ok(inserted)
 }

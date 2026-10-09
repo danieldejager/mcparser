@@ -24,6 +24,7 @@ fn main() -> ExitCode {
         Some("amcache") => amcache(&mut args),
         Some("shimcache") => shimcache(&mut args),
         Some("srum") => srum(&mut args),
+        Some("tasks") => tasks(&mut args),
         Some("userassist") => userassist(&mut args),
         Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
@@ -240,6 +241,13 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             }
             match case::ingest_srum(&catalog, &case_dir.join("events.duckdb")) {
                 Ok(count) => println!("srum inserted={count}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::from(1);
+                }
+            }
+            match case::ingest_tasks(&catalog, &case_dir.join("events.duckdb")) {
+                Ok(count) => println!("tasks inserted={count}"),
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::from(1);
@@ -897,6 +905,30 @@ fn case_dir(args: &mut impl Iterator<Item = String>) -> Option<PathBuf> {
 }
 
 
+
+
+fn tasks(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser tasks --case <dir>");
+        return ExitCode::from(2);
+    };
+    let catalog = case_dir.join("catalog.sqlite");
+    let db = case_dir.join("events.duckdb");
+    if let Err(err) = case::ingest_tasks(&catalog, &db) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::query(&db, "SELECT host_id, enabled, user_id, command, arguments, path FROM tasks ORDER BY command") {
+        Ok(rows) => {
+            print_rows(&[], &rows, "table");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
 
 fn srum(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let Some(case_dir) = case_dir(args) else {
