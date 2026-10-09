@@ -444,7 +444,7 @@ pub fn collections(catalog: &Path) -> Result<Vec<Collection>, rusqlite::Error> {
 fn keep_raw(name: &str) -> bool {
     let lower = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
     lower == "ntuser.dat" || lower == "software.hiv" || lower == "system" || lower == "system.hiv"
-        || lower == "amcache.hve" || lower.ends_with(".pf") || lower.ends_with(".json") || lower.ends_with(".jsonl")
+        || lower == "amcache.hve" || lower == "srudb.dat" || lower.ends_with(".pf") || lower.ends_with(".json") || lower.ends_with(".jsonl")
 }
 
 fn safe_name(name: &str) -> String {
@@ -1199,4 +1199,159 @@ fn parse_shimcache_blob(bytes: &[u8]) -> Vec<(String, String, i64, String)> {
         index += if entry_len > 4 { entry_len } else { 4 };
     }
     rows
+}
+
+
+pub fn ingest_srum(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS srum (
+            host_id VARCHAR, kind VARCHAR, timestamp VARCHAR, app VARCHAR, user_sid VARCHAR,
+            bytes_sent BIGINT, bytes_received BIGINT, foreground_cycles BIGINT, background_cycles BIGINT
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM srum WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for path in srum_files(&root) {
+            inserted += load_srum_file(&db, &host_id, &path)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn srum_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+            if name == "srudb.dat" || name.ends_with(".json") || name.ends_with(".jsonl") {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_srum_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+    if name == "srudb.dat" {
+        return load_srudb(db, host_id, path);
+    }
+    let body = match std::fs::read_to_string(path) {
+        Ok(body) => body,
+        Err(_) => return Ok(0),
+    };
+    if !body.to_ascii_lowercase().contains("bytessent") && !body.to_ascii_lowercase().contains("foregroundcycletime") && !body.to_ascii_lowercase().contains("bytesrecvd") {
+        return Ok(0);
+    }
+    let mut rows = Vec::new();
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
+        if let Some(list) = value.as_array() {
+            rows.extend(list.iter().cloned());
+        } else if value.get("App").is_some() || value.get("BytesSent").is_some() {
+            rows.push(value);
+        }
+    }
+    if rows.is_empty() {
+        for line in body.lines() {
+            let line = line.trim();
+            if line.is_empty() { continue; }
+            if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+                rows.push(value);
+            }
+        }
+    }
+    let mut inserted = 0;
+    for row in rows {
+        let app = json_text(&row, &["App", "Application", "Exe", "app"]);
+        let sent = json_i64(&row, &["BytesSent", "bytes_sent"]);
+        let received = json_i64(&row, &["BytesRecvd", "BytesReceived", "bytes_received"]);
+        if app.is_empty() && sent == 0 && received == 0 && json_text(&row, &["TimeStamp", "Timestamp"]).is_empty() {
+            continue;
+        }
+        let kind = if sent > 0 || received > 0 { "network" } else { "app" };
+        db.execute(
+            "INSERT INTO srum (host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![
+                host_id,
+                kind,
+                json_text(&row, &["TimeStamp", "Timestamp", "timestamp"]),
+                app,
+                json_text(&row, &["UserSid", "User", "user_sid"]),
+                sent,
+                received,
+                json_i64(&row, &["ForegroundCycleTime", "foreground_cycles"]),
+                json_i64(&row, &["BackgroundCycleTime", "background_cycles"]),
+            ],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+fn json_i64(value: &serde_json::Value, keys: &[&str]) -> i64 {
+    for key in keys {
+        if let Some(item) = value.get(*key) {
+            if let Some(n) = item.as_i64() { return n; }
+            if let Some(n) = item.as_u64() { return n as i64; }
+            if let Some(text) = item.as_str() {
+                if let Ok(n) = text.parse::<i64>() { return n; }
+            }
+        }
+    }
+    0
+}
+
+fn load_srudb(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let names = match srum_parser::parse_id_map(path) {
+        Ok(rows) => rows.into_iter().map(|row| (row.id, row.name)).collect::<std::collections::HashMap<_, _>>(),
+        Err(err) => {
+            eprintln!("srum id map {}: {err}", path.display());
+            std::collections::HashMap::new()
+        }
+    };
+    let mut inserted = 0;
+    match srum_parser::parse_network_usage(path) {
+        Ok(rows) => {
+            for row in rows {
+                let app = names.get(&row.app_id).cloned().unwrap_or_else(|| row.app_id.to_string());
+                db.execute(
+                    "INSERT INTO srum (host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    duckdb::params![host_id, "network", row.timestamp.to_string(), app, row.user_id.to_string(), row.bytes_sent as i64, row.bytes_recv as i64, 0i64, 0i64],
+                ).map_err(|err| err.to_string())?;
+                inserted += 1;
+            }
+        }
+        Err(err) => eprintln!("srum network {}: {err}", path.display()),
+    }
+    match srum_parser::parse_app_usage(path) {
+        Ok(rows) => {
+            for row in rows {
+                let app = names.get(&row.app_id).cloned().unwrap_or_else(|| row.app_id.to_string());
+                db.execute(
+                    "INSERT INTO srum (host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    duckdb::params![host_id, "app", row.timestamp.to_string(), app, row.user_id.to_string(), 0i64, 0i64, row.foreground_cycles as i64, row.background_cycles as i64],
+                ).map_err(|err| err.to_string())?;
+                inserted += 1;
+            }
+        }
+        Err(err) => eprintln!("srum app {}: {err}", path.display()),
+    }
+    Ok(inserted)
 }

@@ -23,6 +23,7 @@ fn main() -> ExitCode {
         Some("prefetch") => prefetch(&mut args),
         Some("amcache") => amcache(&mut args),
         Some("shimcache") => shimcache(&mut args),
+        Some("srum") => srum(&mut args),
         Some("userassist") => userassist(&mut args),
         Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
@@ -232,6 +233,13 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             }
             match case::ingest_shimcache(&catalog, &case_dir.join("events.duckdb")) {
                 Ok(count) => println!("shimcache inserted={count}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::from(1);
+                }
+            }
+            match case::ingest_srum(&catalog, &case_dir.join("events.duckdb")) {
+                Ok(count) => println!("srum inserted={count}"),
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::from(1);
@@ -888,6 +896,30 @@ fn case_dir(args: &mut impl Iterator<Item = String>) -> Option<PathBuf> {
     }
 }
 
+
+
+fn srum(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser srum --case <dir>");
+        return ExitCode::from(2);
+    };
+    let catalog = case_dir.join("catalog.sqlite");
+    let db = case_dir.join("events.duckdb");
+    if let Err(err) = case::ingest_srum(&catalog, &db) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::query(&db, "SELECT host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received FROM srum ORDER BY bytes_sent DESC") {
+        Ok(rows) => {
+            print_rows(&[], &rows, "table");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1);
+        }
+    }
+}
 
 fn shimcache(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let Some(case_dir) = case_dir(args) else {

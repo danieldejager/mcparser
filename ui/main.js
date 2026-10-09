@@ -236,7 +236,8 @@ const schema = [
   "Table prefetch(host_id, pf_name, executable, run_count, last_run, version, path). It is not inside events. Use it for what ran on the machine and how often.",
   "Table userassist(host_id, guid, name, run_count, last_run). It is not inside events. Use it for programs Explorer launched for one user. Ignore names starting with UEME_CTL.",
   "Table amcache(host_id, kind, name, path, sha1, size, modified, publisher, version, key_path). It is not inside events. kind is file or program. A file row means the executable was inventoried, not that it ran. modified on a file row is the compile time, not a run time. A program row is an installed product and its modified value is the install date.",
-  "Table shimcache(host_id, path, modified, position, executed, control_set). It is not inside events. A row means Windows recorded the path. modified is the file time, not a run time. position 0 is the newest entry.",
+  "Table shimcache(host_id, path, modified, position, executed, control_set). It is not inside events. A row means Windows recorded the path. modified is the file time, not a run time. position 0 is the newest entry.\n" +
+  "Table srum(host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles). It is not inside events. kind is network or app. A network row is hourly bytes for an application. timestamp is when the record was written, not a start time.",
   "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path and shimcache.path.",
   "Return one DuckDB SELECT and no other text."
 ].join(" ");
@@ -257,12 +258,16 @@ async function caseContext(caseDir) {
   const shimcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
     "SELECT host_id, position, executed, modified, path FROM shimcache ORDER BY position LIMIT 30"]);
   const shimcacheText = shimcache.code === 0 ? shimcache.out || "" : "shimcache table is not loaded";
+  const srum = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received FROM srum ORDER BY bytes_sent DESC LIMIT 30"]);
+  const srumText = srum.code === 0 ? srum.out || "" : "srum table is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
     "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
     "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText) +
     "\nUserAssist in this case, csv host_id, run_count, last_run, name:\n" + clip(userassistText) +
     "\nAmcache file rows in this case, csv kind, name, sha1, modified, path:\n" + clip(amcacheText) +
-    "\nShimcache in this case, newest 30, csv host_id, position, executed, modified, path:\n" + clip(shimcacheText);
+    "\nShimcache in this case, newest 30, csv host_id, position, executed, modified, path:\n" + clip(shimcacheText) +
+    "\nSRUM in this case, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received:\n" + clip(srumText);
 }
 
 async function grokAsk(caseDir, question) {
@@ -278,7 +283,7 @@ async function grokAsk(caseDir, question) {
       sql = oneSelect(await askModel(
         schema + "\n" + context +
         "\nThe previous query returned no rows: " + sql +
-        "\nWrite a new SELECT. Use events for a logon or account question, and prefetch, userassist, amcache or shimcache for a program question. Shimcache modified is a file time, not a run time.\nQuestion: " + question
+        "\nWrite a new SELECT. Use events for a logon or account question, and prefetch, userassist, amcache, shimcache or srum for a program question. Shimcache modified is a file time, not a run time. SRUM timestamp is when the hourly record was written.\nQuestion: " + question
       ));
       queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
       if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
