@@ -19,6 +19,7 @@ fn main() -> ExitCode {
         Some("save-chat") => save_chat(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
+        Some("collections") => collections(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
         Some("-h" | "--help" | "help") | None => {
@@ -44,6 +45,7 @@ Commands:
   ingest         Read one or more .evtx files into a case
   collect        Read a Velociraptor offline zip into the case catalog
   hosts          List hosts recorded in a case
+  collections    List collections recorded in a case
   query          Run SQL against the events in a case
   stats          Channels, providers, event ids, and the time range
   queries        List saved queries
@@ -70,6 +72,9 @@ collect:
 
 hosts:
   mcparser hosts --case <dir>
+
+collections:
+  mcparser collections --case <dir>
     A file whose bytes are already in the case is skipped.
     The same path with a new hash replaces the old rows.
 
@@ -156,6 +161,25 @@ fn hosts(args: &mut impl Iterator<Item = String>) -> ExitCode {
         Ok(rows) => {
             for host in rows {
                 println!("{}\t{}\t{}\t{}\t{}", host.host_id, host.hostname, host.fqdn, host.os, host.arch);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn collections(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser collections --case <dir>");
+        return ExitCode::from(2);
+    };
+    match case::collections(&case_dir.join("catalog.sqlite")) {
+        Ok(rows) => {
+            for collection in rows {
+                println!("{}\t{}\t{}\t{}", collection.session_id, collection.host_id, collection.collected_at, collection.source_name);
             }
             ExitCode::SUCCESS
         }

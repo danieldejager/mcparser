@@ -137,8 +137,43 @@ async function refresh() {
   fact("Last", range[1]);
   fact("Channels", channels.join(", "));
   fact("Providers", providers.join(", "));
+  await loadHosts();
   status.textContent = "Case loaded";
   await loadQueries();
+}
+
+async function loadHosts() {
+  hosts.replaceChildren();
+  const listed = await window.mcparser.hosts(caseDir());
+  const collected = await window.mcparser.collections(caseDir());
+  if (listed.code !== 0) return;
+  const rows = listed.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t"));
+  const sessions = collected.code === 0 ? collected.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t")) : [];
+  if (rows.length === 0) {
+    const item = document.createElement("li");
+    item.textContent = "No hosts";
+    hosts.append(item);
+    return;
+  }
+  for (const row of rows) {
+    const item = document.createElement("li");
+    const title = document.createElement("strong");
+    title.textContent = row[1] || row[0];
+    item.append(title);
+    const meta = document.createElement("div");
+    meta.textContent = [row[3], row[4]].filter(Boolean).join(" ");
+    item.append(meta);
+    const id = document.createElement("div");
+    id.textContent = row[0];
+    item.append(id);
+    const mine = sessions.filter((session) => session[1] === row[0]);
+    for (const session of mine) {
+      const line = document.createElement("div");
+      line.textContent = session[3] || session[0];
+      item.append(line);
+    }
+    hosts.append(item);
+  }
 }
 
 function renderCsv(text) {

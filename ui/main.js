@@ -394,6 +394,8 @@ function createWindow() {
 }
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
+ipcMain.handle("hosts", (_event, caseDir) => run(["hosts", "--case", casePath(caseDir)]));
+ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", sql]));
 ipcMain.handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
