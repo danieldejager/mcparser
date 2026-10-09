@@ -143,7 +143,7 @@ async function refresh() {
   fact("First", range[0]);
   fact("Last", range[1]);
   fact("Channels", channels.join(", "));
-  fact("Providers", providers.join(", "));
+  fact("Providers", String(providers.length));
   await loadHosts();
   status.textContent = "Case loaded";
   markCase();
