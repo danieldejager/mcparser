@@ -700,7 +700,7 @@ function showImported(text) {
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
   status.textContent = opened.code === 0 ? opened.out.trim() : opened.err;
-  refresh().then(run);
+  if (opened.code === 0) refresh();
 });
 window.mcparser.onGrokConnect((name) => {
   connectProvider = name || "grok";
@@ -738,7 +738,7 @@ if (analyst) {
 }
 updateLines();
 window.mcparser.grokStatus().then(listModels);
-loadNotes().then(() => refresh().then(run)).then(loadChats);
+status.textContent = "Ready";
 
 function askCaseName() {
   const sheet = document.getElementById("case-sheet");
