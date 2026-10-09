@@ -635,6 +635,24 @@ function note(text) {
 }
 
 let askLine = null;
+let askLabel = "";
+let askStarted = 0;
+let askTimer = null;
+
+function paintAskLine() {
+  if (!askLine) return;
+  askLine.replaceChildren(document.createTextNode(askLabel));
+  if (askLabel.startsWith("Asking")) {
+    const dots = document.createElement("span");
+    dots.className = "dots";
+    dots.textContent = "...";
+    askLine.append(document.createTextNode(" thinking"));
+    askLine.append(dots);
+    const seconds = Math.max(0, Math.round((performance.now() - askStarted) / 1000));
+    askLine.append(document.createTextNode(" " + seconds + "s"));
+  }
+  transcript.scrollTop = transcript.scrollHeight;
+}
 
 function showAskLine(text) {
   if (!askLine) {
@@ -642,17 +660,17 @@ function showAskLine(text) {
     askLine.className = "ask-line";
     transcript.append(askLine);
   }
-  askLine.replaceChildren(document.createTextNode(text));
-  if (text.startsWith("Asking")) {
-    const dots = document.createElement("span");
-    dots.className = "dots";
-    dots.textContent = "...";
-    askLine.append(dots);
-  }
-  transcript.scrollTop = transcript.scrollHeight;
+  if (text.startsWith("Asking") && !askStarted) askStarted = performance.now();
+  askLabel = text;
+  paintAskLine();
+  if (text.startsWith("Asking") && !askTimer) askTimer = setInterval(paintAskLine, 1000);
 }
 
 function clearAskLine() {
+  if (askTimer) clearInterval(askTimer);
+  askTimer = null;
+  askStarted = 0;
+  askLabel = "";
   if (askLine) askLine.remove();
   askLine = null;
 }
