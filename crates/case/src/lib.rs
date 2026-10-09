@@ -1137,7 +1137,7 @@ fn load_shimcache_hive(db: &duckdb::Connection, host_id: &str, hive: &Path) -> R
         .build()
         .map_err(|err| err.to_string())?;
     let mut inserted = 0;
-    for key in parser.iter_keys().flatten() {
+    for key in notatin::parser::ParserIterator::new(&parser) {
         if !key.path.to_ascii_lowercase().contains("appcompatcache") { continue; }
         for value in key.value_iter() {
             if !value.get_pretty_name().eq_ignore_ascii_case("appcompatcache") { continue; }
