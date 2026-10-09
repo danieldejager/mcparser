@@ -129,6 +129,20 @@ pub fn file_sha256(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+pub fn artifact_done(catalog: &Path, name: &str, zip_sha: &str) -> Result<bool, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let count: i64 = conn.query_row(
+        "SELECT count(*) FROM sources WHERE source_path = ?1 AND sha256 = ?2",
+        rusqlite::params![name, format!("{zip_sha}:{name}")],
+        |row| row.get(0),
+    )?;
+    Ok(count > 0)
+}
+
+pub fn record_artifact(catalog: &Path, name: &str, zip_sha: &str, records: i64) -> Result<(), rusqlite::Error> {
+    record_source(catalog, Path::new(name), &format!("{zip_sha}:{name}"), records)
+}
+
 pub fn already_ingested(catalog: &Path, sha256: &str) -> Result<bool, rusqlite::Error> {
     let conn = open_catalog(catalog)?;
     let count: i64 = conn.query_row(
@@ -1427,11 +1441,11 @@ fn load_task_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result
     let bytes = match std::fs::read(path) { Ok(bytes) => bytes, Err(_) => return Ok(0) };
     let body = decode_text(&bytes);
     let trimmed = body.trim_start();
-    if trimmed.starts_with('{') || trimmed.starts_with('[') || trimmed.starts_with("{\") {
+    if trimmed.starts_with('{') || trimmed.starts_with('[') {
         return load_task_json(db, host_id, &body);
     }
     let lower = body.to_ascii_lowercase();
-    if !lower.contains("<command") && !lower.contains("<task") && !lower.contains("<comhandler") {
+    if !lower.contains(r"<command") && !lower.contains(r"<task") && !lower.contains(r"<comhandler") {
         return Ok(0);
     }
     let command = {

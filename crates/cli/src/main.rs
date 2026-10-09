@@ -225,32 +225,30 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                     return ExitCode::from(1);
                 }
             }
-            match case::ingest_prefetch(&catalog, &case_dir.join("events.duckdb")) {
-                Ok(count) => println!("prefetch inserted={count}"),
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::from(1);
+            for (name, load) in [
+                ("prefetch", case::ingest_prefetch as fn(&Path, &Path) -> Result<usize, String>),
+                ("tasks", case::ingest_tasks),
+                ("shimcache", case::ingest_shimcache),
+                ("srum", case::ingest_srum),
+            ] {
+                if case::artifact_done(&catalog, name, &sha).unwrap_or(false) {
+                    println!("skipped {name} sha256={sha}");
+                    continue;
                 }
-            }
-            match case::ingest_tasks(&catalog, &case_dir.join("events.duckdb")) {
-                Ok(count) => println!("tasks inserted={count}"),
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::from(1);
-                }
-            }
-            match case::ingest_shimcache(&catalog, &case_dir.join("events.duckdb")) {
-                Ok(count) => println!("shimcache inserted={count}"),
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::from(1);
-                }
-            }
-            match case::ingest_srum(&catalog, &case_dir.join("events.duckdb")) {
-                Ok(count) => println!("srum inserted={count}"),
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::from(1);
+                match load(&catalog, &db) {
+                    Ok(count) => {
+                        println!("{name} inserted={count}");
+                        if name != "tasks" || count > 0 {
+                            if let Err(err) = case::record_artifact(&catalog, name, &sha, count as i64) {
+                                eprintln!("{err}");
+                                return ExitCode::from(1);
+                            }
+                        }
+                    }
+                    Err(err) => {
+                        eprintln!("{err}");
+                        return ExitCode::from(1);
+                    }
                 }
             }
             ExitCode::SUCCESS
