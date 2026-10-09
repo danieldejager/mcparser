@@ -232,6 +232,13 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                     return ExitCode::from(1);
                 }
             }
+            match case::ingest_tasks(&catalog, &case_dir.join("events.duckdb")) {
+                Ok(count) => println!("tasks inserted={count}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::from(1);
+                }
+            }
             match case::ingest_shimcache(&catalog, &case_dir.join("events.duckdb")) {
                 Ok(count) => println!("shimcache inserted={count}"),
                 Err(err) => {
@@ -241,13 +248,6 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             }
             match case::ingest_srum(&catalog, &case_dir.join("events.duckdb")) {
                 Ok(count) => println!("srum inserted={count}"),
-                Err(err) => {
-                    eprintln!("{err}");
-                    return ExitCode::from(1);
-                }
-            }
-            match case::ingest_tasks(&catalog, &case_dir.join("events.duckdb")) {
-                Ok(count) => println!("tasks inserted={count}"),
                 Err(err) => {
                     eprintln!("{err}");
                     return ExitCode::from(1);
