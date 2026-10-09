@@ -634,6 +634,29 @@ function note(text) {
   transcript.scrollTop = transcript.scrollHeight;
 }
 
+let askLine = null;
+
+function showAskLine(text) {
+  if (!askLine) {
+    askLine = document.createElement("p");
+    askLine.className = "ask-line";
+    transcript.append(askLine);
+  }
+  askLine.replaceChildren(document.createTextNode(text));
+  if (text.startsWith("Asking")) {
+    const dots = document.createElement("span");
+    dots.className = "dots";
+    dots.textContent = "...";
+    askLine.append(dots);
+  }
+  transcript.scrollTop = transcript.scrollHeight;
+}
+
+function clearAskLine() {
+  if (askLine) askLine.remove();
+  askLine = null;
+}
+
 function showSheet(grokState) {
   const name = connectProvider === "claude" ? "Claude" : "Grok";
   const label = connectProvider === "claude" ? "Claude" : connectProvider === "openai" ? "OpenAI" : "Grok";
@@ -693,8 +716,9 @@ document.getElementById("send").onclick = async () => {
   ask.value = "";
   const vendor = document.getElementById("vendor").value;
   const who = vendor === "openai" ? "OpenAI" : vendor === "claude" ? "Claude" : "Grok";
-  note(who + " is working");
+  showAskLine(who + " is working");
   const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
+  clearAskLine();
   if (result.error) {
     note(`${who}: ${result.error}`);
     return;
@@ -1031,4 +1055,4 @@ window.mcparser.onCollectProgress((payload) => {
   setLoading(true, payload.label || "Loading collection", payload.pct || 0);
 });
 
-window.mcparser.onAskProgress((label) => note(label));
+window.mcparser.onAskProgress((label) => showAskLine(label));

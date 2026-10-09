@@ -61,3 +61,7 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 .loading-bar span { display: block; height: 100%; width: 0%; background: #0b6a0b; }
 .spinner { width: 46px; height: 46px; border-radius: 50%; background: conic-gradient(from 0deg, #e95420 0 70deg, rgba(233, 84, 32, 0.18) 70deg 360deg); mask: radial-gradient(farthest-side, transparent 64%, #000 65%); animation: mcparser-spin 0.85s linear infinite; }
 @keyframes mcparser-spin { to { transform: rotate(360deg); } }
+
+.ask-line { color: #5f6b7a; }
+.dots { display: inline-block; width: 1.4em; overflow: hidden; vertical-align: bottom; animation: dots 1s steps(4, end) infinite; }
+@keyframes dots { to { width: 0; } }
