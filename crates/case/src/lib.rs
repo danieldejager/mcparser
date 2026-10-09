@@ -981,7 +981,10 @@ fn load_userassist(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Resul
         .map_err(|err| err.to_string())?;
     let mut inserted = 0;
     let mut seen = 0;
+    let mut total = 0;
     for key in notatin::parser::ParserIterator::new(&parser) {
+        total += 1;
+        if total <= 3 { eprintln!("userassist sample {}", key.path); }
         let lower = key.path.to_ascii_lowercase().replace('/', "\\");
         if !lower.contains("userassist") || !lower.contains("count") { continue; }
         seen += 1;
@@ -999,7 +1002,7 @@ fn load_userassist(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Resul
             inserted += 1;
         }
     }
-    eprintln!("userassist keys={seen} hive={}", hive.display());
+    eprintln!("userassist keys={seen} total={total} hive={}", hive.display());
     Ok(inserted)
 }
 
