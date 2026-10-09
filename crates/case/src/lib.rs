@@ -991,10 +991,12 @@ fn load_userassist(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Resul
         let guid = key.path.rsplit('\\').nth(1).unwrap_or("").to_string();
         for value in key.value_iter() {
             let (content, _) = value.get_content();
-            let notatin::cell_value::CellValue::Binary(bytes) = content else { continue; };
-            let (run_count, last_run) = userassist_counts(&bytes);
+            let (run_count, last_run) = match &content {
+                notatin::cell_value::CellValue::Binary(bytes) => userassist_counts(bytes),
+                _ => (0, String::new()),
+            };
             let name = rot13(&value.get_pretty_name());
-            if name.is_empty() || name.starts_with("UEME_") { continue; }
+            if name.is_empty() { continue; }
             db.execute(
                 "INSERT INTO userassist (host_id, guid, name, run_count, last_run) VALUES (?, ?, ?, ?, ?)",
                 duckdb::params![host_id, guid, name, run_count, last_run],
