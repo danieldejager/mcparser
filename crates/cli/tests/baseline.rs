@@ -109,3 +109,26 @@ fn collection_keeps_raw_files_and_records_the_zip_hash() {
     assert_eq!(std::fs::read(files.join("uploads/collection.zip/Prefetch/NOTEPAD.PF")).unwrap(), b"pf-bytes");
     assert!(!dir.join("events.duckdb").exists());
 }
+
+#[test]
+fn case_holds_two_hosts_keyed_by_host_id() {
+    let dir = case("hosts");
+    std::fs::create_dir_all(&dir).unwrap();
+    let script = format!(
+        "import json, zipfile\nfrom pathlib import Path\nroot = Path({:?})\n\ndef pack(name, host_id, session):\n    info = json.dumps({{\"HostID\": host_id, \"Hostname\": \"shared\", \"Fqdn\": host_id + \".plant.local\", \"Platform\": \"windows\", \"Architecture\": \"amd64\"}}).encode()\n    context = json.dumps({{\"session_id\": session}}).encode()\n    with zipfile.ZipFile(root / name, \"w\") as z:\n        z.writestr(\"client_info.json\", info)\n        z.writestr(\"collection_context.json\", context)\npack(\"a.zip\", \"H1\", \"S1\")\npack(\"b.zip\", \"H2\", \"S2\")\n",
+        dir
+    );
+    assert!(std::process::Command::new("python3").arg("-c").arg(script).status().unwrap().success());
+    for name in ["a.zip", "b.zip"] {
+        let out = bin().args(["collect", "--case"]).arg(&dir).arg(dir.join(name)).output().unwrap();
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    }
+    let hosts = bin().args(["hosts", "--case"]).arg(&dir).output().unwrap();
+    let listed = String::from_utf8_lossy(&hosts.stdout);
+    assert!(listed.contains("H1\tshared\tH1.plant.local\twindows\tamd64"), "{listed}");
+    assert!(listed.contains("H2\tshared\tH2.plant.local\twindows\tamd64"), "{listed}");
+    let collections = bin().args(["collections", "--case"]).arg(&dir).output().unwrap();
+    let sessions = String::from_utf8_lossy(&collections.stdout);
+    assert!(sessions.contains("S1\tH1"), "{sessions}");
+    assert!(sessions.contains("S2\tH2"), "{sessions}");
+}

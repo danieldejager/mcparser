@@ -455,7 +455,7 @@ fn write_kept(case_dir: &Path, sha: &str, name: &str, bytes: &[u8]) -> Result<st
     Ok(path)
 }
 
-pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Collection>, Vec<std::path::PathBuf>), String> {
+pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, Vec<Collection>, Vec<std::path::PathBuf>), String> {
     let sha = file_sha256(zip_path).map_err(|err| err.to_string())?;
     let file = std::fs::File::open(zip_path).map_err(|err| err.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|err| err.to_string())?;
@@ -492,18 +492,21 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Co
             found.push(hit);
         }
     }
-    let Some((_, host, _)) = found.first() else {
+    if found.is_empty() {
         return Err("no client_info.json in collector zip".into());
-    };
-    let host = host.clone_host();
+    }
+    let mut hosts = Vec::new();
     let mut saved = Vec::new();
     let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
-    conn.execute(
-        "INSERT INTO hosts (host_id, hostname, fqdn, os, arch) VALUES (?1, ?2, ?3, ?4, ?5)
-         ON CONFLICT(host_id) DO UPDATE SET hostname = excluded.hostname, fqdn = excluded.fqdn, os = excluded.os, arch = excluded.arch",
-        rusqlite::params![host.host_id, host.hostname, host.fqdn, host.os, host.arch],
-    ).map_err(|err| err.to_string())?;
-    for (_, _, collection) in &found {
+    for (_, host, collection) in &found {
+        conn.execute(
+            "INSERT INTO hosts (host_id, hostname, fqdn, os, arch) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(host_id) DO UPDATE SET hostname = excluded.hostname, fqdn = excluded.fqdn, os = excluded.os, arch = excluded.arch",
+            rusqlite::params![host.host_id, host.hostname, host.fqdn, host.os, host.arch],
+        ).map_err(|err| err.to_string())?;
+        if !hosts.iter().any(|saved: &Host| saved.host_id == host.host_id) {
+            hosts.push(host.clone_host());
+        }
         conn.execute(
             "INSERT INTO collections (session_id, host_id, collected_at, zip_sha256, source_name) VALUES (?1, ?2, ?3, ?4, ?5)
              ON CONFLICT(session_id) DO UPDATE SET host_id = excluded.host_id, collected_at = excluded.collected_at, zip_sha256 = excluded.zip_sha256, source_name = excluded.source_name",
@@ -534,7 +537,7 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Co
             kept.push(write_kept(case_dir, &sha, &format!("{name}/{entry_name}"), &body)?);
         }
     }
-    Ok((host, saved, kept))
+    Ok((hosts, saved, kept))
 }
 
 fn host_from_client_info(body: &str) -> Result<Host, String> {
