@@ -1150,6 +1150,9 @@ async function showIocs() {
       td.textContent = value;
       tr.append(td);
     }
+    tr.style.cursor = "pointer";
+    tr.title = "Edit this IOC";
+    tr.onclick = () => openIocSheet("update", row);
     table.append(tr);
     csv.push([row.id, row.kind, row.value, row.note].map((cell) => String(cell).includes(",") ? `"${String(cell).replaceAll('"', '""')}"` : cell).join(","));
   }
