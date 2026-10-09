@@ -83,6 +83,10 @@ updateLines();
   }
 }
 
+function markCase() {
+  window.mcparser.setCaseOpen(Boolean(caseDir()));
+}
+
 function caseDir() {
   return caseInput.value.trim();
 }
@@ -123,6 +127,7 @@ async function refresh() {
     fact("Case", caseDir());
     await loadHosts();
     status.textContent = "Case opened";
+  markCase();
     return;
   }
   const range = section(result.out, "time range")[0] || [];
@@ -141,6 +146,7 @@ async function refresh() {
   fact("Providers", providers.join(", "));
   await loadHosts();
   status.textContent = "Case loaded";
+  markCase();
   await loadQueries();
 }
 
@@ -671,6 +677,7 @@ window.mcparser.onImportCollection(async () => {
   }
   showImported(result.out);
   status.textContent = "Collection imported";
+  markCase();
   await loadHosts();
 });
 
@@ -710,6 +717,7 @@ window.mcparser.onImportEvtx(async (payload) => {
   await window.mcparser.saveAnalyst(dir, name);
   showImported(result.out);
   status.textContent = "Event log imported";
+  markCase();
   await loadHosts();
 });
 
@@ -772,6 +780,7 @@ window.mcparser.onNewCase(async () => {
   results.replaceChildren();
   await refresh();
   status.textContent = "Case created";
+  markCase();
 });
 
 window.mcparser.onOpenCase(async () => {
@@ -798,7 +807,18 @@ window.mcparser.onDeleteCase(async () => {
   summary.replaceChildren();
   hosts.replaceChildren();
   results.replaceChildren();
+  markCase();
   status.textContent = "Case deleted";
+});
+
+window.mcparser.onCloseCase(() => {
+  if (!caseDir()) return;
+  caseInput.value = "";
+  summary.replaceChildren();
+  hosts.replaceChildren();
+  results.replaceChildren();
+  markCase();
+  status.textContent = "Case closed";
 });
 
 window.mcparser.onOpened((opened) => {

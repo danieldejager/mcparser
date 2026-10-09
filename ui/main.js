@@ -273,6 +273,8 @@ async function showAbout() {
   if (choice.response === 2) shell.openExternal(linkedin);
 }
 
+let caseOpen = false;
+
 function buildMenu() {
   const connected = activeKey().length > 0;
   const template = [
@@ -293,7 +295,8 @@ function buildMenu() {
       submenu: [
         { label: "New Case...", click: () => win.webContents.send("new-case") },
         { label: "Open Case...", accelerator: "CmdOrCtrl+O", click: () => win.webContents.send("open-case") },
-        { label: "Delete Case...", click: () => win.webContents.send("delete-case") },
+        { label: "Close Case", enabled: caseOpen, click: () => win.webContents.send("close-case") },
+        { label: "Delete Case...", enabled: caseOpen, click: () => win.webContents.send("delete-case") },
         { type: "separator" },
         { label: "Open EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
@@ -402,6 +405,7 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   properties: ["openFile"],
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
+ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
 ipcMain.handle("pick-case-open", async () => dialog.showOpenDialog(win, {
   title: "Open case",
   properties: ["openDirectory"],
