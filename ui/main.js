@@ -334,8 +334,13 @@ function buildMenu() {
         { type: "separator" },
         { label: "Import EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
-        { label: "Export handoff...", click: () => win.webContents.send("export-handoff") },
-        { label: "Open handoff...", click: () => win.webContents.send("open-handoff") },
+        {
+          label: "HandOff",
+          submenu: [
+            { label: "Create...", enabled: caseOpen, click: () => win.webContents.send("export-handoff") },
+            { label: "Open...", click: () => win.webContents.send("open-handoff") },
+          ],
+        },
         { type: "separator" },
         { role: "close" },
       ],
