@@ -226,25 +226,47 @@ function clip(text) {
   return text.length > 4000 ? text.slice(0, 4000) : text;
 }
 
+const schema = [
+  "Table events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name).",
+  "Columns, never read these from event_data: computer, channel, provider, host_id, log_name, event_id, time_created, record_id, source_sha256.",
+  "host_id is a UUID from the host list. A hostname is not a host_id.",
+  "log_name is a path. Match a file with LIKE '%Security.evtx'. Use a log_name value from the case context.",
+  "event_data is JSON. Read TargetUserName, LogonType and IpAddress with json_extract_string(event_data, '$.TargetUserName').",
+  "A successful logon is event_id 4624. Return one DuckDB SELECT and no other text."
+].join(" ");
+
+async function caseContext(caseDir) {
+  const hosts = await run(["hosts", "--case", casePath(caseDir)]);
+  const logs = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT host_id, log_name, computer, count(*) AS events FROM events GROUP BY host_id, log_name, computer ORDER BY events DESC LIMIT 30"]);
+  return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
+    "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "");
+}
+
 async function grokAsk(caseDir, question) {
   if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
-    const stats = await run(["stats", "--case", casePath(caseDir)]);
-    const hosts = await run(["hosts", "--case", casePath(caseDir)]);
-    const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name). computer, channel, provider, host_id and log_name are columns. Do not read them from event_data. host_id is the HostID, a UUID. A name such as DPW-AUS-pVnn0Tq is a hostname, not a host_id. Filter host_id with the UUID from the host list. event_data is JSON for fields such as TargetUserName, LogonType and IpAddress, read with json_extract_string(event_data, '$.TargetUserName'). log_name is a path. Match a file with log_name LIKE '%Security.evtx', never log_name = 'Security.evtx'. A successful logon is event_id 4624.";
-    const sqlText = await askModel(
-      "Return one DuckDB SELECT and no other text. " + schema +
-      " Hosts, tab separated host_id hostname os arch:\n" + clip(hosts.out || "") +
-      " Case stats:\n" + clip(stats.out || "") +
-      "\nQuestion: " + question
-    );
-    const sql = oneSelect(sqlText);
-    const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
+    const context = await caseContext(caseDir);
+    let sql = oneSelect(await askModel(schema + "\n" + context + "\nQuestion: " + question));
+    let queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
     if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
-    const rows = queried.out || "";
-    const count = rows.trim() ? Math.max(rows.trim().split("\n").length - 1, 0) : 0;
+    let rows = queried.out || "";
+    let count = rows.trim() ? Math.max(rows.trim().split("\n").length - 1, 0) : 0;
+    if (count === 0) {
+      sql = oneSelect(await askModel(
+        schema + "\n" + context +
+        "\nThe previous query returned no rows: " + sql +
+        "\nWrite a new SELECT using a host_id and log_name from the case context.\nQuestion: " + question
+      ));
+      queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
+      if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
+      rows = queried.out || "";
+      count = rows.trim() ? Math.max(rows.trim().split("\n").length - 1, 0) : 0;
+    }
     const answer = await askModel(
-      "Answer the question from these rows only. Do not invent rows. If the row count is 0, say the query returned no rows and quote the SQL. computer is a column, not an event_data field.\nQuestion: " + question +
+      "Answer from these rows only. Do not invent rows. Map a host_id back to its hostname from the host list. If the row count is 0, say so and quote the SQL.\n" +
+      context +
+      "\nQuestion: " + question +
       "\nSQL: " + sql +
       "\nRow count: " + count +
       "\nRows:\n" + clip(rows)
