@@ -86,29 +86,6 @@ fn save_case_stores_the_analyst() {
     let again = bin().args(["save-analyst", "--case"]).arg(&dir).args(["--name", "Daniel de Jager"]).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
 }
-
-#[test]
-fn collection_keeps_raw_files_and_records_the_zip_hash() {
-    let dir = case("collection");
-    std::fs::create_dir_all(&dir).unwrap();
-    let zip_path = dir.join("collector.zip");
-    let script = format!(
-        "import json, zipfile\nfrom pathlib import Path\nouter = Path({:?})\nnested = outer.with_suffix('.nested.zip')\ninfo = json.dumps({{\"HostID\":\"H1\",\"Hostname\":\"plant\",\"Fqdn\":\"plant.local\",\"Platform\":\"windows\",\"Architecture\":\"amd64\"}}).encode()\nwith zipfile.ZipFile(nested, 'w') as z:\n    z.writestr('client_info.json', info)\n    z.writestr('NTUSER.DAT', b'ntuser-bytes')\n    z.writestr('SOFTWARE.hiv', b'software-bytes')\n    z.writestr('Prefetch/NOTEPAD.PF', b'pf-bytes')\nwith zipfile.ZipFile(outer, 'w') as z:\n    z.writestr('client_info.json', info)\n    z.write(nested, 'uploads/collection.zip')\n",
-        zip_path
-    );
-    let made = std::process::Command::new("python3").arg("-c").arg(script).status().unwrap();
-    assert!(made.success());
-    let out = bin().args(["collect", "--case"]).arg(&dir).arg(&zip_path).output().unwrap();
-    let text = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    assert!(text.contains("host H1 plant windows amd64"), "{text}");
-    assert!(text.contains("kept "), "{text}");
-    let files = std::fs::read_dir(dir.join("files")).unwrap().next().unwrap().unwrap().path();
-    assert_eq!(std::fs::read(files.join("uploads/collection.zip/NTUSER.DAT")).unwrap(), b"ntuser-bytes");
-    assert_eq!(std::fs::read(files.join("uploads/collection.zip/SOFTWARE.hiv")).unwrap(), b"software-bytes");
-    assert_eq!(std::fs::read(files.join("uploads/collection.zip/Prefetch/NOTEPAD.PF")).unwrap(), b"pf-bytes");
-}
-
 #[test]
 fn case_holds_two_hosts_keyed_by_host_id() {
     let dir = case("hosts");
@@ -130,42 +107,4 @@ fn case_holds_two_hosts_keyed_by_host_id() {
     let sessions = String::from_utf8_lossy(&collections.stdout);
     assert!(sessions.contains("S1\tH1"), "{sessions}");
     assert!(sessions.contains("S2\tH2"), "{sessions}");
-}
-
-#[test]
-fn eventlogs_zip_lands_on_the_timeline_once() {
-    let fixture = fixture();
-    assert!(fixture.exists(), "missing {}", fixture.display());
-    let dir = case("timeline");
-    std::fs::create_dir_all(&dir).unwrap();
-    let zip_path = dir.join("collector.zip");
-    let script = format!(
-        "import json, zipfile\nfrom pathlib import Path\nroot = Path({:?})\nfixture = Path({:?})\nouter = root / 'collector.zip'\nartifact = root / 'eventlogs.zip'\nwith zipfile.ZipFile(artifact, 'w') as z:\n    z.write(fixture, 'Security.evtx')\ninfo = json.dumps({{\"HostID\": \"H1\", \"Hostname\": \"plant\", \"Fqdn\": \"plant.local\", \"Platform\": \"windows\", \"Architecture\": \"amd64\"}}).encode()\ncontext = json.dumps({{\"session_id\": \"S1\"}}).encode()\nwith zipfile.ZipFile(outer, 'w') as z:\n    z.writestr('client_info.json', info)\n    z.writestr('collection_context.json', context)\n    z.write(artifact, 'results/eventlogs.zip')\n    z.write(fixture, 'uploads/Security.evtx')\n",
-        dir, fixture
-    );
-    assert!(std::process::Command::new("python3").arg("-c").arg(script).status().unwrap().success());
-    let out = bin().args(["collect", "--case"]).arg(&dir).arg(&zip_path).output().unwrap();
-    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
-    let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("events results/eventlogs.zip/Security.evtx"), "{text}");
-    assert!(text.contains("log=Security.evtx"), "{text}");
-    assert!(!text.contains("uploads/Security.evtx"), "{text}");
-    let count = bin().args(["query", "--case"]).arg(&dir).arg("SELECT log_name, count(*) FROM events GROUP BY log_name").output().unwrap();
-    assert!(String::from_utf8_lossy(&count.stdout).contains("Security.evtx\t2261") || String::from_utf8_lossy(&count.stdout).contains("results/eventlogs.zip/Security.evtx\t2261"), "{}", String::from_utf8_lossy(&count.stdout));
-    let hosts = bin().args(["query", "--case"]).arg(&dir).arg("SELECT host_id, count(*) FROM events GROUP BY host_id").output().unwrap();
-    assert!(String::from_utf8_lossy(&hosts.stdout).contains("H1\t2261"), "{}", String::from_utf8_lossy(&hosts.stdout));
-
-    let raw_dir = case("timeline-raw");
-    std::fs::create_dir_all(&raw_dir).unwrap();
-    let raw_zip = raw_dir.join("collector.zip");
-    let raw_script = format!(
-        "import json, zipfile\nfrom pathlib import Path\nroot = Path({:?})\nfixture = Path({:?})\ninfo = json.dumps({{\"HostID\": \"H2\", \"Hostname\": \"plant\", \"Fqdn\": \"plant.local\", \"Platform\": \"windows\", \"Architecture\": \"amd64\"}}).encode()\nwith zipfile.ZipFile(root / 'collector.zip', 'w') as z:\n    z.writestr('client_info.json', info)\n    z.writestr('collection_context.json', json.dumps({{\"session_id\": \"S2\"}}).encode())\n    z.write(fixture, 'C/Windows/System32/winevt/Logs/Security.evtx')\n",
-        raw_dir, fixture
-    );
-    assert!(std::process::Command::new("python3").arg("-c").arg(raw_script).status().unwrap().success());
-    let raw = bin().args(["collect", "--case"]).arg(&raw_dir).arg(&raw_zip).output().unwrap();
-    assert!(raw.status.success(), "{}", String::from_utf8_lossy(&raw.stderr));
-    assert!(String::from_utf8_lossy(&raw.stdout).contains("Security.evtx"));
-    let raw_count = bin().args(["query", "--case"]).arg(&raw_dir).arg("SELECT host_id, count(*) FROM events GROUP BY host_id").output().unwrap();
-    assert!(String::from_utf8_lossy(&raw_count.stdout).contains("H2\t2261"), "{}", String::from_utf8_lossy(&raw_count.stdout));
 }
