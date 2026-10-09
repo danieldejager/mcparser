@@ -232,15 +232,21 @@ const schema = [
   "host_id is a UUID from the host list. A hostname is not a host_id.",
   "log_name is a path. Match a file with LIKE '%Security.evtx'. Use a log_name value from the case context.",
   "event_data is JSON. Read TargetUserName, LogonType and IpAddress with json_extract_string(event_data, '$.TargetUserName').",
-  "A successful logon is event_id 4624. Return one DuckDB SELECT and no other text."
+  "A successful logon is event_id 4624.",
+  "Table prefetch(host_id, pf_name, executable, run_count, last_run, version, path). It is not inside events. Use it for what ran and how often.",
+  "Return one DuckDB SELECT and no other text."
 ].join(" ");
 
 async function caseContext(caseDir) {
   const hosts = await run(["hosts", "--case", casePath(caseDir)]);
   const logs = await run(["query", "--case", casePath(caseDir), "--format", "csv",
     "SELECT host_id, log_name, computer, count(*) AS events FROM events GROUP BY host_id, log_name, computer ORDER BY events DESC LIMIT 30"]);
+  const prefetch = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30"]);
+  const prefetchText = prefetch.code === 0 ? prefetch.out || "" : "prefetch table is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
-    "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "");
+    "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
+    "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText);
 }
 
 async function grokAsk(caseDir, question) {
