@@ -233,7 +233,10 @@ const schema = [
   "log_name is a path. Match a file with LIKE '%Security.evtx'. Use a log_name value from the case context.",
   "event_data is JSON. Read TargetUserName, LogonType and IpAddress with json_extract_string(event_data, '$.TargetUserName').",
   "A successful logon is event_id 4624.",
-  "Table prefetch(host_id, pf_name, executable, run_count, last_run, version, path). It is not inside events. Use it for what ran and how often.",
+  "Table prefetch(host_id, pf_name, executable, run_count, last_run, version, path). It is not inside events. Use it for what ran on the machine and how often.",
+  "Table userassist(host_id, guid, name, run_count, last_run). It is not inside events. Use it for programs Explorer launched for one user. Ignore names starting with UEME_CTL.",
+  "Table amcache(host_id, kind, name, path, sha1, size, modified, publisher, version, key_path). It is not inside events. kind is file or program. A file row means the executable was inventoried, not that it ran. modified on a file row is the compile time, not a run time. A program row is an installed product and its modified value is the install date.",
+  "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name and amcache.path.",
   "Return one DuckDB SELECT and no other text."
 ].join(" ");
 
@@ -244,9 +247,17 @@ async function caseContext(caseDir) {
   const prefetch = await run(["query", "--case", casePath(caseDir), "--format", "csv",
     "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30"]);
   const prefetchText = prefetch.code === 0 ? prefetch.out || "" : "prefetch table is not loaded";
+  const userassist = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT host_id, run_count, last_run, name FROM userassist WHERE name NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30"]);
+  const userassistText = userassist.code === 0 ? userassist.out || "" : "userassist table is not loaded";
+  const amcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT kind, name, sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30"]);
+  const amcacheText = amcache.code === 0 ? amcache.out || "" : "amcache table is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
     "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
-    "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText);
+    "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText) +
+    "\nUserAssist in this case, csv host_id, run_count, last_run, name:\n" + clip(userassistText) +
+    "\nAmcache file rows in this case, csv kind, name, sha1, modified, path:\n" + clip(amcacheText);
 }
 
 async function grokAsk(caseDir, question) {
