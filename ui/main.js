@@ -240,7 +240,7 @@ const schema = [
   "Table srum(host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles). It is not inside events. kind is network or app. A network row is hourly bytes for an application. timestamp is when the record was written, not a start time.\n" +
   "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
   "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
-  "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path and shimcache.path.",
+  "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path, shimcache.path, services.path and tasks.command. The case context shows non-Windows services, tasks and shimcache rows, the busiest SRUM network rows, and the top event ids. Query the table for the rest.",
   "Return one DuckDB SELECT and no other text."
 ].join(" ");
 
@@ -257,23 +257,31 @@ async function caseContext(caseDir) {
   const amcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
     "SELECT kind, name, sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30"]);
   const amcacheText = amcache.code === 0 ? amcache.out || "" : "amcache table is not loaded";
+  const events = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT event_id, channel, count(*) AS events FROM events GROUP BY event_id, channel ORDER BY events DESC LIMIT 20"]);
+  const eventsText = events.code === 0 ? events.out || "" : "events table is not loaded";
   const shimcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, position, executed, modified, path FROM shimcache ORDER BY position LIMIT 30"]);
+    "SELECT position, executed, modified, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 30"]);
   const shimcacheText = shimcache.code === 0 ? shimcache.out || "" : "shimcache table is not loaded";
   const srum = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received FROM srum ORDER BY bytes_sent DESC LIMIT 30"]);
+    "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 30"]);
   const srumText = srum.code === 0 ? srum.out || "" : "srum table is not loaded";
+  const services = await run(["query", "--case", casePath(caseDir), "--format", "csv",
+    "SELECT name, state, start_mode, user_id, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(path) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY name LIMIT 40"]);
+  const servicesText = services.code === 0 ? services.out || "" : "services table is not loaded";
   const tasks = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' ORDER BY command LIMIT 30"]);
+    "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40"]);
   const tasksText = tasks.code === 0 ? tasks.out || "" : "tasks table is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
     "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
+    "\nEvent ids in this case, csv event_id, channel, events:\n" + clip(eventsText) +
     "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText) +
     "\nUserAssist in this case, csv host_id, run_count, last_run, name:\n" + clip(userassistText) +
     "\nAmcache file rows in this case, csv kind, name, sha1, modified, path:\n" + clip(amcacheText) +
-    "\nShimcache in this case, newest 30, csv host_id, position, executed, modified, path:\n" + clip(shimcacheText) +
-    "\nSRUM in this case, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received:\n" + clip(srumText) +
-    "\nScheduled tasks in this case, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText);
+    "\nShimcache outside Windows, newest 30, csv position, executed, modified, path:\n" + clip(shimcacheText) +
+    "\nSRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles:\n" + clip(srumText) +
+    "\nServices outside System32, csv name, state, start_mode, user_id, path:\n" + clip(servicesText) +
+    "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText);
 }
 
 async function grokAsk(caseDir, question) {
