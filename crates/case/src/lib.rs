@@ -650,10 +650,6 @@ pub fn record_host(catalog: &Path, host: &Host) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
-fn is_raw_channel_log(name: &str) -> bool {
-    matches!(name.rsplit(['/', '\\']).next().unwrap_or(name).to_ascii_lowercase().as_str(), "security.evtx" | "system.evtx" | "application.evtx")
-}
-
 fn is_eventlogs_zip(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".zip") && lower.contains("eventlog")
