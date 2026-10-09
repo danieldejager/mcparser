@@ -51,3 +51,10 @@ aside label { display: block; margin-top: 10px; color: #666; font-size: 11px; te
 aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px solid #d0d0d0; border-radius: 6px; padding: 6px 8px; background: #fff; font: inherit; }
 #hunts, #saved { list-style: none; margin: 8px 0 0; padding: 0; }
 #hunts button, #saved button { display: block; width: 100%; margin-top: 6px; text-align: left; }
+
+.loading { position: fixed; inset: 0; z-index: 30; background: rgba(255, 255, 255, 0.78); display: grid; place-items: center; }
+.loading[hidden] { display: none; }
+.loading-card { display: grid; justify-items: center; gap: 14px; }
+.loading-card p { margin: 0; color: #333; font-size: 14px; }
+.spinner { width: 46px; height: 46px; border-radius: 50%; background: conic-gradient(from 0deg, #e95420 0 70deg, rgba(233, 84, 32, 0.18) 70deg 360deg); mask: radial-gradient(farthest-side, transparent 64%, #000 65%); animation: mcparser-spin 0.85s linear infinite; }
+@keyframes mcparser-spin { to { transform: rotate(360deg); } }

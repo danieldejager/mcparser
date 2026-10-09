@@ -120,7 +120,19 @@ function bytes(value) {
   return `${(size / 1024 / 1024).toFixed(1)} MB`;
 }
 
+let loading = false;
+
+function setLoading(on, label) {
+  loading = on;
+  const overlay = document.getElementById("loading");
+  overlay.hidden = !on;
+  document.getElementById("loading-label").textContent = label || "Loading collection";
+  document.body.setAttribute("aria-busy", on ? "true" : "false");
+}
+
 async function refresh() {
+  setLoading(true, "Loading collection");
+  try {
   const result = await window.mcparser.stats(caseDir());
   summary.replaceChildren();
   if (result.code !== 0) {
@@ -147,6 +159,9 @@ async function refresh() {
   status.textContent = "Case loaded";
   markCase();
   await loadQueries();
+  } finally {
+    setLoading(false);
+  }
 }
 
 async function loadHosts() {
@@ -648,6 +663,7 @@ document.getElementById("key-form").onsubmit = async (event) => {
   }
 };
 document.getElementById("send").onclick = async () => {
+  if (loading) return;
   const question = ask.value.trim();
   if (!question) return;
   if (!confirmed) {
