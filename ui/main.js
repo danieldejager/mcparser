@@ -436,7 +436,7 @@ ipcMain.handle("make-case-dir", (_event, parent, name) => {
 });
 ipcMain.handle("collect", (_event, caseDir, file, analyst) => run(["collect", "--case", casePath(caseDir), "--analyst", analyst || "", file]));
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
-ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Add to the open case or save a new case?", detail: current, buttons: ["Add to open case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
+ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", sql]));

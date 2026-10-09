@@ -644,16 +644,24 @@ window.mcparser.onImportCollection(async () => {
   }
   const picked = await window.mcparser.pickCollection();
   if (!picked || picked.canceled || !picked.filePaths[0]) return;
-  const caseName = await askCaseName();
-  if (!caseName) return;
-  const saved = await window.mcparser.pickCaseSave();
-  if (!saved || saved.canceled || !saved.filePaths[0]) return;
-  const made = await window.mcparser.makeCaseDir(saved.filePaths[0], caseName);
-  if (!made || made.error) {
-    status.textContent = made && made.error ? made.error : "Case name is required";
-    return;
+  let dir = caseDir();
+  if (dir) {
+    const choice = await window.mcparser.chooseCaseTarget(dir);
+    if (!choice || choice.response === 2) return;
+    if (choice.response === 1) dir = "";
   }
-  const dir = made.dir;
+  if (!dir) {
+    const caseName = await askCaseName();
+    if (!caseName) return;
+    const saved = await window.mcparser.pickCaseSave();
+    if (!saved || saved.canceled || !saved.filePaths[0]) return;
+    const made = await window.mcparser.makeCaseDir(saved.filePaths[0], caseName);
+    if (!made || made.error) {
+      status.textContent = made && made.error ? made.error : "Case name is required";
+      return;
+    }
+    dir = made.dir;
+  }
   const result = await window.mcparser.collect(dir, picked.filePaths[0], name);
   caseInput.value = dir;
   if (result.code !== 0) {
