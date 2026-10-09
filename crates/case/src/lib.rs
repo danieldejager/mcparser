@@ -1327,12 +1327,15 @@ fn load_srum_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result
             }
         }
     }
+    let file = path.file_name().and_then(|name| name.to_str()).unwrap_or("srum");
+    let total = rows.len().max(1);
+    db.execute_batch("BEGIN").map_err(|err| err.to_string())?;
     let mut inserted = 0;
-    for row in rows {
-        let app = json_text(&row, &["App", "Application", "Exe", "app"]);
-        let sent = json_i64(&row, &["BytesSent", "bytes_sent"]);
-        let received = json_i64(&row, &["BytesRecvd", "BytesReceived", "bytes_received"]);
-        if app.is_empty() && sent == 0 && received == 0 && json_text(&row, &["TimeStamp", "Timestamp"]).is_empty() {
+    for (index, row) in rows.iter().enumerate() {
+        let app = json_text(row, &["App", "Application", "Exe", "app"]);
+        let sent = json_i64(row, &["BytesSent", "bytes_sent"]);
+        let received = json_i64(row, &["BytesRecvd", "BytesReceived", "bytes_received"]);
+        if app.is_empty() && sent == 0 && received == 0 && json_text(row, &["TimeStamp", "Timestamp"]).is_empty() {
             continue;
         }
         let kind = if sent > 0 || received > 0 { "network" } else { "app" };
@@ -1341,17 +1344,22 @@ fn load_srum_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result
             duckdb::params![
                 host_id,
                 kind,
-                json_text(&row, &["TimeStamp", "Timestamp", "timestamp"]),
+                json_text(row, &["TimeStamp", "Timestamp", "timestamp"]),
                 app,
-                json_text(&row, &["UserSid", "User", "user_sid"]),
+                json_text(row, &["UserSid", "User", "user_sid"]),
                 sent,
                 received,
-                json_i64(&row, &["ForegroundCycleTime", "foreground_cycles"]),
-                json_i64(&row, &["BackgroundCycleTime", "background_cycles"]),
+                json_i64(row, &["ForegroundCycleTime", "foreground_cycles"]),
+                json_i64(row, &["BackgroundCycleTime", "background_cycles"]),
             ],
         ).map_err(|err| err.to_string())?;
         inserted += 1;
+        if inserted % 2000 == 0 {
+            report_progress((76 + (index * 24 / total)) as u8, &format!("Writing SRUM {file} {inserted}/{}", rows.len()));
+        }
     }
+    db.execute_batch("COMMIT").map_err(|err| err.to_string())?;
+    report_progress(99, &format!("Writing SRUM {file} {inserted}/{}", rows.len()));
     Ok(inserted)
 }
 
@@ -1376,33 +1384,45 @@ fn load_srudb(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usi
             std::collections::HashMap::new()
         }
     };
+    let file = path.file_name().and_then(|name| name.to_str()).unwrap_or("SRUDB.dat");
     let mut inserted = 0;
+    db.execute_batch("BEGIN").map_err(|err| err.to_string())?;
     match srum_parser::parse_network_usage(path) {
         Ok(rows) => {
-            for row in rows {
+            let total = rows.len().max(1);
+            for (index, row) in rows.iter().enumerate() {
                 let app = names.get(&row.app_id).cloned().unwrap_or_else(|| row.app_id.to_string());
                 db.execute(
                     "INSERT INTO srum (host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     duckdb::params![host_id, "network", row.timestamp.to_string(), app, row.user_id.to_string(), row.bytes_sent as i64, row.bytes_recv as i64, 0i64, 0i64],
                 ).map_err(|err| err.to_string())?;
                 inserted += 1;
+                if inserted % 2000 == 0 {
+                    report_progress((76 + (index * 12 / total)) as u8, &format!("Writing SRUM {file} network {inserted}/{}", rows.len()));
+                }
             }
         }
         Err(err) => eprintln!("srum network {}: {err}", path.display()),
     }
     match srum_parser::parse_app_usage(path) {
         Ok(rows) => {
-            for row in rows {
+            let total = rows.len().max(1);
+            for (index, row) in rows.iter().enumerate() {
                 let app = names.get(&row.app_id).cloned().unwrap_or_else(|| row.app_id.to_string());
                 db.execute(
                     "INSERT INTO srum (host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     duckdb::params![host_id, "app", row.timestamp.to_string(), app, row.user_id.to_string(), 0i64, 0i64, row.foreground_cycles as i64, row.background_cycles as i64],
                 ).map_err(|err| err.to_string())?;
                 inserted += 1;
+                if inserted % 2000 == 0 {
+                    report_progress((88 + (index * 11 / total)) as u8, &format!("Writing SRUM {file} app {inserted}"));
+                }
             }
         }
         Err(err) => eprintln!("srum app {}: {err}", path.display()),
     }
+    db.execute_batch("COMMIT").map_err(|err| err.to_string())?;
+    report_progress(99, &format!("Writing SRUM {file} {inserted} rows"));
     Ok(inserted)
 }
 
