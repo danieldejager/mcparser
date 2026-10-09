@@ -482,6 +482,7 @@ ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", cas
 ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
+ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
 ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", sql]));
 ipcMain.handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {

@@ -718,3 +718,82 @@ pub fn sha256_bytes(bytes: &[u8]) -> String {
     hasher.update(bytes);
     format!("{:x}", hasher.finalize())
 }
+
+
+pub fn ingest_prefetch(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS prefetch (
+            host_id VARCHAR, pf_name VARCHAR, executable VARCHAR, run_count INTEGER, last_run VARCHAR, version INTEGER, path VARCHAR
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM prefetch WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for path in prefetch_files(&root) {
+            let bytes = std::fs::read(&path).map_err(|err| err.to_string())?;
+            let parsed = match prefetch_core::parse(&bytes) {
+                Ok(info) => info,
+                Err(_) => continue,
+            };
+            let last = parsed.last_run_times.first().copied().unwrap_or(0);
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("");
+            db.execute(
+                "INSERT INTO prefetch (host_id, pf_name, executable, run_count, last_run, version, path) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                duckdb::params![host_id, name, parsed.executable, parsed.run_count, filetime_iso(last), parsed.version, executable_path(&parsed)],
+            ).map_err(|err| err.to_string())?;
+            inserted += 1;
+        }
+    }
+    Ok(inserted)
+}
+
+fn prefetch_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            if path.extension().and_then(|ext| ext.to_str()).is_some_and(|ext| ext.eq_ignore_ascii_case("pf")) {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn executable_path(info: &prefetch_core::PrefetchInfo) -> String {
+    let needle = info.executable.to_ascii_lowercase();
+    info.filenames.iter().find(|name| name.to_ascii_lowercase().ends_with(&needle)).cloned().unwrap_or_default()
+}
+
+fn filetime_iso(filetime: i64) -> String {
+    if filetime <= 0 { return String::new(); }
+    let secs = (filetime - 116444736000000000) / 10_000_000;
+    if secs < 0 { return String::new(); }
+    let z = secs + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u64;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    let tod = secs.rem_euclid(86400);
+    format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, m, d, tod / 3600, tod % 3600 / 60, tod % 60)
+}

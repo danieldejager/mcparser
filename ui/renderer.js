@@ -156,6 +156,8 @@ async function loadHosts() {
   if (listed.code !== 0) return;
   const rows = listed.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t"));
   const sessions = collected.code === 0 ? collected.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t")) : [];
+  const prefetched = await window.mcparser.prefetch(caseDir());
+  const runs = prefetched.code === 0 ? prefetched.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t")) : [];
   if (rows.length === 0) {
     const item = document.createElement("li");
     item.textContent = "No hosts";
@@ -173,6 +175,10 @@ async function loadHosts() {
     const id = document.createElement("div");
     id.textContent = row[0];
     item.append(id);
+    const count = runs.filter((run) => run[0] === row[0]).length;
+    const pre = document.createElement("div");
+    pre.textContent = `prefetch ${count}`;
+    item.append(pre);
     const mine = sessions.filter((session) => session[1] === row[0]);
     for (const session of mine) {
       const line = document.createElement("div");

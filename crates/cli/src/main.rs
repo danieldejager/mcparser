@@ -20,6 +20,7 @@ fn main() -> ExitCode {
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
+        Some("prefetch") => prefetch(&mut args),
         Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
@@ -219,6 +220,36 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                     return ExitCode::from(1);
                 }
             }
+            match case::ingest_prefetch(&catalog, &case_dir.join("events.duckdb")) {
+                Ok(count) => println!("prefetch inserted={count}"),
+                Err(err) => {
+                    eprintln!("{err}");
+                    return ExitCode::from(1);
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn prefetch(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser prefetch --case <dir>");
+        return ExitCode::from(2);
+    };
+    let catalog = case_dir.join("catalog.sqlite");
+    let db = case_dir.join("events.duckdb");
+    if let Err(err) = case::ingest_prefetch(&catalog, &db) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::query(&db, "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC") {
+        Ok(rows) => {
+            print_rows(&[], &rows, "table");
             ExitCode::SUCCESS
         }
         Err(err) => {

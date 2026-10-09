@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   stats: (caseDir) => ipcRenderer.invoke("stats", caseDir),
   hosts: (caseDir) => ipcRenderer.invoke("hosts", caseDir),
   collections: (caseDir) => ipcRenderer.invoke("collections", caseDir),
+  prefetch: (caseDir) => ipcRenderer.invoke("prefetch", caseDir),
   pickCollection: () => ipcRenderer.invoke("pick-collection"),
   pickCaseOpen: () => ipcRenderer.invoke("pick-case-open"),
   deleteCase: (caseDir) => ipcRenderer.invoke("delete-case", caseDir),
