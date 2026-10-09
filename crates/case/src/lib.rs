@@ -129,6 +129,11 @@ pub fn file_sha256(path: &Path) -> std::io::Result<String> {
     Ok(format!("{:x}", hasher.finalize()))
 }
 
+pub fn report_progress(pct: u8, message: &str) {
+    println!("progress\t{pct}\t{message}");
+    let _ = std::io::Write::flush(&mut std::io::stdout());
+}
+
 pub fn artifact_done(catalog: &Path, name: &str, zip_sha: &str) -> Result<bool, rusqlite::Error> {
     let conn = open_catalog(catalog)?;
     let count: i64 = conn.query_row(
@@ -558,8 +563,10 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
     }
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
     let mut kept = Vec::new();
-    for (name, bytes) in raw_files {
+    let raw_total = raw_files.len().max(1);
+    for (index, (name, bytes)) in raw_files.into_iter().enumerate() {
         if name.ends_with('/') || name.ends_with('\\') { continue; }
+        report_progress((2 + (index * 14 / raw_total)) as u8, &format!("Reading {name}"));
         kept.push(write_kept(case_dir, &sha, &name, &bytes)?);
     }
     for (name, bytes) in &nested_zips {
@@ -1260,8 +1267,11 @@ pub fn ingest_srum(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         let root = case_dir.join("files").join(&sha);
         if !root.exists() { continue; }
         db.execute("DELETE FROM srum WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
-        for path in srum_files(&root) {
-            inserted += load_srum_file(&db, &host_id, &path)?;
+        let files = srum_files(&root);
+        let total = files.len().max(1);
+        for (index, path) in files.iter().enumerate() {
+            report_progress((76 + (index * 24 / total)) as u8, &format!("Writing SRUM {}/{}", index + 1, files.len()));
+            inserted += load_srum_file(&db, &host_id, path)?;
         }
     }
     Ok(inserted)
@@ -1415,8 +1425,11 @@ pub fn ingest_services(catalog: &Path, db_path: &Path) -> Result<usize, String> 
         let root = case_dir.join("files").join(&sha);
         if !root.exists() { continue; }
         db.execute("DELETE FROM services WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
-        for path in service_files(&root) {
-            inserted += load_service_file(&db, &host_id, &path)?;
+        let files = service_files(&root);
+        let total = files.len().max(1);
+        for (index, path) in files.iter().enumerate() {
+            report_progress((40 + (index * 12 / total)) as u8, &format!("Writing services {}/{}", index + 1, files.len()));
+            inserted += load_service_file(&db, &host_id, path)?;
         }
     }
     Ok(inserted)
@@ -1510,8 +1523,11 @@ pub fn ingest_tasks(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         let root = case_dir.join("files").join(&sha);
         if !root.exists() { continue; }
         db.execute("DELETE FROM tasks WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
-        for path in task_files(&root) {
-            inserted += load_task_file(&db, &host_id, &path)?;
+        let files = task_files(&root);
+        let total = files.len().max(1);
+        for (index, path) in files.iter().enumerate() {
+            report_progress((52 + (index * 12 / total)) as u8, &format!("Writing tasks {}/{}", index + 1, files.len()));
+            inserted += load_task_file(&db, &host_id, path)?;
         }
     }
     Ok(inserted)

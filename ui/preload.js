@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   onImportEvtx: (handler) => ipcRenderer.on("import-evtx", (_event, payload) => handler(payload)),
   saveAnalyst: (caseDir, name) => ipcRenderer.invoke("save-analyst", caseDir, name),
   onImportCollection: (handler) => ipcRenderer.on("import-collection", () => handler()),
+  onCollectProgress: (handler) => ipcRenderer.on("collect-progress", (_event, payload) => handler(payload)),
   query: (caseDir, sql) => ipcRenderer.invoke("query", caseDir, sql),
   saveCsv: (csv) => ipcRenderer.invoke("save-csv", csv),
   queries: (caseDir) => ipcRenderer.invoke("queries", caseDir),

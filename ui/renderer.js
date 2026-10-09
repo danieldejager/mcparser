@@ -122,11 +122,14 @@ function bytes(value) {
 
 let loading = false;
 
-function setLoading(on, label) {
+function setLoading(on, label, pct) {
   loading = on;
   const overlay = document.getElementById("loading");
   overlay.hidden = !on;
   document.getElementById("loading-label").textContent = label || "Loading collection";
+  const percent = on ? Math.max(0, Math.min(100, Number(pct) || 0)) : 0;
+  document.getElementById("loading-pct").textContent = percent + "%";
+  document.getElementById("loading-fill").style.width = percent + "%";
   document.body.setAttribute("aria-busy", on ? "true" : "false");
 }
 
@@ -736,7 +739,9 @@ window.mcparser.onImportCollection(async () => {
     }
     dir = made.dir;
   }
+  setLoading(true, "Hashing collector", 1);
   const result = await window.mcparser.collect(dir, picked.filePaths[0], name);
+  setLoading(false);
   caseInput.value = dir;
   if (result.code !== 0) {
     status.textContent = "Import failed";
@@ -1007,3 +1012,7 @@ function splitter(handle, pane, edge, key) {
 
 splitter(document.getElementById("split-left"), document.getElementById("case-pane"), "left", "mcparser-case-width");
 splitter(document.getElementById("split-right"), document.getElementById("grok"), "right", "mcparser-chat-width");
+
+window.mcparser.onCollectProgress((payload) => {
+  setLoading(true, payload.label || "Loading collection", payload.pct || 0);
+});

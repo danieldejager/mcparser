@@ -161,6 +161,7 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             return ExitCode::from(1);
         }
     }
+    case::report_progress(1, "Hashing collector");
     let sha = match case::file_sha256(zip_path.as_ref()) {
         Ok(sha) => sha,
         Err(err) => {
@@ -183,8 +184,10 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             let db = case_dir.join("events.duckdb");
             match case::eventlog_payloads(zip_path.as_ref()) {
                 Ok(logs) => {
-                    for log in logs {
+                    let log_total = logs.len().max(1);
+                    for (index, log) in logs.iter().enumerate() {
                         let sha = case::sha256_bytes(&log.bytes);
+                        case::report_progress((16 + (index * 12 / log_total)) as u8, &format!("Writing events {}", log.name));
                         if case::already_ingested(&catalog, &sha).unwrap_or(false) {
                             println!("skipped {} sha256={sha}", log.name);
                             continue;
@@ -234,8 +237,10 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             ] {
                 if case::artifact_done(&catalog, name, &sha).unwrap_or(false) {
                     println!("skipped {name} sha256={sha}");
+                    case::report_progress(match name { "prefetch" => 39, "services" => 51, "tasks" => 63, "shimcache" => 75, _ => 99 }, &format!("Skipped {name}, already loaded"));
                     continue;
                 }
+                case::report_progress(match name { "prefetch" => 28, "services" => 40, "tasks" => 52, "shimcache" => 64, _ => 76 }, &format!("Writing {name}"));
                 match load(&catalog, &db) {
                     Ok(count) => {
                         println!("{name} inserted={count}");
