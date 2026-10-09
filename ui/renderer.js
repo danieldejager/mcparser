@@ -11,7 +11,6 @@ const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
 const summary = document.getElementById("summary");
-const saved = document.getElementById("saved");
 const grok = document.getElementById("grok");
 const transcript = document.getElementById("transcript");
 const ask = document.getElementById("ask");
@@ -166,7 +165,6 @@ async function refresh() {
   fact("Channels", channels.join(", "));
   fact("Providers", String(providers.length));
   await loadHosts();
-  await loadQueries();
   const took = loadSeconds(started);
   fact(importedIn ? "Imported" : "Loaded", importedIn || took);
   status.textContent = importedIn ? "Collection imported in " + importedIn : "Case loaded in " + took;
@@ -396,35 +394,6 @@ async function exportCsv() {
 }
 
 
-async function loadQueries() {
-  saved.replaceChildren();
-  const result = await window.mcparser.queries(caseDir());
-  if (!result || result.code !== 0) return;
-  for (const line of result.out.split("\n").filter(Boolean)) {
-    const tab = line.indexOf("\t");
-    if (tab < 0) continue;
-    const name = line.slice(0, tab);
-    const sqlText = line.slice(tab + 1).replaceAll("\\n", "\n");
-    const li = document.createElement("li");
-    const button = document.createElement("button");
-    button.textContent = name;
-    button.onclick = () => {
-      sql.value = sqlText;
-      document.getElementById("tactic").onchange = fillHunts;
-document.getElementById("technique").onchange = fillHunts;
-fillHunts();
-const analyst = document.getElementById("analyst");
-if (analyst) {
-  analyst.value = localStorage.getItem("mcparser-analyst") || "";
-  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
-}
-updateLines();
-    };
-    li.append(button);
-    saved.append(li);
-  }
-}
-
 function showQuerySheet() {
   document.getElementById("query-name").value = "";
   document.getElementById("query-sheet").hidden = false;
@@ -442,7 +411,6 @@ async function saveQuery(event) {
     return;
   }
   status.textContent = `saved ${name}`;
-  await loadQueries();
 }
 
 
