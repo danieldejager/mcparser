@@ -444,6 +444,8 @@ function buildMenu() {
     {
       label: "IOC Management",
       submenu: [
+        { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
+        { type: "separator" },
         { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
         { label: "Update", enabled: caseOpen, click: () => win.webContents.send("ioc-update") },
         { label: "Remove", enabled: caseOpen, click: () => win.webContents.send("ioc-remove") },

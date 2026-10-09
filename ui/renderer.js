@@ -1093,7 +1093,10 @@ iocForm.onsubmit = async (event) => {
     ? await window.mcparser.iocUpdate(caseDir(), id, kind, value, note)
     : await window.mcparser.iocAdd(caseDir(), kind, value, note);
   status.textContent = result.code === 0 ? (result.out || "saved").trim() : (result.err || result.out || "IOC not saved");
-  if (result.code === 0) iocSheet.hidden = true;
+  if (result.code === 0) {
+    iocSheet.hidden = true;
+    showIocs();
+  }
 };
 
 async function showIocList(mode) {
@@ -1116,6 +1119,7 @@ async function showIocList(mode) {
         const result = await window.mcparser.iocRemove(caseDir(), row.id);
         status.textContent = result.code === 0 ? `removed ${row.value}` : (result.err || "not removed");
         iocListSheet.hidden = true;
+        if (result.code === 0) showIocs();
       } else {
         iocListSheet.hidden = true;
         openIocSheet("update", row);
@@ -1127,6 +1131,34 @@ async function showIocList(mode) {
   iocListSheet.hidden = false;
 }
 
+async function showIocs() {
+  if (!caseDir()) return;
+  const rows = await loadIocs();
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["id", "kind", "value", "note"]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  const csv = ["id,kind,value,note"];
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    for (const value of [row.id, row.kind, row.value, row.note]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    table.append(tr);
+    csv.push([row.id, row.kind, row.value, row.note].map((cell) => String(cell).includes(",") ? `"${String(cell).replaceAll('"', '""')}"` : cell).join(","));
+  }
+  results.replaceChildren(table);
+  lastCsv = csv.join("\n");
+  status.textContent = rows.length ? `${rows.length} IOC${rows.length === 1 ? "" : "s"}` : "No IOCs on this case";
+}
+
+window.mcparser.onIocView(() => showIocs());
 window.mcparser.onIocAdd(() => openIocSheet("add"));
 window.mcparser.onIocUpdate(() => showIocList("update"));
 window.mcparser.onIocRemove(() => showIocList("remove"));

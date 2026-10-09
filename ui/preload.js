@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   iocAdd: (caseDir, kind, value, note) => ipcRenderer.invoke("ioc-add", caseDir, kind, value, note),
   iocUpdate: (caseDir, id, kind, value, note) => ipcRenderer.invoke("ioc-update", caseDir, id, kind, value, note),
   iocRemove: (caseDir, id) => ipcRenderer.invoke("ioc-remove", caseDir, id),
+  onIocView: (handler) => ipcRenderer.on("ioc-view", () => handler()),
   onIocAdd: (handler) => ipcRenderer.on("ioc-add", () => handler()),
   onIocUpdate: (handler) => ipcRenderer.on("ioc-update", () => handler()),
   onIocRemove: (handler) => ipcRenderer.on("ioc-remove", () => handler()),
