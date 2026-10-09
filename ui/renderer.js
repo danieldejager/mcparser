@@ -183,14 +183,13 @@ async function loadHosts() {
   if (listed.code !== 0) return;
   const rows = listed.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t"));
   const sessions = collected.code === 0 ? collected.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t")) : [];
-  const prefetched = await window.mcparser.prefetch(caseDir());
-  const runs = prefetched.code === 0 ? prefetched.out.trim().split("\n").filter(Boolean).map((line) => line.split("\t")) : [];
   if (rows.length === 0) {
     const item = document.createElement("li");
     item.textContent = "No hosts";
     hosts.append(item);
     return;
   }
+  const counts = new Map();
   for (const row of rows) {
     const item = document.createElement("li");
     const title = document.createElement("strong");
@@ -202,10 +201,10 @@ async function loadHosts() {
     const id = document.createElement("div");
     id.textContent = row[0];
     item.append(id);
-    const count = runs.filter((run) => run[0] === row[0]).length;
     const pre = document.createElement("div");
-    pre.textContent = `prefetch ${count}`;
+    pre.textContent = "prefetch";
     item.append(pre);
+    counts.set(row[0], pre);
     const mine = sessions.filter((session) => session[1] === row[0]);
     for (const session of mine) {
       const line = document.createElement("div");
@@ -213,6 +212,13 @@ async function loadHosts() {
       item.append(line);
     }
     hosts.append(item);
+  }
+  const prefetched = await window.mcparser.query(caseDir(), "SELECT host_id, count(*) FROM prefetch GROUP BY host_id");
+  if (prefetched.code !== 0) return;
+  for (const line of prefetched.out.trim().split("\n").slice(1)) {
+    const [hostId, count] = line.split(",");
+    const pre = counts.get(hostId);
+    if (pre) pre.textContent = "prefetch " + count;
   }
 }
 
