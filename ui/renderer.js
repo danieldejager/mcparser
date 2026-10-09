@@ -130,7 +130,12 @@ function setLoading(on, label) {
   document.body.setAttribute("aria-busy", on ? "true" : "false");
 }
 
+function loadSeconds(started) {
+  return ((performance.now() - started) / 1000).toFixed(1) + " s";
+}
+
 async function refresh() {
+  const started = performance.now();
   setLoading(true, "Loading collection");
   try {
   const result = await window.mcparser.stats(caseDir());
@@ -138,7 +143,8 @@ async function refresh() {
   if (result.code !== 0) {
     fact("Case", caseDir());
     await loadHosts();
-    status.textContent = "Case opened";
+    fact("Loaded", loadSeconds(started));
+    status.textContent = "Case opened in " + loadSeconds(started);
   markCase();
     return;
   }
@@ -156,9 +162,11 @@ async function refresh() {
   fact("Channels", channels.join(", "));
   fact("Providers", String(providers.length));
   await loadHosts();
-  status.textContent = "Case loaded";
-  markCase();
   await loadQueries();
+  const took = loadSeconds(started);
+  fact("Loaded", took);
+  status.textContent = "Case loaded in " + took;
+  markCase();
   } finally {
     setLoading(false);
   }
