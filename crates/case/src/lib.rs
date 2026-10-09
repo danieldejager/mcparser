@@ -756,7 +756,6 @@ pub fn ingest_prefetch(catalog: &Path, db_path: &Path) -> Result<usize, String> 
             inserted += 1;
         }
     }
-    eprintln!("userassist keys={seen} hive={}", hive.display());
     Ok(inserted)
 }
 
@@ -1000,6 +999,7 @@ fn load_userassist(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Resul
             inserted += 1;
         }
     }
+    eprintln!("userassist keys={seen} hive={}", hive.display());
     Ok(inserted)
 }
 
