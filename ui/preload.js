@@ -56,4 +56,11 @@ contextBridge.exposeInMainWorld("mcparser", {
   onShowRuns: (handler) => ipcRenderer.on("show-runs", () => handler()),
   onShowTrail: (handler) => ipcRenderer.on("show-trail", () => handler()),
   onExportTrail: (handler) => ipcRenderer.on("export-trail", () => handler()),
+  iocs: (caseDir) => ipcRenderer.invoke("iocs", caseDir),
+  iocAdd: (caseDir, kind, value, note) => ipcRenderer.invoke("ioc-add", caseDir, kind, value, note),
+  iocUpdate: (caseDir, id, kind, value, note) => ipcRenderer.invoke("ioc-update", caseDir, id, kind, value, note),
+  iocRemove: (caseDir, id) => ipcRenderer.invoke("ioc-remove", caseDir, id),
+  onIocAdd: (handler) => ipcRenderer.on("ioc-add", () => handler()),
+  onIocUpdate: (handler) => ipcRenderer.on("ioc-update", () => handler()),
+  onIocRemove: (handler) => ipcRenderer.on("ioc-remove", () => handler()),
 });

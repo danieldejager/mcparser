@@ -1,5 +1,5 @@
 html, body { height: 100%; margin: 0; font: 13px/1.4 "Segoe UI", sans-serif; color: #1f1f1f; background: #f3f3f3; }
-body { display: flex; }
+body { display: flex; flex-direction: column; }
 aside { width: 280px; flex: 0 0 auto; background: #fafafa; border-right: 1px solid #e1e1e1; padding: 16px; overflow: auto; }
 .split { width: 6px; flex: 0 0 6px; cursor: col-resize; background: #e1e1e1; }
 .split:hover, .split.dragging { background: #1f6b4a; }
@@ -65,3 +65,15 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 .ask-line { color: #5f6b7a; }
 .dots { display: inline-block; width: 1.4em; overflow: hidden; vertical-align: bottom; animation: dots 1s steps(4, end) infinite; }
 @keyframes dots { to { width: 0; } }
+
+#toolbar { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #d0d0d0; flex: 0 0 auto; }
+#toolbar button { height: 26px; padding: 0 10px; }
+#tb-run { background: #0b6a0b; color: #fff; border-color: #0b6a0b; }
+#tb-run:hover { background: #095809; }
+.tb-sep { width: 1px; height: 18px; background: #d0d0d0; margin: 0 6px; }
+#tb-case { color: #333; margin-left: 4px; }
+#workspace { display: flex; flex: 1; min-height: 0; }
+#ioc-list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 280px; overflow: auto; }
+#ioc-list button { display: block; width: 100%; margin-top: 6px; text-align: left; }
+#ioc-sheet label, #ioc-list-sheet label { display: block; margin-top: 10px; color: #666; font-size: 11px; text-transform: uppercase; }
+#ioc-sheet select, #ioc-sheet input { width: 100%; box-sizing: border-box; margin-top: 4px; }

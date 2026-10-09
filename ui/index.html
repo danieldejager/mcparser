@@ -6,6 +6,13 @@
   <link rel="stylesheet" href="studio.css">
 </head>
 <body>
+  <header id="toolbar">
+    <button id="tb-new" type="button" title="New Query">New Query</button>
+    <button id="tb-run" type="button" title="Execute">Execute</button>
+    <span class="tb-sep"></span>
+    <span id="tb-case">No case</span>
+  </header>
+  <div id="workspace">
   <aside id="case-pane">
     <details open>
       <summary>Case</summary>
@@ -130,6 +137,38 @@ LIMIT 20</textarea>
       <p id="loading-pct">0%</p>
       <div class="loading-bar" aria-hidden="true"><span id="loading-fill"></span></div>
     </div>
+  </div>
+  </div>
+  <div id="ioc-sheet" class="sheet" hidden>
+    <form id="ioc-form">
+      <h1 id="ioc-title">Add IOC</h1>
+      <label for="ioc-kind">Kind</label>
+      <select id="ioc-kind">
+        <option value="sha1">SHA1</option>
+        <option value="ip">IP</option>
+        <option value="user">User</option>
+        <option value="path">Path</option>
+        <option value="domain">Domain</option>
+      </select>
+      <label for="ioc-value">Value</label>
+      <input id="ioc-value" required autocomplete="off">
+      <label for="ioc-note">Note</label>
+      <input id="ioc-note" autocomplete="off">
+      <input id="ioc-id" type="hidden">
+      <div class="sheet-actions">
+        <button type="button" id="ioc-cancel">Cancel</button>
+        <button type="submit" id="ioc-save">Save</button>
+      </div>
+    </form>
+  </div>
+  <div id="ioc-list-sheet" class="sheet" hidden>
+    <form id="ioc-list-form">
+      <h1 id="ioc-list-title">IOCs</h1>
+      <ul id="ioc-list"></ul>
+      <div class="sheet-actions">
+        <button type="button" id="ioc-list-cancel">Close</button>
+      </div>
+    </form>
   </div>
   <script src="hunts.js"></script>
   <script src="renderer.js"></script>

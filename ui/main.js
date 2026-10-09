@@ -442,6 +442,14 @@ function buildMenu() {
       ],
     },
     {
+      label: "IOC Management",
+      submenu: [
+        { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
+        { label: "Update", enabled: caseOpen, click: () => win.webContents.send("ioc-update") },
+        { label: "Remove", enabled: caseOpen, click: () => win.webContents.send("ioc-remove") },
+      ],
+    },
+    {
       label: "AI Integration",
       submenu: [
         {
@@ -511,6 +519,10 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
 ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
+ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
+ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
+ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
+ipcMain.handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
 ipcMain.handle("pick-case-open", async () => dialog.showOpenDialog(win, {
   title: "Open case",
   properties: ["openDirectory"],

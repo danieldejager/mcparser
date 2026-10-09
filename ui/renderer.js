@@ -84,6 +84,11 @@ updateLines();
 
 function markCase() {
   window.mcparser.setCaseOpen(Boolean(caseDir()));
+  const label = document.getElementById("tb-case");
+  if (label) {
+    const dir = caseDir();
+    label.textContent = dir ? dir.split(/[\\/]/).pop() : "No case";
+  }
 }
 
 function caseDir() {
@@ -1042,3 +1047,86 @@ window.mcparser.onCollectProgress((payload) => {
 });
 
 window.mcparser.onAskProgress((label) => showAskLine(label));
+
+document.getElementById("tb-new").onclick = () => {
+  sql.value = "";
+  updateLines();
+  sql.focus();
+};
+document.getElementById("tb-run").onclick = run;
+
+const iocSheet = document.getElementById("ioc-sheet");
+const iocListSheet = document.getElementById("ioc-list-sheet");
+const iocForm = document.getElementById("ioc-form");
+const iocList = document.getElementById("ioc-list");
+
+function openIocSheet(mode, row) {
+  if (!caseDir()) return;
+  document.getElementById("ioc-title").textContent = mode === "update" ? "Update IOC" : "Add IOC";
+  document.getElementById("ioc-id").value = row ? row.id : "";
+  document.getElementById("ioc-kind").value = row ? row.kind : "sha1";
+  document.getElementById("ioc-value").value = row ? row.value : "";
+  document.getElementById("ioc-note").value = row ? row.note : "";
+  iocSheet.hidden = false;
+  document.getElementById("ioc-value").focus();
+}
+
+async function loadIocs() {
+  const result = await window.mcparser.iocs(caseDir());
+  if (result.code !== 0) return [];
+  return (result.out || "").split("\n").filter(Boolean).map((line) => {
+    const [id, kind, value, note] = line.split("\t");
+    return { id, kind, value, note: note || "" };
+  });
+}
+
+document.getElementById("ioc-cancel").onclick = () => { iocSheet.hidden = true; };
+document.getElementById("ioc-list-cancel").onclick = () => { iocListSheet.hidden = true; };
+
+iocForm.onsubmit = async (event) => {
+  event.preventDefault();
+  const id = document.getElementById("ioc-id").value;
+  const kind = document.getElementById("ioc-kind").value;
+  const value = document.getElementById("ioc-value").value.trim();
+  const note = document.getElementById("ioc-note").value.trim();
+  const result = id
+    ? await window.mcparser.iocUpdate(caseDir(), id, kind, value, note)
+    : await window.mcparser.iocAdd(caseDir(), kind, value, note);
+  status.textContent = result.code === 0 ? (result.out || "saved").trim() : (result.err || result.out || "IOC not saved");
+  if (result.code === 0) iocSheet.hidden = true;
+};
+
+async function showIocList(mode) {
+  if (!caseDir()) return;
+  const rows = await loadIocs();
+  iocList.innerHTML = "";
+  document.getElementById("ioc-list-title").textContent = mode === "remove" ? "Remove IOC" : "Update IOC";
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.textContent = "No IOCs on this case.";
+    iocList.append(li);
+  }
+  for (const row of rows) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `${row.kind}  ${row.value}`;
+    button.onclick = async () => {
+      if (mode === "remove") {
+        const result = await window.mcparser.iocRemove(caseDir(), row.id);
+        status.textContent = result.code === 0 ? `removed ${row.value}` : (result.err || "not removed");
+        iocListSheet.hidden = true;
+      } else {
+        iocListSheet.hidden = true;
+        openIocSheet("update", row);
+      }
+    };
+    li.append(button);
+    iocList.append(li);
+  }
+  iocListSheet.hidden = false;
+}
+
+window.mcparser.onIocAdd(() => openIocSheet("add"));
+window.mcparser.onIocUpdate(() => showIocList("update"));
+window.mcparser.onIocRemove(() => showIocList("remove"));

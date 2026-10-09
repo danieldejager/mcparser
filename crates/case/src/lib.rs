@@ -233,6 +233,14 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             collected_at TEXT NOT NULL,
             zip_sha256 TEXT NOT NULL,
             source_name TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS iocs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            value TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            added_at TEXT NOT NULL,
+            UNIQUE(kind, value)
         )",
     )?;
     Ok(conn)
@@ -1659,4 +1667,63 @@ fn collect_task_rows(value: &serde_json::Value, rows: &mut Vec<serde_json::Value
         }
         _ => {}
     }
+}
+
+pub struct Ioc {
+    pub id: i64,
+    pub kind: String,
+    pub value: String,
+    pub note: String,
+    pub added_at: String,
+}
+
+pub fn add_ioc(catalog: &Path, kind: &str, value: &str, note: &str) -> Result<i64, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let added_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
+    conn.execute(
+        "INSERT INTO iocs (kind, value, note, added_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(kind, value) DO UPDATE SET note = excluded.note",
+        rusqlite::params![kind, value, note, added_at],
+    )?;
+    let id: i64 = conn.query_row(
+        "SELECT id FROM iocs WHERE kind = ?1 AND value = ?2",
+        rusqlite::params![kind, value],
+        |row| row.get(0),
+    )?;
+    Ok(id)
+}
+
+pub fn iocs(catalog: &Path) -> Result<Vec<Ioc>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT id, kind, value, note, added_at FROM iocs ORDER BY kind, value")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Ioc {
+            id: row.get(0)?,
+            kind: row.get(1)?,
+            value: row.get(2)?,
+            note: row.get(3)?,
+            added_at: row.get(4)?,
+        });
+    }
+    Ok(out)
+}
+
+pub fn remove_ioc(catalog: &Path, id: i64) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute("DELETE FROM iocs WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn update_ioc(catalog: &Path, id: i64, kind: &str, value: &str, note: &str) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "UPDATE iocs SET kind = ?1, value = ?2, note = ?3 WHERE id = ?4",
+        rusqlite::params![kind, value, note, id],
+    )?;
+    Ok(())
 }
