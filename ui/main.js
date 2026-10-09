@@ -291,7 +291,11 @@ function buildMenu() {
     {
       label: "File",
       submenu: [
-        { label: "Open EVTX...", accelerator: "CmdOrCtrl+O", click: openEvtx },
+        { label: "New Case...", click: () => win.webContents.send("new-case") },
+        { label: "Open Case...", accelerator: "CmdOrCtrl+O", click: () => win.webContents.send("open-case") },
+        { label: "Delete Case...", click: () => win.webContents.send("delete-case") },
+        { type: "separator" },
+        { label: "Open EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
         { label: "Export handoff...", click: () => win.webContents.send("export-handoff") },
         { label: "Open handoff...", click: () => win.webContents.send("open-handoff") },
@@ -398,6 +402,26 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   properties: ["openFile"],
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
+ipcMain.handle("pick-case-open", async () => dialog.showOpenDialog(win, {
+  title: "Open case",
+  properties: ["openDirectory"],
+  buttonLabel: "Open case",
+}));
+ipcMain.handle("delete-case", async (_event, caseDir) => {
+  const dir = casePath(caseDir);
+  if (!dir || !dir.endsWith(".mcp")) return { error: "Only a .mcp case folder can be deleted" };
+  const choice = await dialog.showMessageBox(win, {
+    type: "warning",
+    message: "Delete this case?",
+    detail: dir,
+    buttons: ["Delete", "Cancel"],
+    defaultId: 1,
+    cancelId: 1,
+  });
+  if (choice.response !== 0) return { canceled: true };
+  fs.rmSync(dir, { recursive: true, force: true });
+  return { deleted: true };
+});
 ipcMain.handle("pick-case-save", async () => dialog.showOpenDialog(win, {
   title: "Save case",
   properties: ["openDirectory", "createDirectory"],

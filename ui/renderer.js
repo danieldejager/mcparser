@@ -120,7 +120,9 @@ async function refresh() {
   const result = await window.mcparser.stats(caseDir());
   summary.replaceChildren();
   if (result.code !== 0) {
-    status.textContent = result.err || "stats failed";
+    fact("Case", caseDir());
+    await loadHosts();
+    status.textContent = "Case opened";
     return;
   }
   const range = section(result.out, "time range")[0] || [];
@@ -731,6 +733,65 @@ function showImported(text) {
   }
   results.replaceChildren(table);
 }
+
+async function requireAnalyst() {
+  const name = document.getElementById("analyst").value.trim();
+  if (name) return name;
+  status.textContent = "Add your name before saving the case";
+  document.getElementById("analyst").focus();
+  await window.mcparser.handoffError("Add your name before saving the case");
+  return "";
+}
+
+window.mcparser.onNewCase(async () => {
+  const name = await requireAnalyst();
+  if (!name) return;
+  const caseName = await askCaseName();
+  if (!caseName) return;
+  const saved = await window.mcparser.pickCaseSave();
+  if (!saved || saved.canceled || !saved.filePaths[0]) return;
+  const made = await window.mcparser.makeCaseDir(saved.filePaths[0], caseName);
+  if (!made || made.error) {
+    status.textContent = made && made.error ? made.error : "Case name is required";
+    return;
+  }
+  caseInput.value = made.dir;
+  const named = await window.mcparser.saveAnalyst(made.dir, name);
+  if (named.code !== 0) {
+    status.textContent = named.err || "Case not saved";
+    return;
+  }
+  results.replaceChildren();
+  await refresh();
+  status.textContent = "Case created";
+});
+
+window.mcparser.onOpenCase(async () => {
+  const picked = await window.mcparser.pickCaseOpen();
+  if (!picked || picked.canceled || !picked.filePaths[0]) return;
+  caseInput.value = picked.filePaths[0];
+  results.replaceChildren();
+  await refresh();
+});
+
+window.mcparser.onDeleteCase(async () => {
+  const dir = caseDir();
+  if (!dir) {
+    status.textContent = "No case open";
+    return;
+  }
+  const result = await window.mcparser.deleteCase(dir);
+  if (!result || result.canceled) return;
+  if (result.error) {
+    status.textContent = result.error;
+    return;
+  }
+  caseInput.value = "";
+  summary.replaceChildren();
+  hosts.replaceChildren();
+  results.replaceChildren();
+  status.textContent = "Case deleted";
+});
 
 window.mcparser.onOpened((opened) => {
   caseInput.value = opened.caseDir;
