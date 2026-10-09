@@ -1136,7 +1136,7 @@ async function showIocs() {
   const rows = await loadIocs();
   const table = document.createElement("table");
   const head = document.createElement("tr");
-  for (const label of ["id", "kind", "value", "note"]) {
+  for (const label of ["id", "kind", "value", "note", ""]) {
     const th = document.createElement("th");
     th.textContent = label;
     head.append(th);
@@ -1153,6 +1153,20 @@ async function showIocs() {
     tr.style.cursor = "pointer";
     tr.title = "Edit this IOC";
     tr.onclick = () => openIocSheet("update", row);
+    const action = document.createElement("td");
+    const trash = document.createElement("button");
+    trash.type = "button";
+    trash.className = "ioc-trash";
+    trash.title = "Delete this IOC";
+    trash.textContent = "🗑";
+    trash.onclick = async (event) => {
+      event.stopPropagation();
+      const result = await window.mcparser.iocRemove(caseDir(), row.id);
+      status.textContent = result.code === 0 ? `removed ${row.value}` : (result.err || "not removed");
+      if (result.code === 0) showIocs();
+    };
+    action.append(trash);
+    tr.append(action);
     table.append(tr);
     csv.push([row.id, row.kind, row.value, row.note].map((cell) => String(cell).includes(",") ? `"${String(cell).replaceAll('"', '""')}"` : cell).join(","));
   }
@@ -1163,5 +1177,3 @@ async function showIocs() {
 
 window.mcparser.onIocView(() => showIocs());
 window.mcparser.onIocAdd(() => openIocSheet("add"));
-window.mcparser.onIocUpdate(() => showIocList("update"));
-window.mcparser.onIocRemove(() => showIocList("remove"));
