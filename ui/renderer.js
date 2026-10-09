@@ -675,7 +675,6 @@ document.getElementById("save-query").onclick = showQuerySheet;
 document.getElementById("query-cancel").onclick = () => { document.getElementById("query-sheet").hidden = true; };
 document.getElementById("query-form").onsubmit = saveQuery;
 document.getElementById("export").onclick = exportCsv;
-document.getElementById("note").onclick = () => showNoteSheet("", "");
 document.getElementById("note-cancel").onclick = () => { document.getElementById("note-sheet").hidden = true; };
 document.getElementById("note-form").onsubmit = saveNote;
 document.getElementById("key-cancel").onclick = hideSheet;

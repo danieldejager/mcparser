@@ -497,6 +497,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 760,
+    fullscreen: true,
     title: "McParser",
     icon: icon || undefined,
     backgroundColor: "#f3f3f3",
