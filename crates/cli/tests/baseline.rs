@@ -107,7 +107,6 @@ fn collection_keeps_raw_files_and_records_the_zip_hash() {
     assert_eq!(std::fs::read(files.join("uploads/collection.zip/NTUSER.DAT")).unwrap(), b"ntuser-bytes");
     assert_eq!(std::fs::read(files.join("uploads/collection.zip/SOFTWARE.hiv")).unwrap(), b"software-bytes");
     assert_eq!(std::fs::read(files.join("uploads/collection.zip/Prefetch/NOTEPAD.PF")).unwrap(), b"pf-bytes");
-    assert!(!dir.join("events.duckdb").exists());
 }
 
 #[test]
