@@ -916,7 +916,7 @@ fn srum(args: &mut impl Iterator<Item = String>) -> ExitCode {
         }
         Err(err) => {
             eprintln!("{err}");
-            ExitCode::from(1);
+            ExitCode::from(1)
         }
     }
 }
