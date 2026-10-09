@@ -284,32 +284,47 @@ async function caseContext(caseDir) {
     "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText);
 }
 
+async function coverage(caseDir) {
+  const samples = [
+    ["events", "SELECT event_id, count(*) AS events FROM events GROUP BY event_id ORDER BY events DESC LIMIT 3"],
+    ["prefetch", "SELECT executable, run_count, last_run FROM prefetch ORDER BY run_count DESC LIMIT 3"],
+    ["userassist", "SELECT name, run_count FROM userassist WHERE name NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 3"],
+    ["amcache", "SELECT name, sha1, path FROM amcache WHERE kind = 'file' AND sha1 <> '' LIMIT 3"],
+    ["shimcache", "SELECT position, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 3"],
+    ["srum", "SELECT app, bytes_sent FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 3"],
+    ["services", "SELECT name, start_mode, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
+    ["tasks", "SELECT command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
+  ];
+  const parts = [];
+  for (const [name, sql] of samples) {
+    const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
+    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "not loaded"));
+  }
+  return parts.join("\n");
+}
+
 async function grokAsk(caseDir, question) {
   if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
     const context = await caseContext(caseDir);
-    let sql = oneSelect(await askModel(schema + "\n" + context + "\nQuestion: " + question));
-    let queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-    if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
-    let rows = queried.out || "";
-    let count = rows.trim() ? Math.max(rows.trim().split("\n").length - 1, 0) : 0;
-    if (count === 0) {
-      sql = oneSelect(await askModel(
-        schema + "\n" + context +
-        "\nThe previous query returned no rows: " + sql +
-        "\nWrite a new SELECT. Use events for a logon or account question, and prefetch, userassist, amcache, shimcache, srum, services or tasks for a program question. Shimcache modified is a file time, not a run time. SRUM timestamp is when the hourly record was written.\nQuestion: " + question
-      ));
-      queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-      if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
-      rows = queried.out || "";
-      count = rows.trim() ? Math.max(rows.trim().split("\n").length - 1, 0) : 0;
+    const covered = await coverage(caseDir);
+    const rules = "\nWrite one SELECT only. Do not use UNION. A question about more than one table is already answered by the coverage rows; pick the single most relevant table for the SELECT.\n";
+    let sql = "";
+    let rows = covered;
+    try {
+      sql = oneSelect(await askModel(schema + "\n" + context + "\nCoverage already queried:\n" + covered + rules + "Question: " + question));
+      const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
+      if (queried.code === 0) rows = queried.out || covered;
+      else sql = sql + "\n-- failed, answered from coverage";
+    } catch (error) {
+      sql = "-- answered from coverage\n" + error.message;
     }
     const answer = await askModel(
-      "Answer from these rows only. Do not invent rows. Map a host_id back to its hostname from the host list. If the row count is 0, say so and quote the SQL.\n" +
+      "Answer from these rows only. Do not invent rows. Map a host_id back to its hostname from the host list. If a source says not loaded, say so.\n" +
       context +
+      "\nCoverage:\n" + covered +
       "\nQuestion: " + question +
       "\nSQL: " + sql +
-      "\nRow count: " + count +
       "\nRows:\n" + clip(rows)
     );
     return { sql, answer, provider };
