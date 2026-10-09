@@ -227,6 +227,7 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
             }
             for (name, load) in [
                 ("prefetch", case::ingest_prefetch as fn(&Path, &Path) -> Result<usize, String>),
+                ("services", case::ingest_services),
                 ("tasks", case::ingest_tasks),
                 ("shimcache", case::ingest_shimcache),
                 ("srum", case::ingest_srum),
@@ -238,7 +239,7 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                 match load(&catalog, &db) {
                     Ok(count) => {
                         println!("{name} inserted={count}");
-                        if name != "tasks" || count > 0 {
+                        if (name != "tasks" && name != "services") || count > 0 {
                             if let Err(err) = case::record_artifact(&catalog, name, &sha, count as i64) {
                                 eprintln!("{err}");
                                 return ExitCode::from(1);

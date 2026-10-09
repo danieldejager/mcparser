@@ -238,6 +238,7 @@ const schema = [
   "Table amcache(host_id, kind, name, path, sha1, size, modified, publisher, version, key_path). It is not inside events. kind is file or program. A file row means the executable was inventoried, not that it ran. modified on a file row is the compile time, not a run time. A program row is an installed product and its modified value is the install date.",
   "Table shimcache(host_id, path, modified, position, executed, control_set). It is not inside events. A row means Windows recorded the path. modified is the file time, not a run time. position 0 is the newest entry.\n" +
   "Table srum(host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles). It is not inside events. kind is network or app. A network row is hourly bytes for an application. timestamp is when the record was written, not a start time.\n" +
+  "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
   "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
   "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path and shimcache.path.",
   "Return one DuckDB SELECT and no other text."
@@ -288,7 +289,7 @@ async function grokAsk(caseDir, question) {
       sql = oneSelect(await askModel(
         schema + "\n" + context +
         "\nThe previous query returned no rows: " + sql +
-        "\nWrite a new SELECT. Use events for a logon or account question, and prefetch, userassist, amcache, shimcache, srum or tasks for a program question. Shimcache modified is a file time, not a run time. SRUM timestamp is when the hourly record was written.\nQuestion: " + question
+        "\nWrite a new SELECT. Use events for a logon or account question, and prefetch, userassist, amcache, shimcache, srum, services or tasks for a program question. Shimcache modified is a file time, not a run time. SRUM timestamp is when the hourly record was written.\nQuestion: " + question
       ));
       queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
       if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };

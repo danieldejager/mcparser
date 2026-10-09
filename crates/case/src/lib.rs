@@ -568,8 +568,9 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
         for i in 0..nested.len() {
             let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
             let entry_name = entry.name().to_string();
-            let from_tasks = name.to_ascii_lowercase().contains("task");
-            if entry_name.ends_with('/') || entry.size() >= 80_000_000 || !(from_tasks || keep_raw(&entry_name)) { continue; }
+            let lower_name = name.to_ascii_lowercase();
+            let from_bundle = lower_name.contains("task") || lower_name.contains("service");
+            if entry_name.ends_with('/') || entry.size() >= 80_000_000 || !(from_bundle || keep_raw(&entry_name)) { continue; }
             let mut body = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
             match write_kept(case_dir, &sha, &format!("{name}/{entry_name}"), &body) {
@@ -1391,6 +1392,102 @@ fn load_srudb(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usi
     Ok(inserted)
 }
 
+
+
+pub fn ingest_services(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS services (
+            host_id VARCHAR, name VARCHAR, display_name VARCHAR, state VARCHAR, start_mode VARCHAR, path VARCHAR, user_id VARCHAR
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM services WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for path in service_files(&root) {
+            inserted += load_service_file(&db, &host_id, &path)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn service_files(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            if path.to_string_lossy().to_ascii_lowercase().contains("service") {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_service_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let bytes = match std::fs::read(path) { Ok(bytes) => bytes, Err(_) => return Ok(0) };
+    let body = decode_text(&bytes);
+    let mut rows = Vec::new();
+    for line in body.lines() {
+        let line = line.trim().trim_start_matches('\u{feff}');
+        if line.is_empty() { continue; }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            collect_service_rows(&value, &mut rows);
+        }
+    }
+    if rows.is_empty() {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(&body) {
+            collect_service_rows(&value, &mut rows);
+        }
+    }
+    let mut inserted = 0;
+    for row in rows {
+        let name = json_text(&row, &["Name", "ServiceName", "name"]);
+        let path_name = json_text(&row, &["PathName", "ImagePath", "ServiceDll", "path"]);
+        if name.is_empty() && path_name.is_empty() { continue; }
+        db.execute(
+            "INSERT INTO services (host_id, name, display_name, state, start_mode, path, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![
+                host_id,
+                name,
+                json_text(&row, &["DisplayName", "display_name"]),
+                json_text(&row, &["State", "Status", "state"]),
+                json_text(&row, &["StartMode", "Start", "start_mode"]),
+                path_name,
+                json_text(&row, &["UserName", "StartName", "Account", "user_id"]),
+            ],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+fn collect_service_rows(value: &serde_json::Value, rows: &mut Vec<serde_json::Value>) {
+    match value {
+        serde_json::Value::Array(list) => { for item in list { collect_service_rows(item, rows); } }
+        serde_json::Value::Object(map) => {
+            if map.contains_key("Name") || map.contains_key("ServiceName") || map.contains_key("PathName") || map.contains_key("ImagePath") {
+                rows.push(value.clone());
+            }
+            for item in map.values() { collect_service_rows(item, rows); }
+        }
+        _ => {}
+    }
+}
 
 pub fn ingest_tasks(catalog: &Path, db_path: &Path) -> Result<usize, String> {
     let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
