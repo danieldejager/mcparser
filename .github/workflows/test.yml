@@ -20,12 +20,8 @@ jobs:
         run: cargo test
       - name: Save Case CLI
         run: cargo test -p mcparser --test baseline save_case_stores_the_analyst
-      - name: Collection zip CLI
-        run: cargo test -p mcparser --test baseline collection_keeps_raw_files_and_records_the_zip_hash
       - name: Host and collection CLI
         run: cargo test -p mcparser --test baseline case_holds_two_hosts_keyed_by_host_id
-      - name: Event logs on the timeline
-        run: cargo test -p mcparser --test baseline eventlogs_zip_lands_on_the_timeline_once
 
   security:
     runs-on: ubuntu-latest
