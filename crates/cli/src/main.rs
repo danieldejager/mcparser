@@ -21,6 +21,7 @@ fn main() -> ExitCode {
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
         Some("prefetch") => prefetch(&mut args),
+        Some("amcache") => amcache(&mut args),
         Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
@@ -875,5 +876,28 @@ fn case_dir(args: &mut impl Iterator<Item = String>) -> Option<PathBuf> {
     match args.next().as_deref() {
         Some("--case") => args.next().map(PathBuf::from),
         _ => None,
+    }
+}
+
+fn amcache(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser amcache --case <dir>");
+        return ExitCode::from(2);
+    };
+    let catalog = case_dir.join("catalog.sqlite");
+    let db = case_dir.join("events.duckdb");
+    if let Err(err) = case::ingest_amcache(&catalog, &db) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::query(&db, "SELECT host_id, kind, name, sha1, modified, path FROM amcache ORDER BY modified DESC") {
+        Ok(rows) => {
+            print_rows(&[], &rows, "table");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
     }
 }

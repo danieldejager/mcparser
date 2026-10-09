@@ -798,3 +798,131 @@ fn filetime_iso(filetime: i64) -> String {
     let tod = secs.rem_euclid(86400);
     format!("{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z", year, m, d, tod / 3600, tod % 3600 / 60, tod % 60)
 }
+
+
+pub fn ingest_amcache(catalog: &Path, db_path: &Path) -> Result<usize, String> {
+    let conn = rusqlite::Connection::open(catalog).map_err(|err| err.to_string())?;
+    let pairs = conn
+        .prepare("SELECT host_id, zip_sha256 FROM collections")
+        .map_err(|err| err.to_string())?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS amcache (
+            host_id VARCHAR, kind VARCHAR, name VARCHAR, path VARCHAR, sha1 VARCHAR,
+            size BIGINT, modified VARCHAR, publisher VARCHAR, version VARCHAR, key_path VARCHAR
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for (host_id, sha) in pairs {
+        let root = case_dir.join("files").join(&sha);
+        if !root.exists() { continue; }
+        db.execute("DELETE FROM amcache WHERE host_id = ?", [host_id.as_str()]).map_err(|err| err.to_string())?;
+        for hive in amcache_hives(&root) {
+            inserted += load_amcache_hive(&db, &host_id, &hive)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn amcache_hives(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let name = path.file_name().and_then(|name| name.to_str()).unwrap_or("").to_ascii_lowercase();
+            if name == "amcache.hve" || name.ends_with("amcache.hve") {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_amcache_hive(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Result<usize, String> {
+    let mut builder = notatin::parser_builder::ParserBuilder::from_path(hive);
+    for suffix in ["LOG1", "LOG2", ".LOG1", ".LOG2"] {
+        let log = std::path::PathBuf::from(format!("{}{suffix}", hive.display()));
+        if log.exists() {
+            builder.with_transaction_log(log);
+        }
+    }
+    let mut parser = builder.build().map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for key in parser.iter() {
+        let kind = amcache_kind(&key.path);
+        if kind.is_empty() { continue; }
+        let values = key_strings(&key);
+        if values.is_empty() { continue; }
+        let path = first(&values, &["LowerCaseLongPath", "LongPath", "Path"]);
+        let name = first(&values, &["Name", "ProductName", "FileName"]);
+        if path.is_empty() && name.is_empty() { continue; }
+        let sha = amcache_sha(first(&values, &["FileId", "SHA1"]));
+        db.execute(
+            "INSERT INTO amcache (host_id, kind, name, path, sha1, size, modified, publisher, version, key_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![
+                host_id,
+                kind,
+                name,
+                path,
+                sha,
+                first(&values, &["Size", "FileSize", "SizeOfImage"]).parse::<i64>().unwrap_or(0),
+                first(&values, &["LinkDate", "LastModified", "InstallDate", "Modified"]),
+                first(&values, &["Publisher", "CompanyName"]),
+                first(&values, &["Version", "BinFileVersion", "FileVersion"]),
+                key.path,
+            ],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+fn amcache_kind(path: &str) -> &'static str {
+    let lower = path.to_ascii_lowercase();
+    if lower.contains("inventoryapplicationfile") { "file" }
+    else if lower.contains("inventoryapplication") { "program" }
+    else if lower.contains("inventorydriverbinary") { "driver" }
+    else { "" }
+}
+
+fn key_strings(key: &notatin::cell_key_node::CellKeyNode) -> Vec<(String, String)> {
+    key.value_iter().filter_map(|value| {
+        let (content, _) = value.get_content();
+        let text = match content {
+            notatin::cell_value::CellValue::String(text) => text,
+            notatin::cell_value::CellValue::U32(n) => n.to_string(),
+            notatin::cell_value::CellValue::I32(n) => n.to_string(),
+            notatin::cell_value::CellValue::U64(n) => n.to_string(),
+            notatin::cell_value::CellValue::I64(n) => n.to_string(),
+            notatin::cell_value::CellValue::MultiString(parts) => parts.join(", "),
+            _ => return None,
+        };
+        Some((value.get_pretty_name(), text))
+    }).collect()
+}
+
+fn first(values: &[(String, String)], names: &[&str]) -> String {
+    for name in names {
+        if let Some((_, text)) = values.iter().find(|(key, _)| key.eq_ignore_ascii_case(name)) {
+            return text.clone();
+        }
+    }
+    String::new()
+}
+
+fn amcache_sha(raw: String) -> String {
+    let trimmed = raw.trim().trim_start_matches("0000");
+    if trimmed.len() == 40 && trimmed.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        trimmed.to_ascii_lowercase()
+    } else {
+        raw
+    }
+}
