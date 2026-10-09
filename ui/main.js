@@ -230,9 +230,11 @@ async function grokAsk(caseDir, question) {
   if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
     const stats = await run(["stats", "--case", casePath(caseDir)]);
-    const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name). computer, channel, provider, host_id and log_name are columns. Do not read them from event_data. event_data is JSON for fields such as TargetUserName, LogonType and IpAddress, read with json_extract_string(event_data, '$.TargetUserName'). log_name is a path. Match a file with log_name LIKE '%Security.evtx', never log_name = 'Security.evtx'. A successful logon is event_id 4624.";
+    const hosts = await run(["hosts", "--case", casePath(caseDir)]);
+    const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name). computer, channel, provider, host_id and log_name are columns. Do not read them from event_data. host_id is the HostID, a UUID. A name such as DPW-AUS-pVnn0Tq is a hostname, not a host_id. Filter host_id with the UUID from the host list. event_data is JSON for fields such as TargetUserName, LogonType and IpAddress, read with json_extract_string(event_data, '$.TargetUserName'). log_name is a path. Match a file with log_name LIKE '%Security.evtx', never log_name = 'Security.evtx'. A successful logon is event_id 4624.";
     const sqlText = await askModel(
       "Return one DuckDB SELECT and no other text. " + schema +
+      " Hosts, tab separated host_id hostname os arch:\n" + clip(hosts.out || "") +
       " Case stats:\n" + clip(stats.out || "") +
       "\nQuestion: " + question
     );
