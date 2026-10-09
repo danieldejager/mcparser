@@ -284,6 +284,10 @@ async function caseContext(caseDir) {
     "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText);
 }
 
+function askProgress(label) {
+  if (win) win.webContents.send("ask-progress", label);
+}
+
 async function coverage(caseDir) {
   const samples = [
     ["events", "SELECT event_id, count(*) AS events FROM events GROUP BY event_id ORDER BY events DESC LIMIT 3"],
@@ -297,6 +301,7 @@ async function coverage(caseDir) {
   ];
   const parts = [];
   for (const [name, sql] of samples) {
+    askProgress("Querying " + name);
     const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
     parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + (queried.err || queried.out || "unknown")));
   }
@@ -308,6 +313,7 @@ async function grokAsk(caseDir, question) {
   try {
     const context = await caseContext(caseDir);
     const covered = await coverage(caseDir);
+    askProgress("Asking " + provider + " for a query");
     const rules = "\nWrite one SELECT only. Do not use UNION. A question about more than one table is already answered by the coverage rows; pick the single most relevant table for the SELECT.\n";
     let sql = "";
     let rows = covered;
@@ -319,6 +325,7 @@ async function grokAsk(caseDir, question) {
     } catch (error) {
       sql = "-- answered from coverage\n" + error.message;
     }
+    askProgress("Asking " + provider + " to answer");
     const answer = await askModel(
       "Answer from these rows only. Do not invent rows. Map a host_id back to its hostname from the host list. If a source says not loaded, say so.\n" +
       context +

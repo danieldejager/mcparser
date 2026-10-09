@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   onGrokConnect: (handler) => ipcRenderer.on("grok-connect", (_event, provider) => handler(provider)),
   onGrokChat: (handler) => ipcRenderer.on("grok-chat", (_event, shown) => handler(shown)),
   onGrokStatus: (handler) => ipcRenderer.on("grok-status", (_event, status) => handler(status)),
+  onAskProgress: (handler) => ipcRenderer.on("ask-progress", (_event, label) => handler(label)),
   onShowNotes: (handler) => ipcRenderer.on("show-notes", () => handler()),
   onShowRuns: (handler) => ipcRenderer.on("show-runs", () => handler()),
   onShowTrail: (handler) => ipcRenderer.on("show-trail", () => handler()),

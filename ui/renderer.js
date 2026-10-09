@@ -692,8 +692,9 @@ document.getElementById("send").onclick = async () => {
   note(question);
   ask.value = "";
   const vendor = document.getElementById("vendor").value;
-  const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
   const who = vendor === "openai" ? "OpenAI" : vendor === "claude" ? "Claude" : "Grok";
+  note(who + " is working");
+  const result = await window.mcparser.grokAsk(caseDir(), question, vendor);
   if (result.error) {
     note(`${who}: ${result.error}`);
     return;
@@ -1029,3 +1030,5 @@ splitter(document.getElementById("split-right"), document.getElementById("grok")
 window.mcparser.onCollectProgress((payload) => {
   setLoading(true, payload.label || "Loading collection", payload.pct || 0);
 });
+
+window.mcparser.onAskProgress((label) => note(label));
