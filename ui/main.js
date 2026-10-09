@@ -333,12 +333,9 @@ async function grokAsk(caseDir, question) {
     }
     askProgress("Asking " + vendorLabel() + " to answer");
     const answer = await askModel(
-      "Answer from these rows only. Do not invent rows. Map a host_id back to its hostname from the host list. If a source says not loaded, say so.\n" +
-      context +
-      "\nCoverage:\n" + covered +
-      "\nQuestion: " + question +
-      "\nSQL: " + sql +
-      "\nRows:\n" + clip(rows)
+      "Answer from these rows only. Be brief. Do not invent rows. If a source says not loaded or query failed, say so.\n" +
+      "Question: " + question +
+      "\nCoverage:\n" + covered
     );
     return { sql, answer, provider };
   } catch (error) {
