@@ -293,10 +293,17 @@ function buildMenu() {
     {
       label: "File",
       submenu: [
-        { label: "New Case...", click: () => win.webContents.send("new-case") },
-        { label: "Open Case...", accelerator: "CmdOrCtrl+O", click: () => win.webContents.send("open-case") },
-        { label: "Close Case", enabled: caseOpen, click: () => win.webContents.send("close-case") },
-        { label: "Delete Case...", enabled: caseOpen, click: () => win.webContents.send("delete-case") },
+        {
+          label: "Case",
+          submenu: [
+            { label: "New Case...", click: () => win.webContents.send("new-case") },
+            { label: "Open Case...", accelerator: "CmdOrCtrl+O", click: () => win.webContents.send("open-case") },
+            { label: "Save Case", accelerator: "CmdOrCtrl+S", enabled: caseOpen, click: () => win.webContents.send("save-case") },
+            { type: "separator" },
+            { label: "Close Case", enabled: caseOpen, click: () => win.webContents.send("close-case") },
+            { label: "Delete Case...", enabled: caseOpen, click: () => win.webContents.send("delete-case") },
+          ],
+        },
         { type: "separator" },
         { label: "Open EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },

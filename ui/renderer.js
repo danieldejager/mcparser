@@ -850,6 +850,26 @@ window.mcparser.onDeleteCase(async () => {
   status.textContent = "Case deleted";
 });
 
+window.mcparser.onSaveCase(async () => {
+  const dir = caseDir();
+  if (!dir) {
+    status.textContent = "No case open";
+    return;
+  }
+  const name = document.getElementById("analyst").value.trim();
+  if (!name) {
+    status.textContent = "Add your name before saving the case";
+    document.getElementById("analyst").focus();
+    return;
+  }
+  const named = await window.mcparser.saveAnalyst(dir, name);
+  if (!named || named.code !== 0) {
+    status.textContent = (named && (named.err || named.out)) || "Case not saved";
+    return;
+  }
+  status.textContent = `Case saved ${dir}`;
+});
+
 window.mcparser.onCloseCase(() => {
   if (!caseDir()) return;
   caseInput.value = "";

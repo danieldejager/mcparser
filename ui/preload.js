@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   onOpenCase: (handler) => ipcRenderer.on("open-case", () => handler()),
   onDeleteCase: (handler) => ipcRenderer.on("delete-case", () => handler()),
   onCloseCase: (handler) => ipcRenderer.on("close-case", () => handler()),
+  onSaveCase: (handler) => ipcRenderer.on("save-case", () => handler()),
   setCaseOpen: (open) => ipcRenderer.invoke("set-case-open", open),
   pickCaseSave: () => ipcRenderer.invoke("pick-case-save"),
   makeCaseDir: (parent, name) => ipcRenderer.invoke("make-case-dir", parent, name),
