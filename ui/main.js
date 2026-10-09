@@ -230,7 +230,7 @@ async function grokAsk(caseDir, question) {
   if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
     const stats = await run(["stats", "--case", casePath(caseDir)]);
-    const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data). event_data is JSON. Filter a field with json_extract_string(event_data, '$.TargetUserName').";
+    const schema = "events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name). computer, channel, provider, host_id and log_name are columns. Do not read them from event_data. event_data is JSON for fields such as TargetUserName, LogonType and IpAddress, read with json_extract_string(event_data, '$.TargetUserName').";
     const sqlText = await askModel(
       "Return one DuckDB SELECT and no other text. " + schema +
       " Case stats:\n" + clip(stats.out || "") +
@@ -240,7 +240,7 @@ async function grokAsk(caseDir, question) {
     const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
     if (queried.code !== 0) return { error: queried.err || queried.out || "query failed", sql, provider };
     const answer = await askModel(
-      "Answer the question from these rows only. Do not invent rows.\nQuestion: " + question +
+      "Answer the question from these rows only. Do not invent rows. computer is a column, not an event_data field.\nQuestion: " + question +
       "\nSQL: " + sql +
       "\nRows:\n" + clip(queried.out || "")
     );
