@@ -1415,7 +1415,7 @@ fn task_files(root: &Path) -> Vec<std::path::PathBuf> {
             let path = entry.path();
             if path.is_dir() { pending.push(path); continue; }
             let text = path.to_string_lossy().to_ascii_lowercase();
-            if text.ends_with(".xml") || text.contains("/tasks/") || text.contains("\\tasks\\") || text.contains("tasks.zip") {
+            if text.contains("task") || text.ends_with(".xml") {
                 found.push(path);
             }
         }
@@ -1424,11 +1424,10 @@ fn task_files(root: &Path) -> Vec<std::path::PathBuf> {
 }
 
 fn load_task_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
-    let body = match std::fs::read_to_string(path) {
-        Ok(body) => body,
-        Err(_) => return Ok(0),
-    };
-    if body.trim_start().starts_with('{') || body.trim_start().starts_with('[') {
+    let bytes = match std::fs::read(path) { Ok(bytes) => bytes, Err(_) => return Ok(0) };
+    let body = decode_text(&bytes);
+    let trimmed = body.trim_start();
+    if trimmed.starts_with('{') || trimmed.starts_with('[') || trimmed.starts_with("{\") {
         return load_task_json(db, host_id, &body);
     }
     let lower = body.to_ascii_lowercase();
@@ -1447,6 +1446,14 @@ fn load_task_file(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result
     Ok(1)
 }
 
+fn decode_text(bytes: &[u8]) -> String {
+    if bytes.len() >= 2 && bytes[0] == 0xff && bytes[1] == 0xfe {
+        let units: Vec<u16> = bytes[2..].chunks(2).map(|pair| u16::from_le_bytes([pair[0], *pair.get(1).unwrap_or(&0)])).collect();
+        return String::from_utf16_lossy(&units);
+    }
+    String::from_utf8_lossy(bytes).to_string()
+}
+
 fn xml_tag(body: &str, tag: &str) -> String {
     let open = format!("<{tag}");
     let Some(start) = body.to_ascii_lowercase().find(&open.to_ascii_lowercase()) else { return String::new() };
@@ -1459,23 +1466,46 @@ fn xml_tag(body: &str, tag: &str) -> String {
 
 fn load_task_json(db: &duckdb::Connection, host_id: &str, body: &str) -> Result<usize, String> {
     let mut rows = Vec::new();
-    if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
-        if let Some(list) = value.as_array() {
-            rows.extend(list.iter().cloned());
-        } else if value.get("Command").is_some() || value.get("FullPath").is_some() {
-            rows.push(value);
+    for line in body.lines() {
+        let line = line.trim().trim_start_matches('\u{feff}');
+        if line.is_empty() { continue; }
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(line) {
+            collect_task_rows(&value, &mut rows);
+        }
+    }
+    if rows.is_empty() {
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(body) {
+            collect_task_rows(&value, &mut rows);
         }
     }
     let mut inserted = 0;
     for row in rows {
-        let command = json_text(&row, &["Command", "command", "Task"]);
+        let mut command = json_text(&row, &["Command", "command", "ComHandler"]);
+        let mut arguments = json_text(&row, &["Arguments", "arguments"]);
+        if let Some(exec) = row.get("Actions").and_then(|item| item.get("Exec")).or_else(|| row.get("Exec")) {
+            if command.is_empty() { command = json_text(exec, &["Command", "command"]); }
+            if arguments.is_empty() { arguments = json_text(exec, &["Arguments", "arguments"]); }
+        }
         let path = json_text(&row, &["FullPath", "TaskName", "Path", "OSPath", "Name"]);
-        if command.is_empty() && path.is_empty() && !row.get("Actions").is_some() { continue; }
+        if command.is_empty() && path.is_empty() { continue; }
         db.execute(
             "INSERT INTO tasks (host_id, path, command, arguments, user_id, enabled) VALUES (?, ?, ?, ?, ?, ?)",
-            duckdb::params![host_id, path, command, json_text(&row, &["Arguments", "arguments"]), json_text(&row, &["UserId", "Principal", "user_id"]), json_text(&row, &["Enabled", "enabled"])],
+            duckdb::params![host_id, path, command, arguments, json_text(&row, &["UserId", "Principal", "user_id"]), json_text(&row, &["Enabled", "enabled"])],
         ).map_err(|err| err.to_string())?;
         inserted += 1;
     }
     Ok(inserted)
+}
+
+fn collect_task_rows(value: &serde_json::Value, rows: &mut Vec<serde_json::Value>) {
+    match value {
+        serde_json::Value::Array(list) => { for item in list { collect_task_rows(item, rows); } }
+        serde_json::Value::Object(map) => {
+            if map.contains_key("Command") || map.contains_key("FullPath") || map.contains_key("OSPath") || map.contains_key("TaskName") || map.contains_key("Actions") {
+                rows.push(value.clone());
+            }
+            for item in map.values() { collect_task_rows(item, rows); }
+        }
+        _ => {}
+    }
 }
