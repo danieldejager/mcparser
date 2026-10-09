@@ -279,7 +279,7 @@ async function grokAsk(caseDir, question) {
 
 async function openEvtx() {
   const picked = await dialog.showOpenDialog(win, {
-    title: "Open Windows event log",
+    title: "Import Windows event log",
     properties: ["openFile"],
     filters: [{ name: "Windows Event Log", extensions: ["evtx"] }],
   });
@@ -332,7 +332,7 @@ function buildMenu() {
           ],
         },
         { type: "separator" },
-        { label: "Open EVTX...", click: openEvtx },
+        { label: "Import EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
         { label: "Export handoff...", click: () => win.webContents.send("export-handoff") },
         { label: "Open handoff...", click: () => win.webContents.send("open-handoff") },
