@@ -676,7 +676,7 @@ pub fn eventlog_payloads(zip_path: &Path) -> Result<Vec<LogPayload>, String> {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
             artifact.push((name, bytes));
-        } else if is_raw_channel_log(&name) && entry.size() < 200_000_000 {
+        } else if name.to_ascii_lowercase().ends_with(".evtx") && entry.size() < 200_000_000 {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
             raw.push(LogPayload { name, bytes });

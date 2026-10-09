@@ -200,7 +200,7 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
                                 }
                             }
                         }
-                        let log_name = log.name.rsplit(['/', '\\']).next().unwrap_or(&log.name).to_string();
+                        let log_name = log.name.trim_start_matches("./").to_string();
                         match case::ingest_for_host(&db, &sha, &host_id, &log_name, &events) {
                             Ok(inserted) => println!("events {} inserted={inserted} host={host_id} log={log_name}", log.name),
                             Err(err) => {
