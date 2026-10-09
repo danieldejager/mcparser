@@ -435,12 +435,33 @@ pub fn collections(catalog: &Path) -> Result<Vec<Collection>, rusqlite::Error> {
     rows.collect()
 }
 
-pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Collection>), String> {
+fn keep_raw(name: &str) -> bool {
+    let lower = name.rsplit('/').next().unwrap_or(name).to_ascii_lowercase();
+    lower == "ntuser.dat" || lower == "software.hiv" || lower.ends_with(".pf")
+}
+
+fn safe_name(name: &str) -> String {
+    name.split(['/', '\\']).filter(|part| !part.is_empty() && *part != "." && *part != "..").collect::<Vec<_>>().join("/")
+}
+
+fn write_kept(case_dir: &Path, sha: &str, name: &str, bytes: &[u8]) -> Result<std::path::PathBuf, String> {
+    let relative = safe_name(name);
+    if relative.is_empty() { return Err("empty archive name".into()); }
+    let path = case_dir.join("files").join(sha).join(&relative);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+    }
+    std::fs::write(&path, bytes).map_err(|err| err.to_string())?;
+    Ok(path)
+}
+
+pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Collection>, Vec<std::path::PathBuf>), String> {
     let sha = file_sha256(zip_path).map_err(|err| err.to_string())?;
     let file = std::fs::File::open(zip_path).map_err(|err| err.to_string())?;
     let mut archive = zip::ZipArchive::new(file).map_err(|err| err.to_string())?;
     let mut client_info_names = Vec::new();
     let mut nested_zips = Vec::new();
+    let mut raw_files = Vec::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
         let name = entry.name().to_string();
@@ -450,6 +471,10 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Co
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
             nested_zips.push((name, bytes));
+        } else if keep_raw(&name) && entry.size() < 80_000_000 {
+            let mut bytes = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
+            raw_files.push((name, bytes));
         }
     }
     let mut found: Vec<(String, Host, Collection)> = Vec::new();
@@ -492,7 +517,24 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Host, Vec<Co
             source_name: collection.source_name.clone(),
         });
     }
-    Ok((host, saved))
+    let case_dir = catalog.parent().unwrap_or(Path::new("."));
+    let mut kept = Vec::new();
+    for (name, bytes) in raw_files {
+        kept.push(write_kept(case_dir, &sha, &name, &bytes)?);
+    }
+    for (name, bytes) in &nested_zips {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut nested = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
+        for i in 0..nested.len() {
+            let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
+            let entry_name = entry.name().to_string();
+            if !keep_raw(&entry_name) || entry.size() >= 80_000_000 { continue; }
+            let mut body = Vec::new();
+            std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
+            kept.push(write_kept(case_dir, &sha, &format!("{name}/{entry_name}"), &body)?);
+        }
+    }
+    Ok((host, saved, kept))
 }
 
 fn host_from_client_info(body: &str) -> Result<Host, String> {

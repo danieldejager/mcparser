@@ -20,6 +20,8 @@ jobs:
         run: cargo test
       - name: Save Case CLI
         run: cargo test -p mcparser --test baseline save_case_stores_the_analyst
+      - name: Collection zip CLI
+        run: cargo test -p mcparser --test baseline collection_keeps_raw_files_and_records_the_zip_hash
 
   security:
     runs-on: ubuntu-latest

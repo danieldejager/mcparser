@@ -86,3 +86,26 @@ fn save_case_stores_the_analyst() {
     let again = bin().args(["save-analyst", "--case"]).arg(&dir).args(["--name", "Daniel de Jager"]).output().unwrap();
     assert!(again.status.success(), "{}", String::from_utf8_lossy(&again.stderr));
 }
+
+#[test]
+fn collection_keeps_raw_files_and_records_the_zip_hash() {
+    let dir = case("collection");
+    std::fs::create_dir_all(&dir).unwrap();
+    let zip_path = dir.join("collector.zip");
+    let script = format!(
+        "import json, zipfile\nfrom pathlib import Path\nouter = Path({:?})\nnested = outer.with_suffix('.nested.zip')\ninfo = json.dumps({{\"HostID\":\"H1\",\"Hostname\":\"plant\",\"Fqdn\":\"plant.local\",\"Platform\":\"windows\",\"Architecture\":\"amd64\"}}).encode()\nwith zipfile.ZipFile(nested, 'w') as z:\n    z.writestr('client_info.json', info)\n    z.writestr('NTUSER.DAT', b'ntuser-bytes')\n    z.writestr('SOFTWARE.hiv', b'software-bytes')\n    z.writestr('Prefetch/NOTEPAD.PF', b'pf-bytes')\nwith zipfile.ZipFile(outer, 'w') as z:\n    z.writestr('client_info.json', info)\n    z.write(nested, 'uploads/collection.zip')\n",
+        zip_path
+    );
+    let made = std::process::Command::new("python3").arg("-c").arg(script).status().unwrap();
+    assert!(made.success());
+    let out = bin().args(["collect", "--case"]).arg(&dir).arg(&zip_path).output().unwrap();
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(text.contains("host H1 plant windows amd64"), "{text}");
+    assert!(text.contains("kept "), "{text}");
+    let files = std::fs::read_dir(dir.join("files")).unwrap().next().unwrap().unwrap().path();
+    assert_eq!(std::fs::read(files.join("uploads/collection.zip/NTUSER.DAT")).unwrap(), b"ntuser-bytes");
+    assert_eq!(std::fs::read(files.join("uploads/collection.zip/SOFTWARE.hiv")).unwrap(), b"software-bytes");
+    assert_eq!(std::fs::read(files.join("uploads/collection.zip/Prefetch/NOTEPAD.PF")).unwrap(), b"pf-bytes");
+    assert!(!dir.join("events.duckdb").exists());
+}

@@ -163,10 +163,13 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
         }
     };
     match case::import_collector(&catalog, zip_path.as_ref()) {
-        Ok((host, collections)) => {
+        Ok((host, collections, kept)) => {
             println!("host {} {} {} {}", host.host_id, host.hostname, host.os, host.arch);
             for collection in collections {
                 println!("collection {} {} {} {}", collection.session_id, collection.collected_at, collection.source_name, sha);
+            }
+            for path in kept {
+                println!("kept {}", path.display());
             }
             ExitCode::SUCCESS
         }
