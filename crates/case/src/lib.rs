@@ -847,7 +847,7 @@ fn amcache_hives(root: &Path) -> Vec<std::path::PathBuf> {
 }
 
 fn load_amcache_hive(db: &duckdb::Connection, host_id: &str, hive: &Path) -> Result<usize, String> {
-    let mut builder = notatin::parser_builder::ParserBuilder::from_path(hive);
+    let mut builder = notatin::parser_builder::ParserBuilder::from_path(hive.to_path_buf());
     for suffix in ["LOG1", "LOG2", ".LOG1", ".LOG2"] {
         let log = std::path::PathBuf::from(format!("{}{suffix}", hive.display()));
         if log.exists() {
