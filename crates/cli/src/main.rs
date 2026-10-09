@@ -164,7 +164,7 @@ fn collect(args: &mut impl Iterator<Item = String>) -> ExitCode {
     };
     match case::import_collector(&catalog, zip_path.as_ref()) {
         Ok((hosts, collections, kept)) => {
-            for host in hosts {
+            for host in &hosts {
                 println!("host {} {} {} {}", host.host_id, host.hostname, host.os, host.arch);
             }
             for collection in collections {
