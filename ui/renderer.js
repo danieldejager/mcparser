@@ -1164,14 +1164,20 @@ async function showIntegrations(focus) {
     if (vendor.name === focus) tr.className = "selected";
     const name = document.createElement("td");
     name.textContent = vendor.label;
-    const statusCell = document.createElement("td");
     const connected = Boolean(state[vendor.name]);
-    statusCell.textContent = connected ? "Connected" : "Not connected";
+    const statusCell = document.createElement("td");
+    statusCell.innerHTML = connected
+      ? '<span class="state on" title="Connected"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#0b6a0b"/></svg></span>'
+      : '<span class="state off" title="Not connected"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#b42318"/></svg></span>';
     const action = document.createElement("td");
+    const plug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 1v4H3v3h10V5h-2V1H9v4H7V1zM7 9v3H4l4 3 4-3H9V9z"/></svg>';
+    const unplug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1v4H2v3h5V1H5zm7 0v7h3V5h-2V1zM7 9v6l-3-2V9z"/></svg>';
     if (connected) {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = "Disconnect";
+      button.className = "icon plug";
+      button.title = "Disconnect";
+      button.innerHTML = unplug;
       button.onclick = async () => {
         await window.mcparser.grokForgetOne(vendor.name);
         status.textContent = `${vendor.label} disconnected`;
@@ -1185,7 +1191,9 @@ async function showIntegrations(focus) {
       input.autocomplete = "off";
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = "Connect";
+      button.className = "icon plug";
+      button.title = "Connect";
+      button.innerHTML = plug;
       button.onclick = async () => {
         const saved = await window.mcparser.grokSave(input.value, vendor.name);
         if (saved.error) {

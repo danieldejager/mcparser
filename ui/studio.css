@@ -100,3 +100,7 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 .grid-add { align-self: flex-start; margin: 6px 0 0; width: 28px; height: 24px; border: 1px solid #d0d0d0; background: #fff; color: #333; font-size: 16px; }
 .grid-add:hover { border-color: #888; }
 .results td input { width: 180px; margin-right: 6px; }
+.state { display: inline-grid; }
+.state svg { width: 14px; height: 14px; }
+.plug { color: #333; }
+.plug svg { width: 16px; height: 16px; }
