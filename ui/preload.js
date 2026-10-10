@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   saveRun: (caseDir, rows, sql, label, analyst, kind) => ipcRenderer.invoke("save-run", caseDir, rows, sql, label, analyst, kind),
   saveNote: (caseDir, recordId, body, sql) => ipcRenderer.invoke("save-note", caseDir, recordId, body, sql),
   grokStatus: () => ipcRenderer.invoke("grok-status"),
+  setModel: (provider, model) => ipcRenderer.invoke("set-model", provider, model),
   setProvider: (name) => ipcRenderer.invoke("set-provider", name),
   grokSave: (key, provider) => ipcRenderer.invoke("grok-save", key, provider),
   grokForget: () => ipcRenderer.invoke("grok-forget"),

@@ -23,6 +23,7 @@ let claudeKey = "";
 let openaiKey = "";
 let provider = "grok";
 let chatShown = false;
+let models = { grok: "grok-4.7", claude: "claude-sonnet-5-5", openai: "gpt-5.5" };
 
 function keyFile(name) {
   return path.join(app.getPath("userData"), `${name}-key.bin`);
@@ -139,6 +140,7 @@ function grokStatus() {
     grok: grokKey.length > 0,
     claude: claudeKey.length > 0,
     openai: openaiKey.length > 0,
+    models,
   };
 }
 
@@ -160,7 +162,7 @@ async function grok(input) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${grokKey}`,
     },
-    body: JSON.stringify({ model: "grok-4.7", input }),
+    body: JSON.stringify({ model: models.grok, input }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -179,7 +181,7 @@ async function claude(input) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
+      model: models.claude,
       max_tokens: 1024,
       messages: [{ role: "user", content: input }],
     }),
@@ -200,7 +202,7 @@ async function openai(input) {
       Authorization: `Bearer ${openaiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4.1",
+      model: models.openai,
       messages: [{ role: "user", content: input }],
     }),
   });
@@ -625,6 +627,10 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   return { saved: true, path: picked.filePath };
 });
 ipcMain.handle("grok-status", () => grokStatus());
+ipcMain.handle("set-model", (_event, name, model) => {
+  if (models[name] && model) models[name] = model;
+  return grokStatus();
+});
 ipcMain.handle("set-provider", (_event, name) => {
   if (name !== "grok" && name !== "claude" && name !== "openai") return grokStatus();
   provider = name;
