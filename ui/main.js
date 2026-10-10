@@ -666,6 +666,18 @@ ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
 });
 ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
 ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
+ipcMain.handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
+  const dir = casePath(caseDir);
+  const name = String(suggested || "query.sql");
+  const picked = await dialog.showSaveDialog(win, {
+    title: "Save query",
+    defaultPath: path.join(dir, name.endsWith(".sql") ? name : name + ".sql"),
+    filters: [{ name: "SQL", extensions: ["sql"] }],
+  });
+  if (picked.canceled || !picked.filePath) return { saved: false };
+  fs.writeFileSync(picked.filePath, String(sql || ""), "utf8");
+  return { saved: true, path: picked.filePath };
+});
 ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
 ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
 ipcMain.handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));

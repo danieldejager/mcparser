@@ -476,21 +476,30 @@ function showQuerySheet() {
   document.getElementById("query-name").focus();
 }
 
+async function saveSql(name) {
+  const dir = caseDir();
+  if (!dir) {
+    status.textContent = "Open a case first";
+    return;
+  }
+  const suggested = name || (editorTabs[activeTab] && editorTabs[activeTab].name) || "query.sql";
+  const saved = await window.mcparser.saveSqlFile(dir, suggested, sql.value);
+  if (!saved.saved) return;
+  const file = saved.path.split(/[\\/]/).pop();
+  await window.mcparser.saveQuery(dir, file.replace(/\.sql$/i, ""), sql.value);
+  if (editorTabs[activeTab]) {
+    editorTabs[activeTab].name = file;
+    renderTabs();
+  }
+  status.textContent = `saved ${saved.path}`;
+}
+
 async function saveQuery(event) {
   event.preventDefault();
   const name = document.getElementById("query-name").value.trim();
   document.getElementById("query-sheet").hidden = true;
   if (!name) return;
-  const result = await window.mcparser.saveQuery(caseDir(), name, sql.value);
-  if (result.code !== 0) {
-    status.textContent = result.err || "save failed";
-    return;
-  }
-  status.textContent = `saved ${name}`;
-  if (editorTabs[activeTab]) {
-    editorTabs[activeTab].name = name.endsWith(".sql") ? name : name + ".sql";
-    renderTabs();
-  }
+  saveSql(name);
 }
 
 
@@ -749,7 +758,7 @@ sql.addEventListener("scroll", () => {
 });
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
-document.getElementById("save-query").onclick = showQuerySheet;
+document.getElementById("save-query").onclick = () => saveSql();
 document.getElementById("query-cancel").onclick = () => { document.getElementById("query-sheet").hidden = true; };
 document.getElementById("query-form").onsubmit = saveQuery;
 document.getElementById("export").onclick = exportCsv;
@@ -1135,8 +1144,8 @@ document.getElementById("tb-open").onclick = async () => {
 };
 document.getElementById("tb-new").onclick = () => addTab("");
 addTab(sql.value, "SQLQuery1.sql");
-document.getElementById("tb-save").onclick = showQuerySheet;
-document.getElementById("tb-save-all").onclick = showQuerySheet;
+document.getElementById("tb-save").onclick = () => saveSql();
+document.getElementById("tb-save-all").onclick = () => saveSql();
 document.getElementById("tb-run").onclick = run;
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;

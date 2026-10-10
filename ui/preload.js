@@ -28,6 +28,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   saveCsv: (csv) => ipcRenderer.invoke("save-csv", csv),
   queries: (caseDir) => ipcRenderer.invoke("queries", caseDir),
   saveQuery: (caseDir, name, sql) => ipcRenderer.invoke("save-query", caseDir, name, sql),
+  saveSqlFile: (caseDir, suggested, sql) => ipcRenderer.invoke("save-sql-file", caseDir, suggested, sql),
   notes: (caseDir) => ipcRenderer.invoke("notes", caseDir),
   runs: (caseDir) => ipcRenderer.invoke("runs", caseDir),
   saveRun: (caseDir, rows, sql, label, analyst, kind) => ipcRenderer.invoke("save-run", caseDir, rows, sql, label, analyst, kind),
