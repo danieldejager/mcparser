@@ -202,6 +202,34 @@ function bytes(value) {
 let loading = false;
 let importedIn = "";
 
+
+function makeResizable(table) {
+  table.style.tableLayout = "fixed";
+  table.style.width = "100%";
+  const heads = table.querySelectorAll("th");
+  heads.forEach((th, index) => {
+    if (index === heads.length - 1) return;
+    const grip = document.createElement("span");
+    grip.className = "col-grip";
+    th.append(grip);
+    grip.onmousedown = (event) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = th.offsetWidth;
+      const onMove = (move) => {
+        const width = Math.max(40, startWidth + move.clientX - startX);
+        th.style.width = width + "px";
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    };
+  });
+}
+
 function setLoading(on, label, pct) {
   loading = on;
   const overlay = document.getElementById("loading");
@@ -351,6 +379,7 @@ function renderCsv(text) {
     }
     table.append(tr);
   });
+  makeResizable(table);
   results.replaceChildren(table);
   return Math.max(rows.length - 1, 0);
 }
@@ -389,20 +418,13 @@ async function showNotes() {
       }
       tr.onclick = () => {
         sql.value = (parts[3] || "").replaceAll("\\n", "\n");
-        document.getElementById("tactic").onchange = fillHunts;
-document.getElementById("technique").onchange = fillHunts;
-fillHunts();
-const analyst = document.getElementById("analyst");
-if (analyst) {
-  analyst.value = localStorage.getItem("mcparser-analyst") || "";
-  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
-}
-updateLines();
+        updateLines();
         if (sql.value.trim()) run();
       };
       table.append(tr);
     }
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Notes";
 }
@@ -539,6 +561,7 @@ async function showRuns() {
       table.append(tr);
     }
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Runs";
 }
@@ -579,6 +602,7 @@ async function showTrail() {
     }
     table.append(tr);
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Trail";
 }
@@ -940,6 +964,7 @@ function showImported(text) {
     row.append(kind, id, when, file, sha);
     table.append(row);
   }
+  makeResizable(table);
   results.replaceChildren(table);
 }
 
@@ -1210,6 +1235,7 @@ document.getElementById("tb-hunt").onclick = async () => {
     }
     table.append(tr);
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = (lines.length - 1) + " matches";
 };
@@ -1296,6 +1322,7 @@ async function showIntegrations(focus) {
     tr.append(name, statusCell, modelCell, action);
     table.append(tr);
   }
+  makeResizable(table);
   results.replaceChildren(table);
   lastCsv = "";
   status.textContent = "AI integrations";
