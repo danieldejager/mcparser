@@ -1675,3 +1675,5 @@ document.querySelectorAll(".market-filter button").forEach((button) => {
 });
 document.getElementById("market-close").onclick = () => { document.getElementById("market-sheet").hidden = true; };
 if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
+
+document.getElementById("tb-market").onclick = openMarket;
