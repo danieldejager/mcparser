@@ -610,6 +610,38 @@ function runCollect(args) {
   });
 }
 
+
+function runHunt(args) {
+  return new Promise((resolve) => {
+    const env = { ...process.env };
+    delete env.XAI_API_KEY;
+    delete env.OPENAI_API_KEY;
+    delete env.ANTHROPIC_API_KEY;
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
+    let out = "";
+    let err = "";
+    let pending = "";
+    child.stdout.on("data", (chunk) => {
+      pending += chunk.toString();
+      const lines = pending.split(/\n/);
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("progress\t")) {
+          const parts = line.split("\t");
+          if (win) win.webContents.send("hunt-progress", { pct: Number(parts[1] || 0), label: parts.slice(2).join(" ") });
+        } else if (line) {
+          out += line + "\n";
+        }
+      }
+    });
+    child.stderr.on("data", (chunk) => { err += chunk.toString(); });
+    child.on("close", (code) => resolve({ code, out, err }));
+    child.on("error", (error) => resolve({ code: 1, out: "", err: error.message }));
+  });
+}
+
+ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
+
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
 ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));

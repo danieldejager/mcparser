@@ -1182,6 +1182,41 @@ document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;
   showIocs();
 };
+
+document.getElementById("tb-hunt").onclick = async () => {
+  if (!caseDir()) return;
+  const spin = document.getElementById("hunt-spin");
+  spin.hidden = false;
+  status.textContent = "Hunting IOCs 0%";
+  const result = await window.mcparser.hunt(caseDir());
+  spin.hidden = true;
+  if (result.code !== 0) {
+    status.textContent = result.err || "Hunt failed";
+    return;
+  }
+  const lines = result.out.trim().split(/\n/).filter(Boolean);
+  if (lines.length <= 1) {
+    status.textContent = "No IOC matches";
+    results.replaceChildren();
+    return;
+  }
+  const table = document.createElement("table");
+  for (const [index, line] of lines.entries()) {
+    const tr = document.createElement("tr");
+    for (const cell of line.split("\t")) {
+      const node = document.createElement(index === 0 ? "th" : "td");
+      node.textContent = cell;
+      tr.append(node);
+    }
+    table.append(tr);
+  }
+  results.replaceChildren(table);
+  status.textContent = (lines.length - 1) + " matches";
+};
+
+window.mcparser.onHuntProgress((payload) => {
+  status.textContent = (payload.label || "Hunting") + " " + (payload.pct || 0) + "%";
+});
 markCase();
 const vendors = [
   { name: "grok", label: "Grok", models: ["grok-4.7", "grok-4.6", "grok-4.5", "grok-4.20", "grok-4-1-fast-reasoning"] },

@@ -21,6 +21,7 @@ fn main() -> ExitCode {
         Some("ioc-add") => ioc_add(&mut args),
         Some("ioc-remove") => ioc_remove(&mut args),
         Some("ioc-update") => ioc_update(&mut args),
+        Some("hunt") => hunt(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
@@ -911,6 +912,39 @@ fn print_rows(columns: &[String], rows: &[Vec<String>], format: &str) {
     }
 }
 
+
+
+fn hunt(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser hunt --case <dir>");
+        return ExitCode::from(2);
+    };
+    let db = case_dir.join("events.duckdb");
+    match case::hunt_iocs(&case_dir.join("catalog.sqlite"), &db) {
+        Ok(rows) => {
+            println!("source\thost\tcolumn\tvalue\tioc_kind\tioc_value\tcontext");
+            for row in &rows {
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.source, row.host_id, row.column,
+                    row.value.replace('\t', " "),
+                    row.ioc_kind, row.ioc_value,
+                    row.context.replace('\t', " ").replace('\n', " "));
+            }
+            let analyst = std::env::var("MCPARSER_ANALYST").unwrap_or_default();
+            let ran_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs().to_string())
+                .unwrap_or_default();
+            let label = format!("IOC hunt, {} matches", rows.len());
+            let _ = case::save_run(&case_dir.join("catalog.sqlite"), "hunt", &ran_at, rows.len() as i64, &label, &analyst, "hunt");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
 
 fn iocs(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let Some(case_dir) = case_dir(args) else {

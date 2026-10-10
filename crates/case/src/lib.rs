@@ -1727,3 +1727,69 @@ pub fn update_ioc(catalog: &Path, id: i64, kind: &str, value: &str, note: &str) 
     )?;
     Ok(())
 }
+
+pub struct HuntMatch {
+    pub source: String,
+    pub host_id: String,
+    pub column: String,
+    pub value: String,
+    pub ioc_kind: String,
+    pub ioc_value: String,
+    pub context: String,
+}
+
+pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
+    let indicators = iocs(catalog).map_err(|err| err.to_string())?;
+    if indicators.is_empty() {
+        return Ok(Vec::new());
+    }
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let scans: &[(&str, &str, &str, &str)] = &[
+        ("events", "SELECT computer, event_id, event_data FROM events", "event_data", "computer"),
+        ("prefetch", "SELECT host_id, executable, path FROM prefetch", "executable", "host_id"),
+        ("userassist", "SELECT host_id, name FROM userassist", "name", "host_id"),
+        ("amcache", "SELECT host_id, name, path, sha1 FROM amcache", "name", "host_id"),
+        ("shimcache", "SELECT host_id, path FROM shimcache", "path", "host_id"),
+        ("services", "SELECT host_id, name, path FROM services", "name", "host_id"),
+        ("tasks", "SELECT host_id, path, command FROM tasks", "path", "host_id"),
+        ("srum", "SELECT host_id, app FROM srum", "app", "host_id"),
+    ];
+    let mut matches = Vec::new();
+    for (index, (source, sql, column, host_col)) in scans.iter().enumerate() {
+        let pct = ((index as f64 + 1.0) / scans.len() as f64 * 100.0) as u8;
+        println!("progress\t{}\tHunting {}", pct, source);
+        let mut stmt = match db.prepare(sql) {
+            Ok(stmt) => stmt,
+            Err(_) => continue,
+        };
+        let mut rows = match stmt.query([]) {
+            Ok(rows) => rows,
+            Err(_) => continue,
+        };
+        while let Ok(Some(row)) = rows.next() {
+            let host: String = row.get(0).unwrap_or_default();
+            let text = (0..row.as_ref().column_count().unwrap_or(0))
+                .map(|i| row.get::<_, String>(i).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let lower = text.to_lowercase();
+            for ioc in &indicators {
+                if ioc.value.is_empty() { continue; }
+                if lower.contains(&ioc.value.to_lowercase()) {
+                    matches.push(HuntMatch {
+                        source: source.to_string(),
+                        host_id: host.clone(),
+                        column: column.to_string(),
+                        value: row.get::<_, String>(1).unwrap_or_default(),
+                        ioc_kind: ioc.kind.clone(),
+                        ioc_value: ioc.value.clone(),
+                        context: text.chars().take(180).collect(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    println!("progress\t100\tHunt complete");
+    Ok(matches)
+}
