@@ -1218,9 +1218,7 @@ async function useVendor(name) {
   await window.mcparser.setProvider(name);
   showIntegrations(name);
 }
-document.getElementById("tb-grok").onclick = () => useVendor("grok");
-document.getElementById("tb-claude").onclick = () => useVendor("claude");
-document.getElementById("tb-openai").onclick = () => useVendor("openai");
+document.getElementById("tb-ai").onclick = () => showIntegrations();
 document.getElementById("tb-trail").onclick = showTrail;
 document.getElementById("tb-runs").onclick = showRuns;
 document.getElementById("tb-notes").onclick = showNotes;
