@@ -65,7 +65,7 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 .dots { display: inline-block; width: 1.4em; overflow: hidden; vertical-align: bottom; animation: dots 1s steps(4, end) infinite; }
 @keyframes dots { to { width: 0; } }
 
-#toolbar { display: flex; align-items: center; gap: 6px; height: 36px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #d0d0d0; flex: 0 0 auto; }
+#toolbar { display: flex; justify-content: flex-start; align-items: center; gap: 6px; height: 36px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #d0d0d0; flex: 0 0 auto; }
 #toolbar button { width: 28px; height: 26px; padding: 0; }
 #tb-run { background: #0b6a0b; color: #fff; border-color: #0b6a0b; }
 #tb-run:hover { background: #095809; }
@@ -85,3 +85,6 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 
 #toolbar svg { width: 16px; height: 16px; display: block; }
 #tb-run { font-size: 12px; }
+
+.tb-group { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+#tb-case { margin-left: auto; }
