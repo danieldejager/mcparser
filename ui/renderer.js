@@ -552,6 +552,10 @@ async function showRuns() {
         tr.append(td);
       }
       tr.onclick = () => {
+        if (parts[6] === "IOC hit" || parts[6] === "hunt") {
+          showHuntMatches(parts[0]);
+          return;
+        }
         sql.value = sqlText;
         runKind = "replay";
         runLabel = parts[4] || "replay";
@@ -623,7 +627,7 @@ async function showTrail() {
       td.textContent = value;
       tr.append(td);
     }
-    if (item.kind === "IOC hit") {
+    if (item.kind === "IOC hit" || item.kind === "hunt") {
       tr.style.cursor = "pointer";
       tr.onclick = () => showHuntMatches(item.id);
     }
