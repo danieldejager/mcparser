@@ -1725,6 +1725,30 @@ pub fn iocs(catalog: &Path) -> Result<Vec<Ioc>, rusqlite::Error> {
 }
 
 
+
+pub fn save_hunt_matches_db(db_path: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), String> {
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS hunt_matches (
+            run_id BIGINT,
+            source TEXT,
+            host_id TEXT,
+            column_name TEXT,
+            value TEXT,
+            ioc_kind TEXT,
+            ioc_value TEXT,
+            context TEXT
+        )",
+    ).map_err(|err| err.to_string())?;
+    for row in matches {
+        db.execute(
+            "INSERT INTO hunt_matches (run_id, source, host_id, column_name, value, ioc_kind, ioc_value, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![run_id, row.source, row.host_id, row.column, row.value, row.ioc_kind, row.ioc_value, row.context],
+        ).map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
 pub fn save_hunt_matches(catalog: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), rusqlite::Error> {
     let conn = open_catalog(catalog)?;
     for row in matches {
