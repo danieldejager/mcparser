@@ -1768,7 +1768,7 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
         };
         while let Ok(Some(row)) = rows.next() {
             let host: String = row.get(0).unwrap_or_default();
-            let text = (0..row.as_ref().column_count().unwrap_or(0))
+            let text = (0..row.as_ref().column_count())
                 .map(|i| row.get::<_, String>(i).unwrap_or_default())
                 .collect::<Vec<_>>()
                 .join(" ");
