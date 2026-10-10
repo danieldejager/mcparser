@@ -529,6 +529,7 @@ function createWindow() {
   win.webContents.once("did-finish-load", () => {
     if (chatShown) win.webContents.send("grok-chat", true);
   });
+  win.on("focus", () => buildMenu());
 }
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
