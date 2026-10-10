@@ -24,7 +24,6 @@ function addTab(text, name) {
 function showTab() {
   sql.value = editorTabs[activeTab] ? editorTabs[activeTab].sql : "";
   updateLines();
-addTab(sql.value, "SQLQuery1.sql");
   sql.focus();
 }
 
@@ -1125,6 +1124,7 @@ document.getElementById("tb-open").onclick = async () => {
   await refresh();
 };
 document.getElementById("tb-new").onclick = () => addTab("");
+addTab(sql.value, "SQLQuery1.sql");
 document.getElementById("tb-save").onclick = showQuerySheet;
 document.getElementById("tb-save-all").onclick = showQuerySheet;
 document.getElementById("tb-run").onclick = run;
