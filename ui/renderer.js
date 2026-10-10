@@ -1171,7 +1171,7 @@ async function showIntegrations(focus) {
       : '<span class="state off" title="Not connected"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#b42318"/></svg></span>';
     const action = document.createElement("td");
     const plug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 1v4H3v3h10V5h-2V1H9v4H7V1zM7 9v3H4l4 3 4-3H9V9z"/></svg>';
-    const unplug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M4 1v4H2v3h5V1H5zm7 0v7h3V5h-2V1zM7 9v6l-3-2V9z"/></svg>';
+    const unplug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 6h4v1H2v2h3v1H1zM11 6h4v1h-3v2h3v1h-4zM6 7h1v2H6zM9 7h1v2H9z"/><path fill="currentColor" d="M5 3l1 1-1 1-1-1zM11 3l1 1-1 1-1-1zM8 1l.5 1.2L9.5 2 8 2.5 7.5 1zM8 13l.5 1.2 1-.2L8 14.5 7.5 13z"/></svg>';
     if (connected) {
       const button = document.createElement("button");
       button.type = "button";
