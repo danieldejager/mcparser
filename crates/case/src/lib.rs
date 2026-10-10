@@ -233,6 +233,25 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             collected_at TEXT NOT NULL,
             zip_sha256 TEXT NOT NULL,
             source_name TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS iocs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            kind TEXT NOT NULL,
+            value TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            added_at TEXT NOT NULL,
+            UNIQUE(kind, value)
+        );
+        CREATE TABLE IF NOT EXISTS hunt_matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            host_id TEXT NOT NULL,
+            column_name TEXT NOT NULL,
+            value TEXT NOT NULL,
+            ioc_kind TEXT NOT NULL,
+            ioc_value TEXT NOT NULL,
+            context TEXT NOT NULL DEFAULT ''
         )",
     )?;
     Ok(conn)
@@ -1659,4 +1678,191 @@ fn collect_task_rows(value: &serde_json::Value, rows: &mut Vec<serde_json::Value
         }
         _ => {}
     }
+}
+
+pub struct Ioc {
+    pub id: i64,
+    pub kind: String,
+    pub value: String,
+    pub note: String,
+    pub added_at: String,
+}
+
+pub fn add_ioc(catalog: &Path, kind: &str, value: &str, note: &str) -> Result<i64, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let added_at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
+    conn.execute(
+        "INSERT INTO iocs (kind, value, note, added_at) VALUES (?1, ?2, ?3, ?4)
+         ON CONFLICT(kind, value) DO UPDATE SET note = excluded.note",
+        rusqlite::params![kind, value, note, added_at],
+    )?;
+    let id: i64 = conn.query_row(
+        "SELECT id FROM iocs WHERE kind = ?1 AND value = ?2",
+        rusqlite::params![kind, value],
+        |row| row.get(0),
+    )?;
+    Ok(id)
+}
+
+pub fn iocs(catalog: &Path) -> Result<Vec<Ioc>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT id, kind, value, note, added_at FROM iocs ORDER BY kind, value")?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(Ioc {
+            id: row.get(0)?,
+            kind: row.get(1)?,
+            value: row.get(2)?,
+            note: row.get(3)?,
+            added_at: row.get(4)?,
+        });
+    }
+    Ok(out)
+}
+
+
+
+
+pub fn ensure_hunt_table(db_path: &Path) -> Result<(), String> {
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    db.execute_batch(
+        "CREATE TABLE IF NOT EXISTS hunt_matches (
+            run_id BIGINT,
+            source TEXT,
+            host_id TEXT,
+            column_name TEXT,
+            value TEXT,
+            ioc_kind TEXT,
+            ioc_value TEXT,
+            context TEXT
+        )",
+    ).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub fn save_hunt_matches_db(db_path: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), String> {
+    ensure_hunt_table(db_path)?;
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    for row in matches {
+        db.execute(
+            "INSERT INTO hunt_matches (run_id, source, host_id, column_name, value, ioc_kind, ioc_value, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![run_id, row.source, row.host_id, row.column, row.value, row.ioc_kind, row.ioc_value, row.context],
+        ).map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+pub fn save_hunt_matches(catalog: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    for row in matches {
+        conn.execute(
+            "INSERT INTO hunt_matches (run_id, source, host_id, column_name, value, ioc_kind, ioc_value, context) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![run_id, row.source, row.host_id, row.column, row.value, row.ioc_kind, row.ioc_value, row.context],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn hunt_matches(catalog: &Path, run_id: i64) -> Result<Vec<HuntMatch>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT source, host_id, column_name, value, ioc_kind, ioc_value, context FROM hunt_matches WHERE run_id = ?1 ORDER BY id")?;
+    let mut rows = stmt.query([run_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(HuntMatch {
+            source: row.get(0)?,
+            host_id: row.get(1)?,
+            column: row.get(2)?,
+            value: row.get(3)?,
+            ioc_kind: row.get(4)?,
+            ioc_value: row.get(5)?,
+            context: row.get(6)?,
+        });
+    }
+    Ok(out)
+}
+
+pub fn remove_ioc(catalog: &Path, id: i64) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute("DELETE FROM iocs WHERE id = ?1", [id])?;
+    Ok(())
+}
+
+pub fn update_ioc(catalog: &Path, id: i64, kind: &str, value: &str, note: &str) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    conn.execute(
+        "UPDATE iocs SET kind = ?1, value = ?2, note = ?3 WHERE id = ?4",
+        rusqlite::params![kind, value, note, id],
+    )?;
+    Ok(())
+}
+
+pub struct HuntMatch {
+    pub source: String,
+    pub host_id: String,
+    pub column: String,
+    pub value: String,
+    pub ioc_kind: String,
+    pub ioc_value: String,
+    pub context: String,
+}
+
+pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
+    let indicators = iocs(catalog).map_err(|err| err.to_string())?;
+    if indicators.is_empty() {
+        return Ok(Vec::new());
+    }
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let scans: &[(&str, &str, &str, &str)] = &[
+        ("events", "SELECT computer, event_id, event_data FROM events", "event_data", "computer"),
+        ("prefetch", "SELECT host_id, executable, path FROM prefetch", "executable", "host_id"),
+        ("userassist", "SELECT host_id, name FROM userassist", "name", "host_id"),
+        ("amcache", "SELECT host_id, name, path, sha1 FROM amcache", "name", "host_id"),
+        ("shimcache", "SELECT host_id, path FROM shimcache", "path", "host_id"),
+        ("services", "SELECT host_id, name, path FROM services", "name", "host_id"),
+        ("tasks", "SELECT host_id, path, command FROM tasks", "path", "host_id"),
+        ("srum", "SELECT host_id, app FROM srum", "app", "host_id"),
+    ];
+    let mut matches = Vec::new();
+    for (index, (source, sql, column, _host_col)) in scans.iter().enumerate() {
+        let pct = ((index as f64 + 1.0) / scans.len() as f64 * 100.0) as u8;
+        report_progress(pct, &format!("Scanning {source}"));
+        let mut stmt = match db.prepare(sql) {
+            Ok(stmt) => stmt,
+            Err(_) => continue,
+        };
+        let mut rows = match stmt.query([]) {
+            Ok(rows) => rows,
+            Err(_) => continue,
+        };
+        while let Ok(Some(row)) = rows.next() {
+            let host: String = row.get(0).unwrap_or_default();
+            let text = (0..row.as_ref().column_count())
+                .map(|i| row.get::<_, String>(i).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join(" ");
+            let lower = text.to_lowercase();
+            for ioc in &indicators {
+                if ioc.value.is_empty() { continue; }
+                if lower.contains(&ioc.value.to_lowercase()) {
+                    matches.push(HuntMatch {
+                        source: source.to_string(),
+                        host_id: host.clone(),
+                        column: column.to_string(),
+                        value: row.get::<_, String>(1).unwrap_or_default(),
+                        ioc_kind: ioc.kind.clone(),
+                        ioc_value: ioc.value.clone(),
+                        context: text.chars().take(180).collect(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    report_progress(100, "Hunt complete");
+    Ok(matches)
 }

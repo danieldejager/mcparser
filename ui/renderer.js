@@ -7,6 +7,74 @@ function keyStore() {
 
 const caseInput = document.getElementById("case");
 const sql = document.getElementById("sql");
+const tabBar = document.getElementById("tabs");
+const editorTabs = [];
+let activeTab = 0;
+let tabSeq = 1;
+
+function addTab(text, name) {
+  if (editorTabs[activeTab]) editorTabs[activeTab].sql = sql.value;
+  editorTabs.push({ name: name || `SQLQuery${tabSeq}.sql`, sql: text || "" });
+  tabSeq += 1;
+  activeTab = editorTabs.length - 1;
+  renderTabs();
+  showTab();
+}
+
+function showTab() {
+  sql.value = editorTabs[activeTab] ? editorTabs[activeTab].sql : "";
+  updateLines();
+  sql.focus();
+}
+
+function renderTabs() {
+  tabBar.replaceChildren();
+  editorTabs.forEach((tab, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = index === activeTab ? "tab active" : "tab";
+    button.title = tab.name;
+    const label = document.createElement("span");
+    label.textContent = tab.name;
+    const close = document.createElement("span");
+    close.className = "tab-x";
+    close.textContent = "×";
+    close.title = "Close";
+    close.onclick = (event) => {
+      event.stopPropagation();
+      closeTab(index);
+    };
+    button.onclick = () => {
+      editorTabs[activeTab].sql = sql.value;
+      activeTab = index;
+      renderTabs();
+      showTab();
+    };
+    button.append(label, close);
+    tabBar.append(button);
+  });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "tab-add";
+  add.title = "New Query";
+  add.textContent = "+";
+  add.onclick = () => addTab("");
+  tabBar.append(add);
+}
+
+function closeTab(index) {
+  editorTabs[activeTab].sql = sql.value;
+  editorTabs.splice(index, 1);
+  if (!editorTabs.length) {
+    editorTabs.push({ name: `SQLQuery${tabSeq}.sql`, sql: "" });
+    tabSeq += 1;
+    activeTab = 0;
+  } else if (activeTab >= editorTabs.length) {
+    activeTab = editorTabs.length - 1;
+  }
+  renderTabs();
+  showTab();
+}
 const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
@@ -28,11 +96,22 @@ let rowNotes = new Map();
 function listModels(state) {
   const models = document.getElementById("models");
   const vendor = document.getElementById("vendor");
-  if (!models || !vendor) return;
+  const model = document.getElementById("model");
+  if (!models || !vendor || !model) return;
   const current = state || { provider: "grok", grok: false, claude: false, openai: false };
   vendor.value = current.provider || "grok";
   const configured = { grok: current.grok, claude: current.claude, openai: current.openai };
   models.textContent = configured[vendor.value] ? "Configured." : "Configure this integration.";
+  const chosen = vendors.find((item) => item.name === vendor.value);
+  model.replaceChildren();
+  if (!chosen) return;
+  for (const id of chosen.models) {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    if (current.models && current.models[vendor.value] === id) option.selected = true;
+    model.append(option);
+  }
 }
 
 
@@ -42,14 +121,15 @@ function fillHunts() {
   const list = document.getElementById("hunts");
   if (!tactic || !window.hunts) return;
   const tactics = [...new Set(window.hunts.map((hunt) => hunt.tactic))];
-  if (!tactic.options.length) {
-    for (const name of tactics) {
-      const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name;
-      tactic.append(option);
-    }
+  const currentTactic = tactic.value;
+  tactic.replaceChildren();
+  for (const name of tactics) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    tactic.append(option);
   }
+  if (tactics.includes(currentTactic)) tactic.value = currentTactic;
   const techniques = [...new Set(window.hunts.filter((hunt) => hunt.tactic === tactic.value).map((hunt) => hunt.technique))];
   const previous = technique.value;
   technique.replaceChildren();
@@ -67,15 +147,7 @@ function fillHunts() {
     button.textContent = hunt.name;
     button.onclick = () => {
       sql.value = hunt.sql;
-      document.getElementById("tactic").onchange = fillHunts;
-document.getElementById("technique").onchange = fillHunts;
-fillHunts();
-const analyst = document.getElementById("analyst");
-if (analyst) {
-  analyst.value = localStorage.getItem("mcparser-analyst") || "";
-  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
-}
-updateLines();
+      updateLines();
     };
     li.append(button);
     list.append(li);
@@ -83,7 +155,15 @@ updateLines();
 }
 
 function markCase() {
-  window.mcparser.setCaseOpen(Boolean(caseDir()));
+  const open = Boolean(caseDir());
+  window.mcparser.setCaseOpen(open);
+  const ioc = document.getElementById("tb-ioc");
+  if (ioc) ioc.disabled = !open;
+  const label = document.getElementById("tb-case");
+  if (label) {
+    const dir = caseDir();
+    label.textContent = dir ? dir.split(/[\\/]/).pop() : "No case";
+  }
 }
 
 function caseDir() {
@@ -121,6 +201,51 @@ function bytes(value) {
 
 let loading = false;
 let importedIn = "";
+
+
+function makeResizable(table) {
+  table.style.tableLayout = "fixed";
+  table.style.width = "100%";
+  table.querySelectorAll("th").forEach((th, index) => {
+    th.onclick = (event) => {
+      if (event.target.classList.contains("col-grip")) return;
+      const rows = Array.from(table.querySelectorAll("tr")).slice(1);
+      const dir = th.dataset.dir === "asc" ? "desc" : "asc";
+      table.querySelectorAll("th").forEach((head) => delete head.dataset.dir);
+      th.dataset.dir = dir;
+      rows.sort((a, b) => {
+        const av = (a.children[index] && a.children[index].textContent) || "";
+        const bv = (b.children[index] && b.children[index].textContent) || "";
+        const an = Number(av), bn = Number(bv);
+        const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : av.localeCompare(bv);
+        return dir === "asc" ? cmp : -cmp;
+      });
+      rows.forEach((row) => table.append(row));
+    };
+  });
+  const heads = table.querySelectorAll("th");
+  heads.forEach((th, index) => {
+    if (index === heads.length - 1) return;
+    const grip = document.createElement("span");
+    grip.className = "col-grip";
+    th.append(grip);
+    grip.onmousedown = (event) => {
+      event.preventDefault();
+      const startX = event.clientX;
+      const startWidth = th.offsetWidth;
+      const onMove = (move) => {
+        const width = Math.max(40, startWidth + move.clientX - startX);
+        th.style.width = width + "px";
+      };
+      const onUp = () => {
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+      };
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    };
+  });
+}
 
 function setLoading(on, label, pct) {
   loading = on;
@@ -165,6 +290,18 @@ async function refresh() {
   fact("Channels", channels.join(", "));
   fact("Providers", String(providers.length));
   await loadHosts();
+  const runs = await window.mcparser.runs(caseDir());
+  if (runs && runs.code === 0) {
+    const hunts = runs.out.split("\n").filter((line) => /\thunt\t|\tIOC hit\t/.test(line));
+    const last = hunts[hunts.length - 1];
+    fact("Last hunt", last ? (last.split("\t")[4] || last.split("\t")[2] || "0") : "none");
+  }
+  const chats = await window.mcparser.chats(caseDir());
+  if (chats && chats.code === 0) {
+    const lines = chats.out.split("\n").filter(Boolean);
+    const last = lines[lines.length - 1];
+    fact("Last AI", last ? (last.split("\t")[3] || "").slice(0, 80) : "none");
+  }
   const took = loadSeconds(started);
   fact(importedIn ? "Imported" : "Loaded", importedIn || took);
   status.textContent = importedIn ? "Collection imported in " + importedIn : "Case loaded in " + took;
@@ -267,10 +404,15 @@ function renderCsv(text) {
     tr.append(node);
     if (index > 0) {
       tr.style.cursor = "pointer";
-      tr.onclick = () => showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
+      tr.onclick = () => {
+        table.querySelectorAll("tr.selected").forEach((row) => row.classList.remove("selected"));
+        tr.classList.add("selected");
+        showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
+      };
     }
     table.append(tr);
   });
+  makeResizable(table);
   results.replaceChildren(table);
   return Math.max(rows.length - 1, 0);
 }
@@ -309,20 +451,13 @@ async function showNotes() {
       }
       tr.onclick = () => {
         sql.value = (parts[3] || "").replaceAll("\\n", "\n");
-        document.getElementById("tactic").onchange = fillHunts;
-document.getElementById("technique").onchange = fillHunts;
-fillHunts();
-const analyst = document.getElementById("analyst");
-if (analyst) {
-  analyst.value = localStorage.getItem("mcparser-analyst") || "";
-  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
-}
-updateLines();
+        updateLines();
         if (sql.value.trim()) run();
       };
       table.append(tr);
     }
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Notes";
 }
@@ -400,17 +535,30 @@ function showQuerySheet() {
   document.getElementById("query-name").focus();
 }
 
+async function saveSql(name) {
+  const dir = caseDir();
+  if (!dir) {
+    status.textContent = "Open a case first";
+    return;
+  }
+  const suggested = name || (editorTabs[activeTab] && editorTabs[activeTab].name) || "query.sql";
+  const saved = await window.mcparser.saveSqlFile(dir, suggested, sql.value);
+  if (!saved.saved) return;
+  const file = saved.path.split(/[\\/]/).pop();
+  await window.mcparser.saveQuery(dir, file.replace(/\.sql$/i, ""), sql.value);
+  if (editorTabs[activeTab]) {
+    editorTabs[activeTab].name = file;
+    renderTabs();
+  }
+  status.textContent = `saved ${saved.path}`;
+}
+
 async function saveQuery(event) {
   event.preventDefault();
   const name = document.getElementById("query-name").value.trim();
   document.getElementById("query-sheet").hidden = true;
   if (!name) return;
-  const result = await window.mcparser.saveQuery(caseDir(), name, sql.value);
-  if (result.code !== 0) {
-    status.textContent = result.err || "save failed";
-    return;
-  }
-  status.textContent = `saved ${name}`;
+  saveSql(name);
 }
 
 
@@ -437,6 +585,10 @@ async function showRuns() {
         tr.append(td);
       }
       tr.onclick = () => {
+        if (parts[6] === "IOC hit" || parts[6] === "hunt") {
+          showHuntMatches(parts[0]);
+          return;
+        }
         sql.value = sqlText;
         runKind = "replay";
         runLabel = parts[4] || "replay";
@@ -446,10 +598,34 @@ async function showRuns() {
       table.append(tr);
     }
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Runs";
 }
 
+
+
+async function showHuntMatches(runId) {
+  const result = await window.mcparser.huntMatches(caseDir(), runId);
+  if (!result || result.code !== 0) {
+    status.textContent = result && result.err ? result.err : "No hits";
+    return;
+  }
+  const lines = result.out.trim().split(/\n/).filter(Boolean);
+  const table = document.createElement("table");
+  for (const [index, line] of lines.entries()) {
+    const tr = document.createElement("tr");
+    for (const cell of line.split("\t")) {
+      const node = document.createElement(index === 0 ? "th" : "td");
+      node.textContent = cell;
+      tr.append(node);
+    }
+    table.append(tr);
+  }
+  makeResizable(table);
+  results.replaceChildren(table);
+  status.textContent = "IOC hits for hunt " + runId;
+}
 
 async function showTrail() {
   const notes = await window.mcparser.notes(caseDir());
@@ -464,7 +640,7 @@ async function showTrail() {
   if (runs && runs.code === 0) {
     for (const line of runs.out.split("\n").filter(Boolean)) {
       const parts = line.split("\t");
-      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}  ${(parts[7] || "").replaceAll("\\n", " ")}` });
+      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}  ${(parts[7] || "").replaceAll("\\n", " ")}`, id: parts[0] || "" });
     }
   }
   items.sort((a, b) => Number(a.when) - Number(b.when));
@@ -479,13 +655,26 @@ async function showTrail() {
   for (const item of items) {
     const tr = document.createElement("tr");
     const when = item.when && item.when !== "0" ? new Date(Number(item.when) * 1000).toISOString() : "";
-    for (const value of [when, item.kind, item.label, item.detail]) {
+    const values = [when, item.kind, item.label, item.detail];
+    values.forEach((value, index) => {
       const td = document.createElement("td");
       td.textContent = value;
+      if (index === 1) {
+        const kind = String(value).toLowerCase();
+        if (kind.includes("ioc") || kind === "hunt") td.className = "kind-ioc";
+        else if (kind.includes("note")) td.className = "kind-note";
+        else if (kind.includes("ai") || kind.includes("chat") || kind.includes("grok") || kind.includes("claude") || kind.includes("openai")) td.className = "kind-ai";
+        else td.className = "kind-query";
+      }
       tr.append(td);
+    });
+    if (item.kind === "IOC hit" || item.kind === "hunt") {
+      tr.style.cursor = "pointer";
+      tr.onclick = () => showHuntMatches(item.id);
     }
     table.append(tr);
   }
+  makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Trail";
 }
@@ -660,17 +849,19 @@ function hideSheet() {
   sheet.hidden = true;
 }
 
-sql.addEventListener("input", updateLines);
+sql.addEventListener("input", () => {
+  if (editorTabs[activeTab]) editorTabs[activeTab].sql = sql.value;
+  updateLines();
+});
 sql.addEventListener("scroll", () => {
   lines.scrollTop = sql.scrollTop;
 });
 document.getElementById("refresh").onclick = refresh;
 document.getElementById("run").onclick = run;
-document.getElementById("save-query").onclick = showQuerySheet;
+document.getElementById("save-query").onclick = () => saveSql();
 document.getElementById("query-cancel").onclick = () => { document.getElementById("query-sheet").hidden = true; };
 document.getElementById("query-form").onsubmit = saveQuery;
 document.getElementById("export").onclick = exportCsv;
-document.getElementById("note").onclick = () => showNoteSheet("", "");
 document.getElementById("note-cancel").onclick = () => { document.getElementById("note-sheet").hidden = true; };
 document.getElementById("note-form").onsubmit = saveNote;
 document.getElementById("key-cancel").onclick = hideSheet;
@@ -729,7 +920,7 @@ updateLines();
   transcript.append(runSql);
   note(`${who}: ${result.answer}`);
 };
-window.mcparser.onImportCollection(async () => {
+async function openCollection() {
   const name = document.getElementById("analyst").value.trim();
   if (!name) {
     status.textContent = "Add your name before saving the case";
@@ -773,7 +964,8 @@ window.mcparser.onImportCollection(async () => {
   status.textContent = "Collection imported in " + importedIn;
   markCase();
   await loadHosts();
-});
+}
+window.mcparser.onImportCollection(openCollection);
 
 window.mcparser.onImportEvtx(async (payload) => {
   const name = document.getElementById("analyst").value.trim();
@@ -844,6 +1036,7 @@ function showImported(text) {
     row.append(kind, id, when, file, sha);
     table.append(row);
   }
+  makeResizable(table);
   results.replaceChildren(table);
 }
 
@@ -950,6 +1143,32 @@ window.mcparser.onGrokConnect((name) => {
 window.mcparser.onGrokChat((shown) => {
   grok.hidden = !shown;
 });
+
+function rememberPanes() {
+  document.querySelectorAll("aside details").forEach((details, index) => {
+    const key = "mcparser-pane-" + index;
+    const saved = localStorage.getItem(key);
+    if (saved === "open") details.open = true;
+    if (saved === "closed") details.open = false;
+    details.addEventListener("toggle", () => localStorage.setItem(key, details.open ? "open" : "closed"));
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  const meta = event.metaKey || event.ctrlKey;
+  if (!meta) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    document.getElementById("run").click();
+  } else if (event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    document.getElementById("tb-save").click();
+  } else if (event.key.toLowerCase() === "h") {
+    event.preventDefault();
+    document.getElementById("tb-hunt").click();
+  }
+});
+
 window.mcparser.onShowNotes(showNotes);
 window.mcparser.onShowRuns(showRuns);
 window.mcparser.onShowTrail(showTrail);
@@ -968,6 +1187,9 @@ document.getElementById("vendor").onchange = async () => {
   const chosen = await window.mcparser.setProvider(document.getElementById("vendor").value);
   listModels(chosen);
   if (chosen.error) note(chosen.error);
+};
+document.getElementById("model").onchange = () => {
+  window.mcparser.setModel(document.getElementById("vendor").value, document.getElementById("model").value);
 };
 document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
@@ -1034,6 +1256,30 @@ function splitter(handle, pane, edge, key) {
   };
 }
 
+function splitterHeight(handle, pane, key) {
+  const saved = localStorage.getItem(key);
+  if (saved) pane.style.height = saved;
+  handle.onpointerdown = (event) => {
+    event.preventDefault();
+    handle.classList.add("dragging");
+    const startY = event.clientY;
+    const start = pane.getBoundingClientRect().height;
+    function move(next) {
+      const height = Math.max(120, Math.min(window.innerHeight - 180, start + next.clientY - startY));
+      pane.style.height = height + "px";
+    }
+    function up() {
+      handle.classList.remove("dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      localStorage.setItem(key, pane.style.height);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+}
+
+splitterHeight(document.getElementById("split-editor"), document.querySelector(".editor"), "mcparser-editor-height");
 splitter(document.getElementById("split-left"), document.getElementById("case-pane"), "left", "mcparser-case-width");
 splitter(document.getElementById("split-right"), document.getElementById("grok"), "right", "mcparser-chat-width");
 
@@ -1042,3 +1288,280 @@ window.mcparser.onCollectProgress((payload) => {
 });
 
 window.mcparser.onAskProgress((label) => showAskLine(label));
+
+document.getElementById("tb-open").onclick = async () => {
+  const picked = await window.mcparser.pickCaseOpen();
+  if (!picked || picked.canceled || !picked.filePaths[0]) return;
+  caseInput.value = picked.filePaths[0];
+  results.replaceChildren();
+  await refresh();
+};
+document.getElementById("tb-new").onclick = () => addTab("");
+addTab(sql.value, "SQLQuery1.sql");
+rememberPanes();
+document.getElementById("tb-save").onclick = () => saveSql();
+document.getElementById("tb-save-all").onclick = () => saveSql();
+document.getElementById("tb-run").onclick = run;
+document.getElementById("tb-ioc").onclick = () => {
+  if (!caseDir()) return;
+  showIocs();
+};
+
+document.getElementById("tb-hunt").onclick = async () => {
+  if (!caseDir()) return;
+  const spin = document.getElementById("hunt-spin");
+  spin.hidden = false;
+  status.textContent = "Hunting IOCs 0%";
+  const result = await window.mcparser.hunt(caseDir());
+  spin.hidden = true;
+  if (result.code !== 0) {
+    status.textContent = result.err || "Hunt failed";
+    return;
+  }
+  const lines = result.out.trim().split(/\n/).filter(Boolean);
+  if (lines.length <= 1) {
+    status.textContent = "No IOC matches";
+    results.replaceChildren();
+    return;
+  }
+  const table = document.createElement("table");
+  for (const [index, line] of lines.entries()) {
+    const tr = document.createElement("tr");
+    for (const cell of line.split("\t")) {
+      const node = document.createElement(index === 0 ? "th" : "td");
+      node.textContent = cell;
+      tr.append(node);
+    }
+    table.append(tr);
+  }
+  makeResizable(table);
+  results.replaceChildren(table);
+  status.textContent = (lines.length - 1) + " matches";
+};
+
+window.mcparser.onHuntProgress((payload) => {
+  status.textContent = (payload.label || "Hunting") + " " + (payload.pct || 0) + "%";
+});
+markCase();
+const vendors = [
+  { name: "grok", label: "Grok", models: ["grok-4.7", "grok-4.6", "grok-4.5", "grok-4.20", "grok-4-1-fast-reasoning"] },
+  { name: "claude", label: "Claude", models: ["claude-sonnet-5-5", "claude-opus-5-5", "claude-haiku-5-5", "claude-fable-5-1", "claude-sonnet-5"] },
+  { name: "openai", label: "OpenAI", models: ["gpt-5.5", "gpt-5.4", "gpt-5.1", "gpt-5", "gpt-4.1"] },
+];
+
+async function showIntegrations(focus) {
+  const state = await window.mcparser.grokStatus();
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["Vendor", "Status", "Model", ""]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  for (const vendor of vendors) {
+    const tr = document.createElement("tr");
+    if (vendor.name === focus) tr.className = "selected";
+    const name = document.createElement("td");
+    name.textContent = vendor.label;
+    const connected = Boolean(state[vendor.name]);
+    const statusCell = document.createElement("td");
+    statusCell.innerHTML = connected
+      ? '<span class="state on" title="Connected"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#0b6a0b"/></svg></span>'
+      : '<span class="state off" title="Not connected"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5" fill="#b42318"/></svg></span>';
+    const modelCell = document.createElement("td");
+    if (connected) {
+      const select = document.createElement("select");
+      for (const id of vendor.models) {
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = id;
+        if (state.models && state.models[vendor.name] === id) option.selected = true;
+        select.append(option);
+      }
+      select.onchange = () => window.mcparser.setModel(vendor.name, select.value);
+      modelCell.append(select);
+    }
+    const action = document.createElement("td");
+    const plug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M5 1v4H3v3h10V5h-2V1H9v4H7V1zM7 9v3H4l4 3 4-3H9V9z"/></svg>';
+    const unplug = '<svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M1 6h4v1H2v2h3v1H1zM11 6h4v1h-3v2h3v1h-4zM6 7h1v2H6zM9 7h1v2H9z"/><path fill="currentColor" d="M5 3l1 1-1 1-1-1zM11 3l1 1-1 1-1-1zM8 1l.5 1.2L9.5 2 8 2.5 7.5 1zM8 13l.5 1.2 1-.2L8 14.5 7.5 13z"/></svg>';
+    if (connected) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon plug";
+      button.title = "Disconnect";
+      button.innerHTML = unplug;
+      button.onclick = async () => {
+        await window.mcparser.grokForgetOne(vendor.name);
+        status.textContent = `${vendor.label} disconnected`;
+        showIntegrations(focus);
+      };
+      action.append(button);
+    } else {
+      const input = document.createElement("input");
+      input.type = "password";
+      input.placeholder = "API key";
+      input.autocomplete = "off";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "icon plug";
+      button.title = "Connect";
+      button.innerHTML = plug;
+      button.onclick = async () => {
+        const saved = await window.mcparser.grokSave(input.value, vendor.name);
+        if (saved.error) {
+          status.textContent = saved.error;
+          return;
+        }
+        status.textContent = `${vendor.label} connected`;
+        showIntegrations(focus);
+      };
+      action.append(input, button);
+    }
+    tr.append(name, statusCell, modelCell, action);
+    table.append(tr);
+  }
+  makeResizable(table);
+  results.replaceChildren(table);
+  lastCsv = "";
+  status.textContent = "AI integrations";
+}
+
+async function useVendor(name) {
+  document.getElementById("vendor").value = name;
+  await window.mcparser.setProvider(name);
+  showIntegrations(name);
+}
+document.getElementById("tb-ai").onclick = () => showIntegrations();
+document.getElementById("tb-trail").onclick = showTrail;
+document.getElementById("tb-runs").onclick = showRuns;
+document.getElementById("tb-notes").onclick = showNotes;
+
+const iocSheet = document.getElementById("ioc-sheet");
+const iocListSheet = document.getElementById("ioc-list-sheet");
+const iocForm = document.getElementById("ioc-form");
+const iocList = document.getElementById("ioc-list");
+
+function openIocSheet(mode, row) {
+  if (!caseDir()) return;
+  document.getElementById("ioc-title").textContent = mode === "update" ? "Update IOC" : "Add IOC";
+  document.getElementById("ioc-id").value = row ? row.id : "";
+  document.getElementById("ioc-kind").value = row ? row.kind : "sha1";
+  document.getElementById("ioc-value").value = row ? row.value : "";
+  document.getElementById("ioc-note").value = row ? row.note : "";
+  iocSheet.hidden = false;
+  document.getElementById("ioc-value").focus();
+}
+
+async function loadIocs() {
+  const result = await window.mcparser.iocs(caseDir());
+  if (result.code !== 0) return [];
+  return (result.out || "").split("\n").filter(Boolean).map((line) => {
+    const [id, kind, value, note] = line.split("\t");
+    return { id, kind, value, note: note || "" };
+  });
+}
+
+document.getElementById("ioc-cancel").onclick = () => { iocSheet.hidden = true; };
+document.getElementById("ioc-list-cancel").onclick = () => { iocListSheet.hidden = true; };
+
+iocForm.onsubmit = async (event) => {
+  event.preventDefault();
+  const id = document.getElementById("ioc-id").value;
+  const kind = document.getElementById("ioc-kind").value;
+  const value = document.getElementById("ioc-value").value.trim();
+  const note = document.getElementById("ioc-note").value.trim();
+  const result = id
+    ? await window.mcparser.iocUpdate(caseDir(), id, kind, value, note)
+    : await window.mcparser.iocAdd(caseDir(), kind, value, note);
+  status.textContent = result.code === 0 ? (result.out || "saved").trim() : (result.err || result.out || "IOC not saved");
+  if (result.code === 0) {
+    iocSheet.hidden = true;
+    showIocs();
+  }
+};
+
+async function showIocList(mode) {
+  if (!caseDir()) return;
+  const rows = await loadIocs();
+  iocList.innerHTML = "";
+  document.getElementById("ioc-list-title").textContent = mode === "remove" ? "Remove IOC" : "Update IOC";
+  if (!rows.length) {
+    const li = document.createElement("li");
+    li.textContent = "No IOCs on this case.";
+    iocList.append(li);
+  }
+  for (const row of rows) {
+    const li = document.createElement("li");
+    const button = document.createElement("button");
+    button.type = "button";
+    button.textContent = `${row.kind}  ${row.value}`;
+    button.onclick = async () => {
+      if (mode === "remove") {
+        const result = await window.mcparser.iocRemove(caseDir(), row.id);
+        status.textContent = result.code === 0 ? `removed ${row.value}` : (result.err || "not removed");
+        iocListSheet.hidden = true;
+        if (result.code === 0) showIocs();
+      } else {
+        iocListSheet.hidden = true;
+        openIocSheet("update", row);
+      }
+    };
+    li.append(button);
+    iocList.append(li);
+  }
+  iocListSheet.hidden = false;
+}
+
+async function showIocs() {
+  if (!caseDir()) return;
+  const rows = await loadIocs();
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["id", "kind", "value", "note", ""]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  const csv = ["id,kind,value,note"];
+  for (const row of rows) {
+    const tr = document.createElement("tr");
+    for (const value of [row.id, row.kind, row.value, row.note]) {
+      const td = document.createElement("td");
+      td.textContent = value;
+      tr.append(td);
+    }
+    tr.style.cursor = "pointer";
+    tr.title = "Edit this IOC";
+    tr.onclick = () => openIocSheet("update", row);
+    const action = document.createElement("td");
+    const trash = document.createElement("button");
+    trash.type = "button";
+    trash.className = "ioc-trash";
+    trash.title = "Delete this IOC";
+    trash.textContent = "🗑";
+    trash.onclick = async (event) => {
+      event.stopPropagation();
+      const result = await window.mcparser.iocRemove(caseDir(), row.id);
+      status.textContent = result.code === 0 ? `removed ${row.value}` : (result.err || "not removed");
+      if (result.code === 0) showIocs();
+    };
+    action.append(trash);
+    tr.append(action);
+    table.append(tr);
+    csv.push([row.id, row.kind, row.value, row.note].map((cell) => String(cell).includes(",") ? `"${String(cell).replaceAll('"', '""')}"` : cell).join(","));
+  }
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "grid-add";
+  add.title = "Add IOC";
+  add.textContent = "+";
+  add.onclick = () => openIocSheet("add");
+  results.replaceChildren(table, add);
+  lastCsv = csv.join("\n");
+  status.textContent = rows.length ? `${rows.length} IOC${rows.length === 1 ? "" : "s"}` : "No IOCs on this case";
+}
+
+window.mcparser.onIocView(() => showIocs());
+window.mcparser.onIocAdd(() => openIocSheet("add"));

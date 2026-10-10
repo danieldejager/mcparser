@@ -17,6 +17,12 @@ fn main() -> ExitCode {
         Some("save-run") => save_run(&mut args),
         Some("chats") => chats(&mut args),
         Some("save-chat") => save_chat(&mut args),
+        Some("iocs") => iocs(&mut args),
+        Some("ioc-add") => ioc_add(&mut args),
+        Some("ioc-remove") => ioc_remove(&mut args),
+        Some("ioc-update") => ioc_update(&mut args),
+        Some("hunt") => hunt(&mut args),
+        Some("hunt-matches") => hunt_matches(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
@@ -64,6 +70,10 @@ Commands:
   save-run       Store a run without the window
   chats          List stored vendor turns
   save-chat      Store a question, a SELECT, and an answer
+  iocs           List indicators of compromise on the case
+  ioc-add        Add an indicator
+  ioc-remove     Remove an indicator by id
+  ioc-update     Change an indicator
   handoff        Write a password-locked copy of the case
   open-handoff   Unpack a handoff into a folder
   help           Show this help
@@ -117,6 +127,18 @@ chats:
 
 save-chat:
   mcparser save-chat --case <dir> --vendor <name> --question <text> --sql <sql> --answer <text>
+
+iocs:
+  mcparser iocs --case <dir>
+
+ioc-add:
+  mcparser ioc-add --case <dir> --kind <sha1|ip|user|path|domain> --value <value> [--note <text>]
+
+ioc-remove:
+  mcparser ioc-remove --case <dir> --id <id>
+
+ioc-update:
+  mcparser ioc-update --case <dir> --id <id> --kind <kind> --value <value> [--note <text>]
 
 handoff:
   mcparser handoff --case <dir> --out <file>
@@ -487,6 +509,7 @@ fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
         return ExitCode::from(2);
     };
     let db = case_dir.join("events.duckdb");
+    let _ = case::ensure_hunt_table(&db);
     let table = match case::query_table(&db, sql) {
         Ok(table) => table,
         Err(err) => {
@@ -887,6 +910,175 @@ fn print_rows(columns: &[String], rows: &[Vec<String>], format: &str) {
             for row in rows {
                 println!("{}", row.join("\t"));
             }
+        }
+    }
+}
+
+
+
+
+fn hunt_matches(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser hunt-matches --case <dir> --run <id>");
+        return ExitCode::from(2);
+    };
+    let rest: Vec<String> = args.collect();
+    let run_id = flag(&rest, "--run").and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+    match case::hunt_matches(&case_dir.join("catalog.sqlite"), run_id) {
+        Ok(rows) => {
+            println!("source\thost\tcolumn\tvalue\tioc_kind\tioc_value\tcontext");
+            for row in rows {
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.source, row.host_id, row.column,
+                    row.value.replace('\t', " "),
+                    row.ioc_kind, row.ioc_value,
+                    row.context.replace('\t', " ").replace('\n', " "));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn hunt(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser hunt --case <dir>");
+        return ExitCode::from(2);
+    };
+    let db = case_dir.join("events.duckdb");
+    match case::hunt_iocs(&case_dir.join("catalog.sqlite"), &db) {
+        Ok(rows) => {
+            println!("source\thost\tcolumn\tvalue\tioc_kind\tioc_value\tcontext");
+            for row in &rows {
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.source, row.host_id, row.column,
+                    row.value.replace('\t', " "),
+                    row.ioc_kind, row.ioc_value,
+                    row.context.replace('\t', " ").replace('\n', " "));
+            }
+            let analyst = std::env::var("MCPARSER_ANALYST").unwrap_or_default();
+            let ran_at = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs().to_string())
+                .unwrap_or_default();
+            let label = format!("IOC hits, {} matches", rows.len());
+            if let Ok(run_id) = case::save_run(&case_dir.join("catalog.sqlite"), "hunt", &ran_at, rows.len() as i64, &label, &analyst, "IOC hit") {
+                let _ = case::save_hunt_matches(&case_dir.join("catalog.sqlite"), run_id, &rows);
+                if let Err(err) = case::save_hunt_matches_db(&db, run_id, &rows) {
+                    eprintln!("hits not written to events: {err}");
+                }
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn iocs(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser iocs --case <dir>");
+        return ExitCode::from(2);
+    };
+    match case::iocs(&case_dir.join("catalog.sqlite")) {
+        Ok(rows) => {
+            for ioc in rows {
+                println!("{}\t{}\t{}\t{}", ioc.id, ioc.kind, ioc.value, ioc.note.replace('\n', " "));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn flag(args: &[String], name: &str) -> Option<String> {
+    args.windows(2).find(|pair| pair[0] == name).map(|pair| pair[1].clone())
+}
+
+fn ioc_add(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser ioc-add --case <dir> --kind <kind> --value <value> [--note <text>]");
+        return ExitCode::from(2);
+    };
+    let rest: Vec<String> = args.collect();
+    let kind = flag(&rest, "--kind").unwrap_or_default();
+    let value = flag(&rest, "--value").unwrap_or_default();
+    let note = flag(&rest, "--note").unwrap_or_default();
+    if kind.trim().is_empty() || value.trim().is_empty() {
+        eprintln!("kind and value are required");
+        return ExitCode::from(2);
+    }
+    if let Err(err) = std::fs::create_dir_all(&case_dir) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    match case::add_ioc(&case_dir.join("catalog.sqlite"), kind.trim(), value.trim(), note.trim()) {
+        Ok(id) => {
+            println!("added {id}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn ioc_remove(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser ioc-remove --case <dir> --id <id>");
+        return ExitCode::from(2);
+    };
+    let rest: Vec<String> = args.collect();
+    let Some(id) = flag(&rest, "--id").and_then(|text| text.parse::<i64>().ok()) else {
+        eprintln!("id is required");
+        return ExitCode::from(2);
+    };
+    match case::remove_ioc(&case_dir.join("catalog.sqlite"), id) {
+        Ok(()) => {
+            println!("removed {id}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
+fn ioc_update(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser ioc-update --case <dir> --id <id> --kind <kind> --value <value> [--note <text>]");
+        return ExitCode::from(2);
+    };
+    let rest: Vec<String> = args.collect();
+    let Some(id) = flag(&rest, "--id").and_then(|text| text.parse::<i64>().ok()) else {
+        eprintln!("id is required");
+        return ExitCode::from(2);
+    };
+    let kind = flag(&rest, "--kind").unwrap_or_default();
+    let value = flag(&rest, "--value").unwrap_or_default();
+    let note = flag(&rest, "--note").unwrap_or_default();
+    if kind.trim().is_empty() || value.trim().is_empty() {
+        eprintln!("kind and value are required");
+        return ExitCode::from(2);
+    }
+    match case::update_ioc(&case_dir.join("catalog.sqlite"), id, kind.trim(), value.trim(), note.trim()) {
+        Ok(()) => {
+            println!("updated {id}");
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
         }
     }
 }

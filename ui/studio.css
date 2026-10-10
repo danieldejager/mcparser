@@ -1,5 +1,5 @@
 html, body { height: 100%; margin: 0; font: 13px/1.4 "Segoe UI", sans-serif; color: #1f1f1f; background: #f3f3f3; }
-body { display: flex; }
+body { display: flex; flex-direction: column; }
 aside { width: 280px; flex: 0 0 auto; background: #fafafa; border-right: 1px solid #e1e1e1; padding: 16px; overflow: auto; }
 .split { width: 6px; flex: 0 0 6px; cursor: col-resize; background: #e1e1e1; }
 .split:hover, .split.dragging { background: #1f6b4a; }
@@ -17,10 +17,9 @@ dd { margin: 2px 0 0; color: #111; word-break: break-all; }
 .results { flex: 1; }
 header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eee; }
 .results header { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; column-gap: 12px; }
-#export { width: 108px; }
-.editor-body { display: flex; min-height: 140px; }
+.editor-body { display: flex; flex: 1; min-height: 0; }
 .lines { margin: 0; padding: 12px 8px; width: 36px; text-align: right; color: #8a8a8a; background: #f7f7f7; border-right: 1px solid #eee; overflow: hidden; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
-textarea { flex: 1; border: 0; margin: 0; min-height: 140px; resize: vertical; padding: 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
+textarea { flex: 1; border: 0; margin: 0; min-height: 0; resize: none; padding: 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
 #results { flex: 1; overflow: auto; }
 table { border-collapse: collapse; width: 100%; }
 th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #eee; }
@@ -65,3 +64,71 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 .ask-line { color: #5f6b7a; }
 .dots { display: inline-block; width: 1.4em; overflow: hidden; vertical-align: bottom; animation: dots 1s steps(4, end) infinite; }
 @keyframes dots { to { width: 0; } }
+
+#toolbar { display: flex; justify-content: flex-start; align-items: center; gap: 6px; height: 36px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #d0d0d0; flex: 0 0 auto; }
+#toolbar button { width: 28px; height: 26px; padding: 0; }
+#tb-run, #run { width: 40px; background: #0b6a0b; color: #fff; border-color: #0b6a0b; }
+#tb-run:hover, #run:hover { background: #095809; }
+.tb-sep { width: 1px; height: 18px; background: #d0d0d0; margin: 0 6px; }
+#tb-case { color: #333; margin-left: 4px; }
+#workspace { display: flex; flex: 1; min-height: 0; }
+#ioc-list { list-style: none; margin: 8px 0 0; padding: 0; max-height: 280px; overflow: auto; }
+#ioc-list button { display: block; width: 100%; margin-top: 6px; text-align: left; }
+#ioc-sheet label, #ioc-list-sheet label { display: block; margin-top: 10px; color: #666; font-size: 11px; text-transform: uppercase; }
+#ioc-sheet select, #ioc-sheet input { width: 100%; box-sizing: border-box; margin-top: 4px; }
+
+.ioc-trash { border: 0; background: transparent; padding: 0 6px; font-size: 14px; cursor: pointer; }
+.ioc-trash:hover { background: #fdecec; }
+
+button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place-items: center; font-size: 14px; line-height: 1; }
+#send.icon { align-self: flex-end; }
+
+#toolbar svg { width: 16px; height: 16px; display: block; }
+#tb-run, #run { font-size: 12px; }
+
+.tb-group { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+#tb-case { margin-left: auto; }
+
+.tabs { display: flex; align-items: flex-end; gap: 2px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #e1e1e1; min-height: 28px; overflow-x: auto; }
+.tab { display: flex; align-items: center; gap: 6px; height: 24px; padding: 0 8px; border: 1px solid transparent; border-bottom: 0; background: transparent; color: #444; border-radius: 4px 4px 0 0; cursor: pointer; white-space: nowrap; }
+.tab.active { background: #fff; border-color: #e1e1e1; color: #111; }
+.tab-x { border: 0; background: transparent; color: #888; padding: 0 2px; font-size: 12px; line-height: 1; }
+.tab-x:hover { color: #b42318; }
+.tab-add { width: 24px; height: 24px; margin-left: 2px; padding: 0; border: 0; background: transparent; color: #555; font-size: 16px; }
+.tab-add:hover { color: #111; }
+#tb-ioc:disabled { opacity: 0.35; cursor: default; }
+.grid-add { align-self: flex-start; margin: 6px 0 0; width: 28px; height: 24px; border: 1px solid #d0d0d0; background: #fff; color: #333; font-size: 16px; }
+.grid-add:hover { border-color: #888; }
+.results td input { width: 180px; margin-right: 6px; }
+.state { display: inline-grid; }
+.state svg { width: 14px; height: 14px; }
+.plug { color: #333; }
+.plug svg { width: 16px; height: 16px; }
+.split-h { height: 6px; flex: 0 0 6px; cursor: row-resize; background: #e1e1e1; border-radius: 4px; }
+.split-h:hover, .split-h.dragging { background: #1f6b4a; }
+.editor { flex: 0 0 auto; min-height: 180px; }
+
+.spin { width: 12px; height: 12px; border: 2px solid #d0d0d0; border-top-color: #1f6b4a; border-radius: 50%; display: none; margin-left: 8px; animation: spin 0.8s linear infinite; vertical-align: middle; }
+.spin:not([hidden]) { display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+th { position: relative; }
+.col-grip { position: absolute; right: 0; top: 0; width: 6px; height: 100%; cursor: col-resize; }
+.col-grip:hover { background: #1f6b4a; }
+
+#toolbar button[data-label] { width: auto; min-width: 44px; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; }
+#toolbar button[data-label]::after { content: attr(data-label); font-size: 11px; color: #333; font-weight: 500; }
+#tb-run::after { color: #fff; }
+#toolbar { height: 40px; }
+
+#results th { position: sticky; top: 0; background: #f7f7f7; z-index: 1; cursor: pointer; }
+#results tr.selected { background: #e8f2ff; }
+#results tr.selected td { background: #e8f2ff; }
+
+.kind-note { color: #6b4c9a; font-weight: 600; }
+.kind-query, .kind-run, .kind-replay { color: #1f4e79; font-weight: 600; }
+.kind-ioc { color: #b42318; font-weight: 600; }
+.kind-ai { color: #0b6a0b; font-weight: 600; }
+
+aside details { margin-bottom: 4px; }
+aside summary { user-select: none; }

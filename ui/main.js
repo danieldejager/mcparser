@@ -23,6 +23,7 @@ let claudeKey = "";
 let openaiKey = "";
 let provider = "grok";
 let chatShown = false;
+let models = { grok: "grok-4.7", claude: "claude-sonnet-5-5", openai: "gpt-5.5" };
 
 function keyFile(name) {
   return path.join(app.getPath("userData"), `${name}-key.bin`);
@@ -53,6 +54,15 @@ function loadKey() {
   }
   chatShown = activeKey().length > 0;
   if (claudeKey && !grokKey) provider = "claude";
+}
+
+function forgetOne(name) {
+  if (name === "claude") claudeKey = "";
+  else if (name === "openai") openaiKey = "";
+  else grokKey = "";
+  const file = keyFile(name);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+  if (!activeKey()) chatShown = false;
 }
 
 function forgetKey() {
@@ -130,6 +140,7 @@ function grokStatus() {
     grok: grokKey.length > 0,
     claude: claudeKey.length > 0,
     openai: openaiKey.length > 0,
+    models,
   };
 }
 
@@ -151,7 +162,7 @@ async function grok(input) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${grokKey}`,
     },
-    body: JSON.stringify({ model: "grok-4.7", input }),
+    body: JSON.stringify({ model: models.grok, input }),
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
@@ -170,7 +181,7 @@ async function claude(input) {
       "anthropic-version": "2023-06-01",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-5-20250929",
+      model: models.claude,
       max_tokens: 1024,
       messages: [{ role: "user", content: input }],
     }),
@@ -191,7 +202,7 @@ async function openai(input) {
       Authorization: `Bearer ${openaiKey}`,
     },
     body: JSON.stringify({
-      model: "gpt-4.1",
+      model: models.openai,
       messages: [{ role: "user", content: input }],
     }),
   });
@@ -442,38 +453,50 @@ function buildMenu() {
       ],
     },
     {
-      label: "AI Integration",
+      label: "Administration",
       submenu: [
         {
-          label: grokKey ? "Grok key saved" : "Connect Grok...",
-          click: () => win.webContents.send("grok-connect", "grok"),
+          label: "AI Integration",
+          submenu: [
+            {
+              label: grokKey ? "Grok key saved" : "Connect Grok...",
+              click: () => win.webContents.send("grok-connect", "grok"),
+            },
+            {
+              label: claudeKey ? "Claude key saved" : "Connect Claude...",
+              click: () => win.webContents.send("grok-connect", "claude"),
+            },
+            {
+              label: openaiKey ? "OpenAI key saved" : "Connect OpenAI...",
+              click: () => win.webContents.send("grok-connect", "openai"),
+            },
+            {
+              label: "Forget key",
+              enabled: connected,
+              click: () => {
+                forgetKey();
+                buildMenu();
+                win.webContents.send("grok-status", grokStatus());
+              },
+            },
+            {
+              label: "Show chat",
+              type: "checkbox",
+              checked: chatShown,
+              enabled: connected,
+              click: (item) => {
+                chatShown = item.checked;
+                win.webContents.send("grok-chat", chatShown);
+              },
+            },
+          ],
         },
         {
-          label: claudeKey ? "Claude key saved" : "Connect Claude...",
-          click: () => win.webContents.send("grok-connect", "claude"),
-        },
-        {
-          label: openaiKey ? "OpenAI key saved" : "Connect OpenAI...",
-          click: () => win.webContents.send("grok-connect", "openai"),
-        },
-        {
-          label: "Forget key",
-          enabled: connected,
-          click: () => {
-            forgetKey();
-            buildMenu();
-            win.webContents.send("grok-status", grokStatus());
-          },
-        },
-        {
-          label: "Show chat",
-          type: "checkbox",
-          checked: chatShown,
-          enabled: connected,
-          click: (item) => {
-            chatShown = item.checked;
-            win.webContents.send("grok-chat", chatShown);
-          },
+          label: "IOC Management",
+          submenu: [
+            { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
+            { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
+          ],
         },
       ],
     },
@@ -490,6 +513,7 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1200,
     height: 760,
+    fullscreen: true,
     title: "McParser",
     icon: icon || undefined,
     backgroundColor: "#f3f3f3",
@@ -511,11 +535,23 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
 ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
-ipcMain.handle("pick-case-open", async () => dialog.showOpenDialog(win, {
-  title: "Open case",
-  properties: ["openDirectory"],
-  buttonLabel: "Open case",
-}));
+ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
+ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
+ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
+ipcMain.handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
+ipcMain.handle("pick-case-open", async () => {
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Open Collection",
+    properties: ["openDirectory"],
+    buttonLabel: "Open",
+  });
+  if (!picked || picked.canceled || !picked.filePaths[0]) return picked;
+  let dir = picked.filePaths[0];
+  const parts = dir.split(path.sep);
+  const mcp = parts.findIndex((part) => part.endsWith(".mcp"));
+  if (mcp >= 0) dir = parts.slice(0, mcp + 1).join(path.sep);
+  return { canceled: false, filePaths: [dir] };
+});
 ipcMain.handle("delete-case", async (_event, caseDir) => {
   const dir = casePath(caseDir);
   if (!dir || !dir.endsWith(".mcp")) return { error: "Only a .mcp case folder can be deleted" };
@@ -574,6 +610,39 @@ function runCollect(args) {
   });
 }
 
+
+function runHunt(args) {
+  return new Promise((resolve) => {
+    const env = { ...process.env };
+    delete env.XAI_API_KEY;
+    delete env.OPENAI_API_KEY;
+    delete env.ANTHROPIC_API_KEY;
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
+    let out = "";
+    let err = "";
+    let pending = "";
+    child.stdout.on("data", (chunk) => {
+      pending += chunk.toString();
+      const lines = pending.split(/\n/);
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("progress\t")) {
+          const parts = line.split("\t");
+          if (win) win.webContents.send("hunt-progress", { pct: Number(parts[1] || 0), label: parts.slice(2).join(" ") });
+        } else if (line) {
+          out += line + "\n";
+        }
+      }
+    });
+    child.stderr.on("data", (chunk) => { err += chunk.toString(); });
+    child.on("close", (code) => resolve({ code, out, err }));
+    child.on("error", (error) => resolve({ code: 1, out: "", err: error.message }));
+  });
+}
+
+ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
+ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
+
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
 ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
@@ -591,6 +660,10 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   return { saved: true, path: picked.filePath };
 });
 ipcMain.handle("grok-status", () => grokStatus());
+ipcMain.handle("set-model", (_event, name, model) => {
+  if (models[name] && model) models[name] = model;
+  return grokStatus();
+});
 ipcMain.handle("set-provider", (_event, name) => {
   if (name !== "grok" && name !== "claude" && name !== "openai") return grokStatus();
   provider = name;
@@ -621,12 +694,29 @@ ipcMain.handle("grok-forget", () => {
   buildMenu();
   return grokStatus();
 });
+ipcMain.handle("grok-forget-one", (_event, name) => {
+  if (name === "grok" || name === "claude" || name === "openai") forgetOne(name);
+  buildMenu();
+  return grokStatus();
+});
 ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
   if (name === "grok" || name === "claude" || name === "openai") provider = name;
   return grokAsk(caseDir, question);
 });
 ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
 ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
+ipcMain.handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
+  const dir = casePath(caseDir);
+  const name = String(suggested || "query.sql");
+  const picked = await dialog.showSaveDialog(win, {
+    title: "Save query",
+    defaultPath: path.join(dir, name.endsWith(".sql") ? name : name + ".sql"),
+    filters: [{ name: "SQL", extensions: ["sql"] }],
+  });
+  if (picked.canceled || !picked.filePath) return { saved: false };
+  fs.writeFileSync(picked.filePath, String(sql || ""), "utf8");
+  return { saved: true, path: picked.filePath };
+});
 ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
 ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
 ipcMain.handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));
