@@ -1271,7 +1271,13 @@ async function showIocs() {
     table.append(tr);
     csv.push([row.id, row.kind, row.value, row.note].map((cell) => String(cell).includes(",") ? `"${String(cell).replaceAll('"', '""')}"` : cell).join(","));
   }
-  results.replaceChildren(table);
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "grid-add";
+  add.title = "Add IOC";
+  add.textContent = "+";
+  add.onclick = () => openIocSheet("add");
+  results.replaceChildren(table, add);
   lastCsv = csv.join("\n");
   status.textContent = rows.length ? `${rows.length} IOC${rows.length === 1 ? "" : "s"}` : "No IOCs on this case";
 }

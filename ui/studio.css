@@ -97,3 +97,5 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 .tab-add { width: 24px; height: 24px; margin-left: 2px; padding: 0; border: 0; background: transparent; color: #555; font-size: 16px; }
 .tab-add:hover { color: #111; }
 #tb-ioc:disabled { opacity: 0.35; cursor: default; }
+.grid-add { align-self: flex-start; margin: 6px 0 0; width: 28px; height: 24px; border: 1px solid #d0d0d0; background: #fff; color: #333; font-size: 16px; }
+.grid-add:hover { border-color: #888; }
