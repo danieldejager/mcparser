@@ -1755,7 +1755,7 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
         ("srum", "SELECT host_id, app FROM srum", "app", "host_id"),
     ];
     let mut matches = Vec::new();
-    for (index, (source, sql, column, host_col)) in scans.iter().enumerate() {
+    for (index, (source, sql, column, _host_col)) in scans.iter().enumerate() {
         let pct = ((index as f64 + 1.0) / scans.len() as f64 * 100.0) as u8;
         report_progress(pct, &format!("Scanning {source}"));
         let mut stmt = match db.prepare(sql) {
