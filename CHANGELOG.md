@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.3.1 — 2026-10-10
+
+IOCs are a working list on the case. A hunt scans the timeline and the loaded artifacts, and the hits stay with the case.
+
+### Added
+
+- IOC list on the case. Add, edit and remove indicators. The list travels in the handoff
+- Hunt scans events, prefetch, Amcache, shimcache, UserAssist, services, tasks and SRUM
+- Hits are written to the catalog and to the events database, so the SQL editor can read them
+- Click a hunt in the trail or in Runs to open its matches
+- Toolbar labels. Results headers stick and sort. A clicked row highlights
+- Trail kinds are coloured. The left panes start closed and remember their state
+- The case summary shows the last hunt and the last AI question
+- Ctrl+Enter runs, Ctrl+S saves, Ctrl+H hunts
+
+### Fixed
+
+- Clicking a hunt no longer puts the word hunt in the SQL editor
+
+
 ## 0.3.0 — 2026-10-09
 
 A case holds hosts and collections. One Velociraptor offline collector zip loads into the same DuckDB case as the event logs.
