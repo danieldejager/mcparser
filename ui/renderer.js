@@ -53,6 +53,13 @@ function renderTabs() {
     button.append(label, close);
     tabBar.append(button);
   });
+  const add = document.createElement("button");
+  add.type = "button";
+  add.className = "tab-add";
+  add.title = "New Query";
+  add.textContent = "+";
+  add.onclick = () => addTab("");
+  tabBar.append(add);
 }
 
 function closeTab(index) {

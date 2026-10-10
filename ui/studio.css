@@ -94,3 +94,5 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 .tab.active { background: #fff; border-color: #e1e1e1; color: #111; }
 .tab-x { border: 0; background: transparent; color: #888; padding: 0 2px; font-size: 12px; line-height: 1; }
 .tab-x:hover { color: #b42318; }
+.tab-add { width: 24px; height: 24px; margin-left: 2px; padding: 0; border: 0; background: transparent; color: #555; font-size: 16px; }
+.tab-add:hover { color: #111; }
