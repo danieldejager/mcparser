@@ -442,45 +442,50 @@ function buildMenu() {
       ],
     },
     {
-      label: "IOC Management",
-      submenu: [
-        { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
-        { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
-      ],
-    },
-    {
-      label: "AI Integration",
+      label: "Administration",
       submenu: [
         {
-          label: grokKey ? "Grok key saved" : "Connect Grok...",
-          click: () => win.webContents.send("grok-connect", "grok"),
+          label: "AI Integration",
+          submenu: [
+            {
+              label: grokKey ? "Grok key saved" : "Connect Grok...",
+              click: () => win.webContents.send("grok-connect", "grok"),
+            },
+            {
+              label: claudeKey ? "Claude key saved" : "Connect Claude...",
+              click: () => win.webContents.send("grok-connect", "claude"),
+            },
+            {
+              label: openaiKey ? "OpenAI key saved" : "Connect OpenAI...",
+              click: () => win.webContents.send("grok-connect", "openai"),
+            },
+            {
+              label: "Forget key",
+              enabled: connected,
+              click: () => {
+                forgetKey();
+                buildMenu();
+                win.webContents.send("grok-status", grokStatus());
+              },
+            },
+            {
+              label: "Show chat",
+              type: "checkbox",
+              checked: chatShown,
+              enabled: connected,
+              click: (item) => {
+                chatShown = item.checked;
+                win.webContents.send("grok-chat", chatShown);
+              },
+            },
+          ],
         },
         {
-          label: claudeKey ? "Claude key saved" : "Connect Claude...",
-          click: () => win.webContents.send("grok-connect", "claude"),
-        },
-        {
-          label: openaiKey ? "OpenAI key saved" : "Connect OpenAI...",
-          click: () => win.webContents.send("grok-connect", "openai"),
-        },
-        {
-          label: "Forget key",
-          enabled: connected,
-          click: () => {
-            forgetKey();
-            buildMenu();
-            win.webContents.send("grok-status", grokStatus());
-          },
-        },
-        {
-          label: "Show chat",
-          type: "checkbox",
-          checked: chatShown,
-          enabled: connected,
-          click: (item) => {
-            chatShown = item.checked;
-            win.webContents.send("grok-chat", chatShown);
-          },
+          label: "IOC Management",
+          submenu: [
+            { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
+            { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
+          ],
         },
       ],
     },
