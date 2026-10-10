@@ -121,14 +121,15 @@ function fillHunts() {
   const list = document.getElementById("hunts");
   if (!tactic || !window.hunts) return;
   const tactics = [...new Set(window.hunts.map((hunt) => hunt.tactic))];
-  if (!tactic.options.length) {
-    for (const name of tactics) {
-      const option = document.createElement("option");
-      option.value = name;
-      option.textContent = name;
-      tactic.append(option);
-    }
+  const currentTactic = tactic.value;
+  tactic.replaceChildren();
+  for (const name of tactics) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    tactic.append(option);
   }
+  if (tactics.includes(currentTactic)) tactic.value = currentTactic;
   const techniques = [...new Set(window.hunts.filter((hunt) => hunt.tactic === tactic.value).map((hunt) => hunt.technique))];
   const previous = technique.value;
   technique.replaceChildren();
@@ -146,15 +147,7 @@ function fillHunts() {
     button.textContent = hunt.name;
     button.onclick = () => {
       sql.value = hunt.sql;
-      document.getElementById("tactic").onchange = fillHunts;
-document.getElementById("technique").onchange = fillHunts;
-fillHunts();
-const analyst = document.getElementById("analyst");
-if (analyst) {
-  analyst.value = localStorage.getItem("mcparser-analyst") || "";
-  analyst.onchange = () => localStorage.setItem("mcparser-analyst", analyst.value.trim());
-}
-updateLines();
+      updateLines();
     };
     li.append(button);
     list.append(li);
