@@ -17,9 +17,9 @@ dd { margin: 2px 0 0; color: #111; word-break: break-all; }
 .results { flex: 1; }
 header { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #eee; }
 .results header { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; column-gap: 12px; }
-.editor-body { display: flex; min-height: 140px; }
+.editor-body { display: flex; flex: 1; min-height: 0; }
 .lines { margin: 0; padding: 12px 8px; width: 36px; text-align: right; color: #8a8a8a; background: #f7f7f7; border-right: 1px solid #eee; overflow: hidden; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
-textarea { flex: 1; border: 0; margin: 0; min-height: 140px; resize: vertical; padding: 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
+textarea { flex: 1; border: 0; margin: 0; min-height: 0; resize: none; padding: 12px; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 13px; line-height: 1.4; }
 #results { flex: 1; overflow: auto; }
 table { border-collapse: collapse; width: 100%; }
 th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #eee; }
@@ -106,4 +106,4 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 .plug svg { width: 16px; height: 16px; }
 .split-h { height: 6px; flex: 0 0 6px; cursor: row-resize; background: #e1e1e1; border-radius: 4px; }
 .split-h:hover, .split-h.dragging { background: #1f6b4a; }
-.editor { flex: 0 0 auto; }
+.editor { flex: 0 0 auto; min-height: 180px; }
