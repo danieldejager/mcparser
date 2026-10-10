@@ -151,7 +151,10 @@ updateLines();
 }
 
 function markCase() {
-  window.mcparser.setCaseOpen(Boolean(caseDir()));
+  const open = Boolean(caseDir());
+  window.mcparser.setCaseOpen(open);
+  const ioc = document.getElementById("tb-ioc");
+  if (ioc) ioc.disabled = !open;
   const label = document.getElementById("tb-case");
   if (label) {
     const dir = caseDir();
@@ -1135,7 +1138,11 @@ addTab(sql.value, "SQLQuery1.sql");
 document.getElementById("tb-save").onclick = showQuerySheet;
 document.getElementById("tb-save-all").onclick = showQuerySheet;
 document.getElementById("tb-run").onclick = run;
-document.getElementById("tb-ioc").onclick = showIocs;
+document.getElementById("tb-ioc").onclick = () => {
+  if (!caseDir()) return;
+  showIocs();
+};
+markCase();
 async function useVendor(name) {
   document.getElementById("grok").hidden = false;
   document.getElementById("vendor").value = name;
