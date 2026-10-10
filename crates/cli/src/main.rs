@@ -966,7 +966,9 @@ fn hunt(args: &mut impl Iterator<Item = String>) -> ExitCode {
             let label = format!("IOC hits, {} matches", rows.len());
             if let Ok(run_id) = case::save_run(&case_dir.join("catalog.sqlite"), "hunt", &ran_at, rows.len() as i64, &label, &analyst, "IOC hit") {
                 let _ = case::save_hunt_matches(&case_dir.join("catalog.sqlite"), run_id, &rows);
-                let _ = case::save_hunt_matches_db(&db, run_id, &rows);
+                if let Err(err) = case::save_hunt_matches_db(&db, run_id, &rows) {
+                    eprintln!("hits not written to events: {err}");
+                }
             }
             ExitCode::SUCCESS
         }

@@ -1726,7 +1726,8 @@ pub fn iocs(catalog: &Path) -> Result<Vec<Ioc>, rusqlite::Error> {
 
 
 
-pub fn save_hunt_matches_db(db_path: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), String> {
+
+pub fn ensure_hunt_table(db_path: &Path) -> Result<(), String> {
     let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS hunt_matches (
@@ -1740,6 +1741,12 @@ pub fn save_hunt_matches_db(db_path: &Path, run_id: i64, matches: &[HuntMatch]) 
             context TEXT
         )",
     ).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub fn save_hunt_matches_db(db_path: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), String> {
+    ensure_hunt_table(db_path)?;
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
     for row in matches {
         db.execute(
             "INSERT INTO hunt_matches (run_id, source, host_id, column_name, value, ioc_kind, ioc_value, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
