@@ -67,8 +67,8 @@ aside select { width: 100%; box-sizing: border-box; margin-top: 4px; border: 1px
 
 #toolbar { display: flex; justify-content: flex-start; align-items: center; gap: 6px; height: 36px; padding: 0 8px; background: #f3f3f3; border-bottom: 1px solid #d0d0d0; flex: 0 0 auto; }
 #toolbar button { width: 28px; height: 26px; padding: 0; }
-#tb-run { background: #0b6a0b; color: #fff; border-color: #0b6a0b; }
-#tb-run:hover { background: #095809; }
+#tb-run, #run { width: 40px; background: #0b6a0b; color: #fff; border-color: #0b6a0b; }
+#tb-run:hover, #run:hover { background: #095809; }
 .tb-sep { width: 1px; height: 18px; background: #d0d0d0; margin: 0 6px; }
 #tb-case { color: #333; margin-left: 4px; }
 #workspace { display: flex; flex: 1; min-height: 0; }
@@ -84,7 +84,7 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 #send.icon { align-self: flex-end; }
 
 #toolbar svg { width: 16px; height: 16px; display: block; }
-#tb-run { font-size: 12px; }
+#tb-run, #run { font-size: 12px; }
 
 .tb-group { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 #tb-case { margin-left: auto; }
