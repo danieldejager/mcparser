@@ -96,11 +96,22 @@ let rowNotes = new Map();
 function listModels(state) {
   const models = document.getElementById("models");
   const vendor = document.getElementById("vendor");
-  if (!models || !vendor) return;
+  const model = document.getElementById("model");
+  if (!models || !vendor || !model) return;
   const current = state || { provider: "grok", grok: false, claude: false, openai: false };
   vendor.value = current.provider || "grok";
   const configured = { grok: current.grok, claude: current.claude, openai: current.openai };
   models.textContent = configured[vendor.value] ? "Configured." : "Configure this integration.";
+  const chosen = vendors.find((item) => item.name === vendor.value);
+  model.replaceChildren();
+  if (!chosen) return;
+  for (const id of chosen.models) {
+    const option = document.createElement("option");
+    option.value = id;
+    option.textContent = id;
+    if (current.models && current.models[vendor.value] === id) option.selected = true;
+    model.append(option);
+  }
 }
 
 
@@ -1060,6 +1071,9 @@ document.getElementById("vendor").onchange = async () => {
   const chosen = await window.mcparser.setProvider(document.getElementById("vendor").value);
   listModels(chosen);
   if (chosen.error) note(chosen.error);
+};
+document.getElementById("model").onchange = () => {
+  window.mcparser.setModel(document.getElementById("vendor").value, document.getElementById("model").value);
 };
 document.getElementById("tactic").onchange = fillHunts;
 document.getElementById("technique").onchange = fillHunts;
