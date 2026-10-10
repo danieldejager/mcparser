@@ -733,7 +733,7 @@ updateLines();
   transcript.append(runSql);
   note(`${who}: ${result.answer}`);
 };
-window.mcparser.onImportCollection(async () => {
+async function openCollection() {
   const name = document.getElementById("analyst").value.trim();
   if (!name) {
     status.textContent = "Add your name before saving the case";
@@ -777,7 +777,8 @@ window.mcparser.onImportCollection(async () => {
   status.textContent = "Collection imported in " + importedIn;
   markCase();
   await loadHosts();
-});
+}
+window.mcparser.onImportCollection(openCollection);
 
 window.mcparser.onImportEvtx(async (payload) => {
   const name = document.getElementById("analyst").value.trim();
@@ -1047,6 +1048,7 @@ window.mcparser.onCollectProgress((payload) => {
 
 window.mcparser.onAskProgress((label) => showAskLine(label));
 
+document.getElementById("tb-open").onclick = openCollection;
 document.getElementById("tb-new").onclick = () => {
   sql.value = "";
   updateLines();
