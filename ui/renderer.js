@@ -1063,6 +1063,16 @@ document.getElementById("tb-new").onclick = () => {
 document.getElementById("tb-save").onclick = showQuerySheet;
 document.getElementById("tb-save-all").onclick = showQuerySheet;
 document.getElementById("tb-run").onclick = run;
+document.getElementById("tb-ioc").onclick = showIocs;
+async function useVendor(name) {
+  document.getElementById("grok").hidden = false;
+  document.getElementById("vendor").value = name;
+  await window.mcparser.setProvider(name);
+  document.getElementById("ask").focus();
+}
+document.getElementById("tb-grok").onclick = () => useVendor("grok");
+document.getElementById("tb-claude").onclick = () => useVendor("claude");
+document.getElementById("tb-openai").onclick = () => useVendor("openai");
 
 const iocSheet = document.getElementById("ioc-sheet");
 const iocListSheet = document.getElementById("ioc-list-sheet");
