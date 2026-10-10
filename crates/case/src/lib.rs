@@ -242,24 +242,6 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             added_at TEXT NOT NULL,
             UNIQUE(kind, value)
         );
-        CREATE TABLE IF NOT EXISTS hash_sources (
-            id TEXT PRIMARY KEY,
-            name TEXT NOT NULL,
-            description TEXT NOT NULL,
-            publisher TEXT NOT NULL,
-            category TEXT NOT NULL,
-            installed INTEGER NOT NULL DEFAULT 0,
-            enabled INTEGER NOT NULL DEFAULT 0,
-            config TEXT NOT NULL DEFAULT '{}',
-            installed_at TEXT NOT NULL DEFAULT ''
-        );
-        CREATE TABLE IF NOT EXISTS hash_sets (
-            source_id TEXT NOT NULL,
-            hash TEXT NOT NULL,
-            hash_kind TEXT NOT NULL,
-            note TEXT NOT NULL DEFAULT '',
-            PRIMARY KEY (source_id, hash)
-        );
         CREATE TABLE IF NOT EXISTS hunt_matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id INTEGER NOT NULL,
@@ -1898,15 +1880,41 @@ pub struct HashSource {
 }
 
 const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
-    ("malwarebazaar", "MalwareBazaar", "Local import of CSV or plain-text hash exports. No network call.", "abuse.ch", "malware"),
-    ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "reputation"),
-    ("custom", "Custom hash list", "Import any text or CSV list of hashes from a file.", "Local", "custom"),
-    ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "malware"),
-    ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "reputation"),
+    ("malwarebazaar", "MalwareBazaar", "Local import of CSV or plain-text hash exports. No network call.", "abuse.ch", "Hash Sources"),
+    ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
+    ("custom", "Custom hash list", "Import any text or CSV list of hashes from a file.", "Local", "Hash Sources"),
+    ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
+    ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
 ];
 
-pub fn seed_hash_sources(catalog: &Path) -> Result<(), rusqlite::Error> {
-    let conn = open_catalog(catalog)?;
+fn open_store(store: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
+    if let Some(parent) = store.parent() { let _ = std::fs::create_dir_all(parent); }
+    let conn = rusqlite::Connection::open(store)?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS hash_sources (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            publisher TEXT NOT NULL,
+            category TEXT NOT NULL,
+            installed INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            config TEXT NOT NULL DEFAULT '{}',
+            installed_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS hash_sets (
+            source_id TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            hash_kind TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (source_id, hash)
+        );",
+    )?;
+    Ok(conn)
+}
+
+pub fn seed_hash_sources(store: &Path) -> Result<(), rusqlite::Error> {
+    let conn = open_store(store)?;
     for (id, name, description, publisher, category) in CATALOG {
         conn.execute(
             "INSERT INTO hash_sources (id, name, description, publisher, category) VALUES (?1, ?2, ?3, ?4, ?5)
@@ -1917,13 +1925,13 @@ pub fn seed_hash_sources(catalog: &Path) -> Result<(), rusqlite::Error> {
     Ok(())
 }
 
-pub fn hash_sources(catalog: &Path) -> Result<Vec<HashSource>, rusqlite::Error> {
-    seed_hash_sources(catalog)?;
-    let conn = open_catalog(catalog)?;
+pub fn hash_sources(store: &Path) -> Result<Vec<HashSource>, rusqlite::Error> {
+    seed_hash_sources(store)?;
+    let conn = open_store(store)?;
     let mut stmt = conn.prepare(
         "SELECT s.id, s.name, s.description, s.publisher, s.category, s.installed, s.enabled, s.config,
                 (SELECT count(*) FROM hash_sets h WHERE h.source_id = s.id)
-         FROM hash_sources s ORDER BY s.name",
+         FROM hash_sources s ORDER BY s.category, s.name",
     )?;
     let mut rows = stmt.query([])?;
     let mut out = Vec::new();
@@ -1943,9 +1951,9 @@ pub fn hash_sources(catalog: &Path) -> Result<Vec<HashSource>, rusqlite::Error> 
     Ok(out)
 }
 
-pub fn install_hash_source(catalog: &Path, id: &str, config: &str) -> Result<(), String> {
-    seed_hash_sources(catalog).map_err(|err| err.to_string())?;
-    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+pub fn install_hash_source(store: &Path, id: &str, config: &str) -> Result<(), String> {
+    seed_hash_sources(store).map_err(|err| err.to_string())?;
+    let conn = open_store(store).map_err(|err| err.to_string())?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_default();
     let changed = conn.execute(
         "UPDATE hash_sources SET installed = 1, enabled = 1, config = ?1, installed_at = ?2 WHERE id = ?3",
@@ -1955,16 +1963,10 @@ pub fn install_hash_source(catalog: &Path, id: &str, config: &str) -> Result<(),
     Ok(())
 }
 
-pub fn uninstall_hash_source(catalog: &Path, id: &str) -> Result<(), String> {
-    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+pub fn uninstall_hash_source(store: &Path, id: &str) -> Result<(), String> {
+    let conn = open_store(store).map_err(|err| err.to_string())?;
     conn.execute("UPDATE hash_sources SET installed = 0, enabled = 0, config = '{}' WHERE id = ?1", [id]).map_err(|err| err.to_string())?;
     conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [id]).map_err(|err| err.to_string())?;
-    Ok(())
-}
-
-pub fn set_hash_source_enabled(catalog: &Path, id: &str, enabled: bool) -> Result<(), String> {
-    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
-    conn.execute("UPDATE hash_sources SET enabled = ?1 WHERE id = ?2 AND installed = 1", rusqlite::params![enabled as i64, id]).map_err(|err| err.to_string())?;
     Ok(())
 }
 
@@ -1979,9 +1981,9 @@ fn hash_kind(value: &str) -> Option<&'static str> {
     }
 }
 
-pub fn import_hashes(catalog: &Path, id: &str, text: &str) -> Result<usize, String> {
-    seed_hash_sources(catalog).map_err(|err| err.to_string())?;
-    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+pub fn import_hashes(store: &Path, id: &str, text: &str) -> Result<usize, String> {
+    seed_hash_sources(store).map_err(|err| err.to_string())?;
+    let conn = open_store(store).map_err(|err| err.to_string())?;
     let installed: i64 = conn.query_row("SELECT installed FROM hash_sources WHERE id = ?1", [id], |row| row.get(0)).map_err(|err| err.to_string())?;
     if installed == 0 { return Err(format!("{id} is not installed")); }
     let mut count = 0usize;
@@ -2000,8 +2002,8 @@ pub fn import_hashes(catalog: &Path, id: &str, text: &str) -> Result<usize, Stri
     Ok(count)
 }
 
-pub fn enabled_hashes(catalog: &Path) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
-    let conn = open_catalog(catalog)?;
+pub fn enabled_hashes(store: &Path) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
+    let conn = open_store(store)?;
     let mut stmt = conn.prepare(
         "SELECT h.source_id, h.hash, h.hash_kind FROM hash_sets h
          JOIN hash_sources s ON s.id = h.source_id
@@ -2015,8 +2017,8 @@ pub fn enabled_hashes(catalog: &Path) -> Result<Vec<(String, String, String)>, r
     Ok(out)
 }
 
-pub fn match_hashes(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
-    let hashes = enabled_hashes(catalog).map_err(|err| err.to_string())?;
+pub fn match_hashes(store: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
+    let hashes = enabled_hashes(store).map_err(|err| err.to_string())?;
     if hashes.is_empty() { return Ok(Vec::new()); }
     let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
     let scans: &[(&str, &str)] = &[

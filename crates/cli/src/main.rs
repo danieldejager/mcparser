@@ -1232,16 +1232,22 @@ fn userassist(args: &mut impl Iterator<Item = String>) -> ExitCode {
     }
 }
 
+fn store_path(args: &[String]) -> PathBuf {
+    if let Some(i) = args.iter().position(|a| a == "--store") {
+        if let Some(path) = args.get(i + 1) { return PathBuf::from(path); }
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join(".mcparser").join("marketplace.sqlite")
+}
+
 fn marketplace(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser marketplace --case <dir>");
-        return ExitCode::from(2);
-    };
-    match case::hash_sources(&case_dir.join("catalog.sqlite")) {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    match case::hash_sources(&store) {
         Ok(rows) => {
             for row in rows {
                 let state = if !row.installed { "not-installed" } else if row.enabled { "enabled" } else { "disabled" };
-                println!("{}\t{}\t{}\t{}\t{}\t{}", row.id, row.name, state, row.hash_count, row.publisher, row.description);
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}", row.id, row.name, state, row.hash_count, row.publisher, row.category, row.description);
             }
             ExitCode::SUCCESS
         }
@@ -1250,77 +1256,63 @@ fn marketplace(args: &mut impl Iterator<Item = String>) -> ExitCode {
 }
 
 fn install_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser install-source --case <dir> --source <id> [--config <json>]");
-        return ExitCode::from(2);
-    };
-    let mut id = String::new();
-    let mut config = "{}".to_string();
     let rest: Vec<String> = args.collect();
-    let mut i = 0;
-    while i < rest.len() {
-        match rest[i].as_str() {
-            "--source" => { id = rest.get(i + 1).cloned().unwrap_or_default(); i += 2; }
-            "--config" => { config = rest.get(i + 1).cloned().unwrap_or_default(); i += 2; }
-            _ => i += 1,
-        }
-    }
+    let store = store_path(&rest);
+    let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
+    let config = rest.windows(2).find(|w| w[0] == "--config").map(|w| w[1].clone()).unwrap_or_else(|| "{}".into());
     if id.is_empty() {
-        eprintln!("usage: mcparser install-source --case <dir> --source <id> [--config <json>]");
+        eprintln!("usage: mcparser install-source --source <id> [--store <path>] [--config <json>]");
         return ExitCode::from(2);
     }
-    match case::install_hash_source(&case_dir.join("catalog.sqlite"), &id, &config) {
+    match case::install_hash_source(&store, &id, &config) {
         Ok(()) => { println!("installed {id}"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
 
 fn uninstall_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser uninstall-source --case <dir> --source <id>");
-        return ExitCode::from(2);
-    };
     let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
     let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
     if id.is_empty() {
-        eprintln!("usage: mcparser uninstall-source --case <dir> --source <id>");
+        eprintln!("usage: mcparser uninstall-source --source <id> [--store <path>]");
         return ExitCode::from(2);
     }
-    match case::uninstall_hash_source(&case_dir.join("catalog.sqlite"), &id) {
+    match case::uninstall_hash_source(&store, &id) {
         Ok(()) => { println!("uninstalled {id}"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
 
 fn import_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser import-hashes --case <dir> --source <id> --file <path>");
-        return ExitCode::from(2);
-    };
     let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
     let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
     let file = rest.windows(2).find(|w| w[0] == "--file").map(|w| w[1].clone()).unwrap_or_default();
     if id.is_empty() || file.is_empty() {
-        eprintln!("usage: mcparser import-hashes --case <dir> --source <id> --file <path>");
+        eprintln!("usage: mcparser import-hashes --source <id> --file <path> [--store <path>]");
         return ExitCode::from(2);
     }
     let text = match std::fs::read_to_string(&file) {
         Ok(text) => text,
         Err(err) => { eprintln!("{file}: {err}"); return ExitCode::from(1); }
     };
-    match case::import_hashes(&case_dir.join("catalog.sqlite"), &id, &text) {
+    match case::import_hashes(&store, &id, &text) {
         Ok(count) => { println!("imported {count} into {id}"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
 
 fn match_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser match-hashes --case <dir>");
+    let rest: Vec<String> = args.collect();
+    let case_dir = rest.windows(2).find(|w| w[0] == "--case").map(|w| PathBuf::from(&w[1]));
+    let Some(case_dir) = case_dir else {
+        eprintln!("usage: mcparser match-hashes --case <dir> [--store <path>]");
         return ExitCode::from(2);
     };
+    let store = store_path(&rest);
     let db = case_dir.join("events.duckdb");
-    match case::match_hashes(&case_dir.join("catalog.sqlite"), &db) {
+    match case::match_hashes(&store, &db) {
         Ok(rows) => {
             println!("hits {}", rows.len());
             for row in &rows {

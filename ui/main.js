@@ -492,8 +492,7 @@ function buildMenu() {
           ],
         },
         {
-          label: "Hash Sources",
-          enabled: caseOpen,
+          label: "Marketplace",
           click: () => win.webContents.send("marketplace"),
         },
         {
@@ -646,15 +645,15 @@ function runHunt(args) {
 }
 
 ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
-ipcMain.handle("marketplace", (_event, caseDir) => run(["marketplace", "--case", casePath(caseDir)]));
-ipcMain.handle("install-source", (_event, caseDir, id, config) => run(["install-source", "--case", casePath(caseDir), "--source", id, "--config", config || "{}"]));
-ipcMain.handle("uninstall-source", (_event, caseDir, id) => run(["uninstall-source", "--case", casePath(caseDir), "--source", id]));
-ipcMain.handle("import-hashes", async (_event, caseDir, id) => {
+ipcMain.handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+ipcMain.handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+ipcMain.handle("uninstall-source", (_event, id) => run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+ipcMain.handle("import-hashes", async (_event, id) => {
   const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "Hash list", extensions: ["txt", "csv"] }] });
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
-  return run(["import-hashes", "--case", casePath(caseDir), "--source", id, "--file", picked.filePaths[0]]);
+  return run(["import-hashes", "--source", id, "--file", picked.filePaths[0], "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
 });
-ipcMain.handle("match-hashes", (_event, caseDir) => run(["match-hashes", "--case", casePath(caseDir)]));
+ipcMain.handle("match-hashes", (_event, caseDir) => run(["match-hashes", "--case", casePath(caseDir), "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
 ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
 
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));

@@ -133,16 +133,26 @@ th { position: relative; }
 aside details { margin-bottom: 4px; }
 aside summary { user-select: none; }
 
-.market-filter { display: flex; gap: 6px; margin: 12px 0; }
-.market-filter button { border: 1px solid #d0d0d0; background: #fff; border-radius: 6px; padding: 4px 10px; }
-.market-filter button.active { background: #1f4e79; color: #fff; border-color: #1f4e79; }
-.market-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; max-height: 420px; overflow: auto; }
-.card { border: 1px solid #e1e1e1; border-radius: 8px; padding: 12px; background: #fff; }
-.card h2 { margin: 0 0 4px; font-size: 15px; }
-.card .pub { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
-.card p { margin: 8px 0; color: #333; font-size: 12px; }
-.card .status { font-size: 11px; font-weight: 600; }
-.card .status.enabled { color: #0b6a0b; }
-.card .status.disabled { color: #b42318; }
-.card .actions { display: flex; gap: 6px; margin-top: 8px; }
-.card .actions button { font-size: 12px; }
+
+
+.market { width: 920px; max-width: 94vw; }
+.market-head { display: flex; align-items: center; gap: 12px; background: #1f2a37; color: #fff; margin: -16px -16px 12px; padding: 12px 16px; border-radius: 6px 6px 0 0; }
+.market-head h1 { margin: 0; font-size: 16px; flex: 1; }
+.market-head button { background: transparent; color: #fff; border: 1px solid #4b5563; }
+.market-bar { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
+.market-bar input { flex: 1; padding: 6px 8px; border: 1px solid #d0d0d0; border-radius: 4px; }
+.market-filter { display: flex; gap: 4px; }
+.market-filter button { border: none; background: none; color: #1f4e79; padding: 2px 6px; }
+.market-filter button.active { font-weight: 700; text-decoration: underline; }
+.market-body { display: grid; grid-template-columns: 180px 1fr; gap: 16px; }
+.market-cats h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: #666; margin: 0 0 8px; }
+.market-cats label { display: block; font-size: 13px; margin: 4px 0; }
+.market-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; max-height: 440px; overflow: auto; }
+.card { border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px; background: #fff; display: flex; gap: 10px; }
+.card img { width: 40px; height: 40px; border-radius: 4px; }
+.card h2 { margin: 0; font-size: 14px; }
+.card .pub { color: #6b7280; font-size: 11px; }
+.card p { margin: 6px 0; color: #374151; font-size: 12px; }
+.card .links { font-size: 12px; }
+.card .links a { color: #1f4e79; cursor: pointer; margin-right: 10px; }
+.card .status { font-size: 11px; color: #0b6a0b; }

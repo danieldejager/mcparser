@@ -1567,15 +1567,22 @@ window.mcparser.onIocView(() => showIocs());
 window.mcparser.onIocAdd(() => openIocSheet("add"));
 
 let marketFilter = "all";
+let marketSearch = "";
+let marketRows = [];
 
 function renderMarket(rows) {
+  marketRows = rows;
   const cards = document.getElementById("market-cards");
   cards.replaceChildren();
+  const cats = new Set([...document.querySelectorAll(".market-cats input:checked")].map((box) => box.dataset.cat));
   const filtered = rows.filter((row) => {
-    if (marketFilter === "installed") return row.installed;
-    if (marketFilter === "not-installed") return !row.installed;
+    if (marketFilter === "installed" && !row.installed) return false;
+    if (marketFilter === "not-installed" && row.installed) return false;
+    if (!cats.has("all") && !cats.has(row.category)) return false;
+    if (marketSearch && !(row.name + row.description + row.publisher).toLowerCase().includes(marketSearch)) return false;
     return true;
   });
+  document.getElementById("market-count").textContent = filtered.length + " of " + rows.length;
   if (filtered.length === 0) {
     const empty = document.createElement("p");
     empty.textContent = "No sources in this view.";
@@ -1585,57 +1592,56 @@ function renderMarket(rows) {
   for (const row of filtered) {
     const card = document.createElement("article");
     card.className = "card";
+    const logo = document.createElement("img");
+    logo.src = "logos/" + row.id + ".svg";
+    logo.alt = row.name;
+    const body = document.createElement("div");
     const title = document.createElement("h2");
     title.textContent = row.name;
     const pub = document.createElement("div");
     pub.className = "pub";
-    pub.textContent = row.publisher + " · " + row.category;
+    pub.textContent = "by " + row.publisher;
     const desc = document.createElement("p");
     desc.textContent = row.description;
-    const status = document.createElement("div");
-    status.className = "status " + (row.enabled ? "enabled" : "disabled");
-    status.textContent = row.installed ? (row.enabled ? "Enabled · " + row.hashCount + " hashes" : "Installed, disabled") : "Not installed";
-    const actions = document.createElement("div");
-    actions.className = "actions";
+    const links = document.createElement("div");
+    links.className = "links";
     if (!row.installed) {
-      const install = document.createElement("button");
-      install.type = "button";
+      const install = document.createElement("a");
       install.textContent = "Install";
       install.onclick = () => installSource(row);
-      actions.append(install);
+      links.append(install);
     } else {
-      const imp = document.createElement("button");
-      imp.type = "button";
+      const status = document.createElement("div");
+      status.className = "status";
+      status.textContent = "Installed · " + row.hashCount + " hashes";
+      const imp = document.createElement("a");
       imp.textContent = "Import list";
       imp.onclick = () => importSource(row.id);
-      const remove = document.createElement("button");
-      remove.type = "button";
+      const remove = document.createElement("a");
       remove.textContent = "Uninstall";
       remove.onclick = () => uninstallSource(row.id);
-      actions.append(imp, remove);
+      links.append(status, imp, remove);
     }
-    card.append(title, pub, desc, status, actions);
+    body.append(title, pub, desc, links);
+    card.append(logo, body);
     cards.append(card);
   }
 }
 
 function parseMarket(text) {
   return text.split("\n").filter(Boolean).map((line) => {
-    const [id, name, state, count, publisher, description] = line.split("\t");
+    const [id, name, state, count, publisher, category, description] = line.split("\t");
     return {
-      id, name, publisher, description,
+      id, name, publisher, category, description,
       installed: state !== "not-installed",
       enabled: state === "enabled",
       hashCount: Number(count) || 0,
-      category: state,
     };
   });
 }
 
 async function openMarket() {
-  const dir = caseDir();
-  if (!dir) { status.textContent = "Open a case first"; return; }
-  const result = await window.mcparser.marketplace(dir);
+  const result = await window.mcparser.marketplace();
   if (!result || result.code !== 0) { status.textContent = (result && result.err) || "Marketplace failed"; return; }
   renderMarket(parseMarket(result.out || ""));
   document.getElementById("market-sheet").hidden = false;
@@ -1648,19 +1654,19 @@ async function installSource(row) {
     if (!key) return;
     config = JSON.stringify({ keyName: "virustotal" });
   }
-  const result = await window.mcparser.installSource(caseDir(), row.id, config);
+  const result = await window.mcparser.installSource(row.id, config);
   status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Install failed";
   openMarket();
 }
 
 async function uninstallSource(id) {
-  const result = await window.mcparser.uninstallSource(caseDir(), id);
+  const result = await window.mcparser.uninstallSource(id);
   status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Uninstall failed";
   openMarket();
 }
 
 async function importSource(id) {
-  const result = await window.mcparser.importHashes(caseDir(), id);
+  const result = await window.mcparser.importHashes(id);
   if (result && result.canceled) return;
   status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Import failed";
   openMarket();
@@ -1670,10 +1676,16 @@ document.querySelectorAll(".market-filter button").forEach((button) => {
   button.onclick = () => {
     marketFilter = button.dataset.filter;
     document.querySelectorAll(".market-filter button").forEach((b) => b.classList.toggle("active", b === button));
-    openMarket();
+    renderMarket(marketRows);
   };
 });
+document.querySelectorAll(".market-cats input").forEach((box) => {
+  box.onchange = () => renderMarket(marketRows);
+});
+document.getElementById("market-search").oninput = (event) => {
+  marketSearch = event.target.value.toLowerCase();
+  renderMarket(marketRows);
+};
 document.getElementById("market-close").onclick = () => { document.getElementById("market-sheet").hidden = true; };
-if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
-
 document.getElementById("tb-market").onclick = openMarket;
+if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
