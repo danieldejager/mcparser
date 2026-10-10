@@ -1048,7 +1048,13 @@ window.mcparser.onCollectProgress((payload) => {
 
 window.mcparser.onAskProgress((label) => showAskLine(label));
 
-document.getElementById("tb-open").onclick = openCollection;
+document.getElementById("tb-open").onclick = async () => {
+  const picked = await window.mcparser.pickCaseOpen();
+  if (!picked || picked.canceled || !picked.filePaths[0]) return;
+  caseInput.value = picked.filePaths[0];
+  results.replaceChildren();
+  await refresh();
+};
 document.getElementById("tb-new").onclick = () => {
   sql.value = "";
   updateLines();

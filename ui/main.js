@@ -523,11 +523,19 @@ ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(case
 ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
 ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
 ipcMain.handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
-ipcMain.handle("pick-case-open", async () => dialog.showOpenDialog(win, {
-  title: "Open case",
-  properties: ["openDirectory"],
-  buttonLabel: "Open case",
-}));
+ipcMain.handle("pick-case-open", async () => {
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Open Collection",
+    properties: ["openDirectory"],
+    buttonLabel: "Open",
+  });
+  if (!picked || picked.canceled || !picked.filePaths[0]) return picked;
+  let dir = picked.filePaths[0];
+  const parts = dir.split(path.sep);
+  const mcp = parts.findIndex((part) => part.endsWith(".mcp"));
+  if (mcp >= 0) dir = parts.slice(0, mcp + 1).join(path.sep);
+  return { canceled: false, filePaths: [dir] };
+});
 ipcMain.handle("delete-case", async (_event, caseDir) => {
   const dir = casePath(caseDir);
   if (!dir || !dir.endsWith(".mcp")) return { error: "Only a .mcp case folder can be deleted" };
