@@ -132,3 +132,17 @@ th { position: relative; }
 
 aside details { margin-bottom: 4px; }
 aside summary { user-select: none; }
+
+.market-filter { display: flex; gap: 6px; margin: 12px 0; }
+.market-filter button { border: 1px solid #d0d0d0; background: #fff; border-radius: 6px; padding: 4px 10px; }
+.market-filter button.active { background: #1f4e79; color: #fff; border-color: #1f4e79; }
+.market-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; max-height: 420px; overflow: auto; }
+.card { border: 1px solid #e1e1e1; border-radius: 8px; padding: 12px; background: #fff; }
+.card h2 { margin: 0 0 4px; font-size: 15px; }
+.card .pub { color: #666; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+.card p { margin: 8px 0; color: #333; font-size: 12px; }
+.card .status { font-size: 11px; font-weight: 600; }
+.card .status.enabled { color: #0b6a0b; }
+.card .status.disabled { color: #b42318; }
+.card .actions { display: flex; gap: 6px; margin-top: 8px; }
+.card .actions button { font-size: 12px; }

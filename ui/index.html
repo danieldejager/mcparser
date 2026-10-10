@@ -123,6 +123,22 @@ LIMIT 20</textarea>
     <textarea id="ask" placeholder="Ask about this case"></textarea>
     <button id="send" class="icon" title="Ask" aria-label="Ask">➤</button>
   </aside>
+
+  <div id="market-sheet" class="sheet" hidden>
+    <form id="market-form">
+      <h1>Hash Sources</h1>
+      <p>Nothing is enabled until you install it. Keys stay in the keychain. Hash lists travel with the case.</p>
+      <div class="market-filter">
+        <button type="button" data-filter="all" class="active">All</button>
+        <button type="button" data-filter="installed">Installed</button>
+        <button type="button" data-filter="not-installed">Not installed</button>
+      </div>
+      <div id="market-cards" class="market-cards"></div>
+      <div class="sheet-actions">
+        <button type="button" id="market-close">Close</button>
+      </div>
+    </form>
+  </div>
   <div id="handoff-sheet" class="sheet" hidden>
     <form id="handoff-form">
       <h1>Handoff password</h1>

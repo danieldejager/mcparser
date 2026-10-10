@@ -242,6 +242,24 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             added_at TEXT NOT NULL,
             UNIQUE(kind, value)
         );
+        CREATE TABLE IF NOT EXISTS hash_sources (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            publisher TEXT NOT NULL,
+            category TEXT NOT NULL,
+            installed INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            config TEXT NOT NULL DEFAULT '{}',
+            installed_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS hash_sets (
+            source_id TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            hash_kind TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (source_id, hash)
+        );
         CREATE TABLE IF NOT EXISTS hunt_matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             run_id INTEGER NOT NULL,
@@ -1864,5 +1882,175 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
         }
     }
     report_progress(100, "Hunt complete");
+    Ok(matches)
+}
+
+pub struct HashSource {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub publisher: String,
+    pub category: String,
+    pub installed: bool,
+    pub enabled: bool,
+    pub config: String,
+    pub hash_count: i64,
+}
+
+const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
+    ("malwarebazaar", "MalwareBazaar", "Local import of CSV or plain-text hash exports. No network call.", "abuse.ch", "malware"),
+    ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "reputation"),
+    ("custom", "Custom hash list", "Import any text or CSV list of hashes from a file.", "Local", "custom"),
+    ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "malware"),
+    ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "reputation"),
+];
+
+pub fn seed_hash_sources(catalog: &Path) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    for (id, name, description, publisher, category) in CATALOG {
+        conn.execute(
+            "INSERT INTO hash_sources (id, name, description, publisher, category) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, publisher = excluded.publisher, category = excluded.category",
+            rusqlite::params![id, name, description, publisher, category],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn hash_sources(catalog: &Path) -> Result<Vec<HashSource>, rusqlite::Error> {
+    seed_hash_sources(catalog)?;
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.name, s.description, s.publisher, s.category, s.installed, s.enabled, s.config,
+                (SELECT count(*) FROM hash_sets h WHERE h.source_id = s.id)
+         FROM hash_sources s ORDER BY s.name",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(HashSource {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            publisher: row.get(3)?,
+            category: row.get(4)?,
+            installed: row.get::<_, i64>(5)? != 0,
+            enabled: row.get::<_, i64>(6)? != 0,
+            config: row.get(7)?,
+            hash_count: row.get(8)?,
+        });
+    }
+    Ok(out)
+}
+
+pub fn install_hash_source(catalog: &Path, id: &str, config: &str) -> Result<(), String> {
+    seed_hash_sources(catalog).map_err(|err| err.to_string())?;
+    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_default();
+    let changed = conn.execute(
+        "UPDATE hash_sources SET installed = 1, enabled = 1, config = ?1, installed_at = ?2 WHERE id = ?3",
+        rusqlite::params![config, now, id],
+    ).map_err(|err| err.to_string())?;
+    if changed == 0 { return Err(format!("unknown source {id}")); }
+    Ok(())
+}
+
+pub fn uninstall_hash_source(catalog: &Path, id: &str) -> Result<(), String> {
+    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+    conn.execute("UPDATE hash_sources SET installed = 0, enabled = 0, config = '{}' WHERE id = ?1", [id]).map_err(|err| err.to_string())?;
+    conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [id]).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+pub fn set_hash_source_enabled(catalog: &Path, id: &str, enabled: bool) -> Result<(), String> {
+    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+    conn.execute("UPDATE hash_sources SET enabled = ?1 WHERE id = ?2 AND installed = 1", rusqlite::params![enabled as i64, id]).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn hash_kind(value: &str) -> Option<&'static str> {
+    let clean = value.trim().trim_start_matches("0x").to_ascii_lowercase();
+    if !clean.chars().all(|c| c.is_ascii_hexdigit()) { return None; }
+    match clean.len() {
+        32 => Some("md5"),
+        40 => Some("sha1"),
+        64 => Some("sha256"),
+        _ => None,
+    }
+}
+
+pub fn import_hashes(catalog: &Path, id: &str, text: &str) -> Result<usize, String> {
+    seed_hash_sources(catalog).map_err(|err| err.to_string())?;
+    let conn = open_catalog(catalog).map_err(|err| err.to_string())?;
+    let installed: i64 = conn.query_row("SELECT installed FROM hash_sources WHERE id = ?1", [id], |row| row.get(0)).map_err(|err| err.to_string())?;
+    if installed == 0 { return Err(format!("{id} is not installed")); }
+    let mut count = 0usize;
+    for raw in text.lines() {
+        for part in raw.split([',', ';', '\t', ' ']) {
+            let value = part.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
+            if let Some(kind) = hash_kind(&value) {
+                conn.execute(
+                    "INSERT OR IGNORE INTO hash_sets (source_id, hash, hash_kind) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![id, value, kind],
+                ).map_err(|err| err.to_string())?;
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+pub fn enabled_hashes(catalog: &Path) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare(
+        "SELECT h.source_id, h.hash, h.hash_kind FROM hash_sets h
+         JOIN hash_sources s ON s.id = h.source_id
+         WHERE s.installed = 1 AND s.enabled = 1",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((row.get(0)?, row.get(1)?, row.get(2)?));
+    }
+    Ok(out)
+}
+
+pub fn match_hashes(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
+    let hashes = enabled_hashes(catalog).map_err(|err| err.to_string())?;
+    if hashes.is_empty() { return Ok(Vec::new()); }
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let scans: &[(&str, &str)] = &[
+        ("amcache", "SELECT host_id, sha1, name, path FROM amcache"),
+        ("prefetch", "SELECT host_id, executable, path FROM prefetch"),
+        ("events", "SELECT computer, event_data FROM events"),
+        ("shimcache", "SELECT host_id, path FROM shimcache"),
+    ];
+    let mut matches = Vec::new();
+    for (source, sql) in scans {
+        let mut stmt = match db.prepare(sql) { Ok(stmt) => stmt, Err(_) => continue };
+        let mut rows = match stmt.query([]) { Ok(rows) => rows, Err(_) => continue };
+        while let Ok(Some(row)) = rows.next() {
+            let host: String = row.get(0).unwrap_or_default();
+            let text = (0..row.as_ref().column_count())
+                .map(|i| row.get::<_, String>(i).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_ascii_lowercase();
+            for (source_id, hash, kind) in &hashes {
+                if text.contains(hash) {
+                    matches.push(HuntMatch {
+                        source: source.to_string(),
+                        host_id: host.clone(),
+                        column: kind.clone(),
+                        value: hash.clone(),
+                        ioc_kind: "hash".to_string(),
+                        ioc_value: format!("{source_id}:{hash}"),
+                        context: text.chars().take(180).collect(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
     Ok(matches)
 }

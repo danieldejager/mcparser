@@ -20,7 +20,7 @@ fn help_lists_every_command() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect"] {
+    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes"] {
         assert!(text.contains(command), "{command} missing from help");
     }
 }
@@ -107,4 +107,37 @@ fn case_holds_two_hosts_keyed_by_host_id() {
     let sessions = String::from_utf8_lossy(&collections.stdout);
     assert!(sessions.contains("S1\tH1"), "{sessions}");
     assert!(sessions.contains("S2\tH2"), "{sessions}");
+}
+
+#[test]
+fn marketplace_install_and_match_respects_enabled_sources() {
+    let dir = case("market");
+    let listed = bin().args(["marketplace", "--case"]).arg(&dir).output().unwrap();
+    assert!(listed.status.success(), "{}", String::from_utf8_lossy(&listed.stderr));
+    let text = String::from_utf8_lossy(&listed.stdout);
+    assert!(text.contains("malwarebazaar"));
+    assert!(text.contains("not-installed"));
+
+    let install = bin().args(["install-source", "--case"]).arg(&dir).args(["--source", "malwarebazaar"]).output().unwrap();
+    assert!(install.status.success(), "{}", String::from_utf8_lossy(&install.stderr));
+
+    let list = std::env::temp_dir().join(format!("hashes-{}.txt", std::process::id()));
+    std::fs::write(&list, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nnot-a-hash\n").unwrap();
+    let imported = bin().args(["import-hashes", "--case"]).arg(&dir).args(["--source", "malwarebazaar", "--file"]).arg(&list).output().unwrap();
+    assert!(imported.status.success(), "{}", String::from_utf8_lossy(&imported.stderr));
+    assert!(String::from_utf8_lossy(&imported.stdout).contains("imported 1"));
+
+    let custom = bin().args(["install-source", "--case"]).arg(&dir).args(["--source", "custom"]).output().unwrap();
+    assert!(custom.status.success());
+    let gone = bin().args(["uninstall-source", "--case"]).arg(&dir).args(["--source", "custom"]).output().unwrap();
+    assert!(gone.status.success());
+
+    let matched = bin().args(["match-hashes", "--case"]).arg(&dir).output().unwrap();
+    assert!(matched.status.success(), "{}", String::from_utf8_lossy(&matched.stderr));
+    assert!(String::from_utf8_lossy(&matched.stdout).starts_with("hits "));
+
+    let removed = bin().args(["uninstall-source", "--case"]).arg(&dir).args(["--source", "malwarebazaar"]).output().unwrap();
+    assert!(removed.status.success());
+    let after = bin().args(["marketplace", "--case"]).arg(&dir).output().unwrap();
+    assert!(String::from_utf8_lossy(&after.stdout).contains("malwarebazaar\tMalwareBazaar\tnot-installed"));
 }
