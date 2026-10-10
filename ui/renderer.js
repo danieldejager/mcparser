@@ -7,6 +7,68 @@ function keyStore() {
 
 const caseInput = document.getElementById("case");
 const sql = document.getElementById("sql");
+const tabBar = document.getElementById("tabs");
+const editorTabs = [];
+let activeTab = 0;
+let tabSeq = 1;
+
+function addTab(text, name) {
+  if (editorTabs[activeTab]) editorTabs[activeTab].sql = sql.value;
+  editorTabs.push({ name: name || `SQLQuery${tabSeq}.sql`, sql: text || "" });
+  tabSeq += 1;
+  activeTab = editorTabs.length - 1;
+  renderTabs();
+  showTab();
+}
+
+function showTab() {
+  sql.value = editorTabs[activeTab] ? editorTabs[activeTab].sql : "";
+  updateLines();
+addTab(sql.value, "SQLQuery1.sql");
+  sql.focus();
+}
+
+function renderTabs() {
+  tabBar.replaceChildren();
+  editorTabs.forEach((tab, index) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = index === activeTab ? "tab active" : "tab";
+    button.title = tab.name;
+    const label = document.createElement("span");
+    label.textContent = tab.name;
+    const close = document.createElement("span");
+    close.className = "tab-x";
+    close.textContent = "×";
+    close.title = "Close";
+    close.onclick = (event) => {
+      event.stopPropagation();
+      closeTab(index);
+    };
+    button.onclick = () => {
+      editorTabs[activeTab].sql = sql.value;
+      activeTab = index;
+      renderTabs();
+      showTab();
+    };
+    button.append(label, close);
+    tabBar.append(button);
+  });
+}
+
+function closeTab(index) {
+  editorTabs[activeTab].sql = sql.value;
+  editorTabs.splice(index, 1);
+  if (!editorTabs.length) {
+    editorTabs.push({ name: `SQLQuery${tabSeq}.sql`, sql: "" });
+    tabSeq += 1;
+    activeTab = 0;
+  } else if (activeTab >= editorTabs.length) {
+    activeTab = editorTabs.length - 1;
+  }
+  renderTabs();
+  showTab();
+}
 const lines = document.getElementById("lines");
 const results = document.getElementById("results");
 const status = document.getElementById("status");
@@ -416,6 +478,10 @@ async function saveQuery(event) {
     return;
   }
   status.textContent = `saved ${name}`;
+  if (editorTabs[activeTab]) {
+    editorTabs[activeTab].name = name.endsWith(".sql") ? name : name + ".sql";
+    renderTabs();
+  }
 }
 
 
@@ -665,7 +731,10 @@ function hideSheet() {
   sheet.hidden = true;
 }
 
-sql.addEventListener("input", updateLines);
+sql.addEventListener("input", () => {
+  if (editorTabs[activeTab]) editorTabs[activeTab].sql = sql.value;
+  updateLines();
+});
 sql.addEventListener("scroll", () => {
   lines.scrollTop = sql.scrollTop;
 });
@@ -1055,11 +1124,7 @@ document.getElementById("tb-open").onclick = async () => {
   results.replaceChildren();
   await refresh();
 };
-document.getElementById("tb-new").onclick = () => {
-  sql.value = "";
-  updateLines();
-  sql.focus();
-};
+document.getElementById("tb-new").onclick = () => addTab("");
 document.getElementById("tb-save").onclick = showQuerySheet;
 document.getElementById("tb-save-all").onclick = showQuerySheet;
 document.getElementById("tb-run").onclick = run;
