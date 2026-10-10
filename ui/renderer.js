@@ -1143,11 +1143,72 @@ document.getElementById("tb-ioc").onclick = () => {
   showIocs();
 };
 markCase();
+const vendors = [
+  { name: "grok", label: "Grok" },
+  { name: "claude", label: "Claude" },
+  { name: "openai", label: "OpenAI" },
+];
+
+async function showIntegrations(focus) {
+  const state = await window.mcparser.grokStatus();
+  const table = document.createElement("table");
+  const head = document.createElement("tr");
+  for (const label of ["Vendor", "Status", ""]) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    head.append(th);
+  }
+  table.append(head);
+  for (const vendor of vendors) {
+    const tr = document.createElement("tr");
+    if (vendor.name === focus) tr.className = "selected";
+    const name = document.createElement("td");
+    name.textContent = vendor.label;
+    const statusCell = document.createElement("td");
+    const connected = Boolean(state[vendor.name]);
+    statusCell.textContent = connected ? "Connected" : "Not connected";
+    const action = document.createElement("td");
+    if (connected) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Disconnect";
+      button.onclick = async () => {
+        await window.mcparser.grokForgetOne(vendor.name);
+        status.textContent = `${vendor.label} disconnected`;
+        showIntegrations(focus);
+      };
+      action.append(button);
+    } else {
+      const input = document.createElement("input");
+      input.type = "password";
+      input.placeholder = "API key";
+      input.autocomplete = "off";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = "Connect";
+      button.onclick = async () => {
+        const saved = await window.mcparser.grokSave(input.value, vendor.name);
+        if (saved.error) {
+          status.textContent = saved.error;
+          return;
+        }
+        status.textContent = `${vendor.label} connected`;
+        showIntegrations(focus);
+      };
+      action.append(input, button);
+    }
+    tr.append(name, statusCell, action);
+    table.append(tr);
+  }
+  results.replaceChildren(table);
+  lastCsv = "";
+  status.textContent = "AI integrations";
+}
+
 async function useVendor(name) {
-  document.getElementById("grok").hidden = false;
   document.getElementById("vendor").value = name;
   await window.mcparser.setProvider(name);
-  document.getElementById("ask").focus();
+  showIntegrations(name);
 }
 document.getElementById("tb-grok").onclick = () => useVendor("grok");
 document.getElementById("tb-claude").onclick = () => useVendor("claude");

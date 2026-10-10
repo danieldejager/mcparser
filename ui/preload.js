@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   setProvider: (name) => ipcRenderer.invoke("set-provider", name),
   grokSave: (key, provider) => ipcRenderer.invoke("grok-save", key, provider),
   grokForget: () => ipcRenderer.invoke("grok-forget"),
+  grokForgetOne: (provider) => ipcRenderer.invoke("grok-forget-one", provider),
   grokAsk: (caseDir, question, provider) => ipcRenderer.invoke("grok-ask", caseDir, question, provider),
   chats: (caseDir) => ipcRenderer.invoke("chats", caseDir),
   saveChat: (caseDir, vendor, question, sql, answer) => ipcRenderer.invoke("save-chat", caseDir, vendor, question, sql, answer),

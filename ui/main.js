@@ -55,6 +55,15 @@ function loadKey() {
   if (claudeKey && !grokKey) provider = "claude";
 }
 
+function forgetOne(name) {
+  if (name === "claude") claudeKey = "";
+  else if (name === "openai") openaiKey = "";
+  else grokKey = "";
+  const file = keyFile(name);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+  if (!activeKey()) chatShown = false;
+}
+
 function forgetKey() {
   grokKey = "";
   claudeKey = "";
@@ -643,6 +652,11 @@ ipcMain.handle("grok-save", (_event, key, name) => {
 });
 ipcMain.handle("grok-forget", () => {
   forgetKey();
+  buildMenu();
+  return grokStatus();
+});
+ipcMain.handle("grok-forget-one", (_event, name) => {
+  if (name === "grok" || name === "claude" || name === "openai") forgetOne(name);
   buildMenu();
   return grokStatus();
 });
