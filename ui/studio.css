@@ -115,3 +115,20 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 th { position: relative; }
 .col-grip { position: absolute; right: 0; top: 0; width: 6px; height: 100%; cursor: col-resize; }
 .col-grip:hover { background: #1f6b4a; }
+
+#toolbar button[data-label] { width: auto; min-width: 44px; padding: 0 6px; display: inline-flex; align-items: center; gap: 4px; }
+#toolbar button[data-label]::after { content: attr(data-label); font-size: 11px; color: #333; font-weight: 500; }
+#tb-run::after { color: #fff; }
+#toolbar { height: 40px; }
+
+#results th { position: sticky; top: 0; background: #f7f7f7; z-index: 1; cursor: pointer; }
+#results tr.selected { background: #e8f2ff; }
+#results tr.selected td { background: #e8f2ff; }
+
+.kind-note { color: #6b4c9a; font-weight: 600; }
+.kind-query, .kind-run, .kind-replay { color: #1f4e79; font-weight: 600; }
+.kind-ioc { color: #b42318; font-weight: 600; }
+.kind-ai { color: #0b6a0b; font-weight: 600; }
+
+aside details { margin-bottom: 4px; }
+aside summary { user-select: none; }

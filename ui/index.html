@@ -8,29 +8,29 @@
 <body>
   <header id="toolbar">
     <div class="tb-group">
-    <button id="tb-open" type="button" class="icon" title="Open Collection" aria-label="Open Collection">
+    <button id="tb-open" data-label="Open" type="button" class="icon" title="Open Collection" aria-label="Open Collection">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#f2c94c" d="M1 4h5l1.5 1.5H15V13H1z"/><path fill="#f6d56b" d="M1 5.5h14V13H1z"/><path fill="#e0a82e" d="M1 4h5l1 1H1z"/></svg>
     </button>
-    <button id="tb-new" type="button" class="icon" title="New Query" aria-label="New Query">
+    <button id="tb-new" data-label="New" type="button" class="icon" title="New Query" aria-label="New Query">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#fff" stroke="#555" d="M3 1h7l3 3v11H3z"/><path fill="#f2c94c" d="M10 1v3h3"/><path fill="#f2c94c" d="M8 5l.7 1.6 1.8.2-1.3 1.2.4 1.8L8 9l-1.6.8.4-1.8-1.3-1.2 1.8-.2z"/></svg>
     </button>
-    <button id="tb-save" type="button" class="icon" title="Save" aria-label="Save">
+    <button id="tb-save" data-label="Save" type="button" class="icon" title="Save (Ctrl+S)" aria-label="Save">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#2f6db5" d="M2 2h9l3 3v9H2z"/><path fill="#fff" d="M4 2h6v4H4z"/><path fill="#d6e6f7" d="M4 9h8v5H4z"/><path fill="#2f6db5" d="M5 10h6v1H5zM5 12h6v1H5z"/></svg>
     </button>
-    <button id="tb-save-all" type="button" class="icon" title="Save all" aria-label="Save all">
+    <button id="tb-save-all" data-label="All" type="button" class="icon" title="Save all" aria-label="Save all">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#8fb4dd" d="M4 1h7l2 2v9H4z"/><path fill="#2f6db5" d="M2 4h9l2 2v8H2z"/><path fill="#fff" d="M4 4h5v3H4z"/><path fill="#d6e6f7" d="M4 9h7v4H4z"/></svg>
     </button>
-    <button id="tb-run" type="button" class="icon" title="Execute" aria-label="Execute">▶</button>
+    <button id="tb-run" data-label="Run" type="button" class="icon" title="Execute (Ctrl+Enter)" aria-label="Execute">▶</button>
     </div>
     <span class="tb-sep"></span>
     <div class="tb-group">
-    <button id="tb-ioc" type="button" class="icon" title="IOC Management" aria-label="IOC Management">
+    <button id="tb-ioc" data-label="IOC" type="button" class="icon" title="IOC Management" aria-label="IOC Management">
       <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#b42318" stroke-width="1.4"/><circle cx="8" cy="8" r="2" fill="none" stroke="#b42318" stroke-width="1.4"/><circle cx="8" cy="8" r="0.8" fill="#b42318"/><path stroke="#b42318" stroke-width="1.4" d="M8 1.2v2.2M8 12.6v2.2M1.2 8h2.2M12.6 8h2.2"/></svg>
     </button>
-    <button id="tb-hunt" type="button" class="icon" title="Hunt IOCs" aria-label="Hunt IOCs">
+    <button id="tb-hunt" data-label="Hunt" type="button" class="icon" title="Hunt IOCs (Ctrl+H)" aria-label="Hunt IOCs">
       <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="6.5" cy="6.5" r="4.2" fill="none" stroke="#1f6b4a" stroke-width="1.4"/><circle cx="6.5" cy="6.5" r="1.6" fill="none" stroke="#1f6b4a" stroke-width="1.2"/><circle cx="6.5" cy="6.5" r="0.6" fill="#1f6b4a"/><path stroke="#1f6b4a" stroke-width="1.2" d="M6.5 3.4v1.2M6.5 8.4v1.2M3.4 6.5h1.2M8.4 6.5h1.2"/><path stroke="#1f6b4a" stroke-width="1.6" stroke-linecap="round" d="M9.6 9.6l3.2 3.2"/></svg>
     </button>
-    <button id="tb-ai" type="button" class="icon" title="AI" aria-label="AI">
+    <button id="tb-ai" data-label="AI" type="button" class="icon" title="AI" aria-label="AI">
       <svg viewBox="0 0 16 16" aria-hidden="true">
         <circle cx="8" cy="4" r="2.2" fill="none" stroke="currentColor" stroke-width="1.2"/>
         <path fill="currentColor" d="M8 3.2l.4.9.9-.1-.6.7.4.9L8 5.9l-.9.7.4-.9-.6-.7.9.1z"/>
@@ -42,13 +42,13 @@
     </div>
     <span class="tb-sep"></span>
     <div class="tb-group">
-    <button id="tb-trail" type="button" class="icon" title="Trail" aria-label="Trail">
+    <button id="tb-trail" data-label="Trail" type="button" class="icon" title="Trail" aria-label="Trail">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="#1f6b4a" stroke-width="1.4" d="M2 12c2-4 3-4 5-6s3-2 7-4"/><circle cx="3" cy="12" r="1.2" fill="#1f6b4a"/><circle cx="8" cy="7" r="1.2" fill="#1f6b4a"/><circle cx="13" cy="3" r="1.2" fill="#1f6b4a"/></svg>
     </button>
-    <button id="tb-runs" type="button" class="icon" title="Runs" aria-label="Runs">
+    <button id="tb-runs" data-label="Runs" type="button" class="icon" title="Runs" aria-label="Runs">
       <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" fill="none" stroke="#1f4e79" stroke-width="1.4"/><path fill="#1f4e79" d="M8 4.5v4l2.6 1.6-.7 1.1L6.6 9.1V4.5z"/></svg>
     </button>
-    <button id="tb-notes" type="button" class="icon" title="Notes" aria-label="Notes">
+    <button id="tb-notes" data-label="Notes" type="button" class="icon" title="Notes" aria-label="Notes">
       <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="#fff" stroke="#555" d="M3 2h7l3 3v9H3z"/><path fill="#f2c94c" d="M10 2v3h3"/><path stroke="#555" stroke-width="1" d="M5 8h6M5 10.5h6M5 13h4"/></svg>
     </button>
     </div>
@@ -57,7 +57,7 @@
   </header>
   <div id="workspace">
   <aside id="case-pane">
-    <details open>
+    <details>
       <summary>Case</summary>
       <input id="case" value="" placeholder="No case loaded">
       <label for="analyst">Analyst</label>
@@ -65,11 +65,11 @@
       <button id="refresh" class="icon" title="Refresh case" aria-label="Refresh case">↻</button>
       <dl id="summary"></dl>
     </details>
-    <details open>
+    <details>
       <summary>Hosts</summary>
       <ul id="hosts"></ul>
     </details>
-    <details open>
+    <details>
       <summary>Hunts</summary>
       <label for="tactic">Tactic</label>
       <select id="tactic"></select>

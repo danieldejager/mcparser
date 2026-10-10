@@ -206,6 +206,23 @@ let importedIn = "";
 function makeResizable(table) {
   table.style.tableLayout = "fixed";
   table.style.width = "100%";
+  table.querySelectorAll("th").forEach((th, index) => {
+    th.onclick = (event) => {
+      if (event.target.classList.contains("col-grip")) return;
+      const rows = Array.from(table.querySelectorAll("tr")).slice(1);
+      const dir = th.dataset.dir === "asc" ? "desc" : "asc";
+      table.querySelectorAll("th").forEach((head) => delete head.dataset.dir);
+      th.dataset.dir = dir;
+      rows.sort((a, b) => {
+        const av = (a.children[index] && a.children[index].textContent) || "";
+        const bv = (b.children[index] && b.children[index].textContent) || "";
+        const an = Number(av), bn = Number(bv);
+        const cmp = Number.isFinite(an) && Number.isFinite(bn) ? an - bn : av.localeCompare(bv);
+        return dir === "asc" ? cmp : -cmp;
+      });
+      rows.forEach((row) => table.append(row));
+    };
+  });
   const heads = table.querySelectorAll("th");
   heads.forEach((th, index) => {
     if (index === heads.length - 1) return;
@@ -273,6 +290,18 @@ async function refresh() {
   fact("Channels", channels.join(", "));
   fact("Providers", String(providers.length));
   await loadHosts();
+  const runs = await window.mcparser.runs(caseDir());
+  if (runs && runs.code === 0) {
+    const hunts = runs.out.split("\n").filter((line) => /\thunt\t|\tIOC hit\t/.test(line));
+    const last = hunts[hunts.length - 1];
+    fact("Last hunt", last ? (last.split("\t")[4] || last.split("\t")[2] || "0") : "none");
+  }
+  const chats = await window.mcparser.chats(caseDir());
+  if (chats && chats.code === 0) {
+    const lines = chats.out.split("\n").filter(Boolean);
+    const last = lines[lines.length - 1];
+    fact("Last AI", last ? (last.split("\t")[3] || "").slice(0, 80) : "none");
+  }
   const took = loadSeconds(started);
   fact(importedIn ? "Imported" : "Loaded", importedIn || took);
   status.textContent = importedIn ? "Collection imported in " + importedIn : "Case loaded in " + took;
@@ -375,7 +404,11 @@ function renderCsv(text) {
     tr.append(node);
     if (index > 0) {
       tr.style.cursor = "pointer";
-      tr.onclick = () => showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
+      tr.onclick = () => {
+        table.querySelectorAll("tr.selected").forEach((row) => row.classList.remove("selected"));
+        tr.classList.add("selected");
+        showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
+      };
     }
     table.append(tr);
   });
@@ -622,11 +655,19 @@ async function showTrail() {
   for (const item of items) {
     const tr = document.createElement("tr");
     const when = item.when && item.when !== "0" ? new Date(Number(item.when) * 1000).toISOString() : "";
-    for (const value of [when, item.kind, item.label, item.detail]) {
+    const values = [when, item.kind, item.label, item.detail];
+    values.forEach((value, index) => {
       const td = document.createElement("td");
       td.textContent = value;
+      if (index === 1) {
+        const kind = String(value).toLowerCase();
+        if (kind.includes("ioc") || kind === "hunt") td.className = "kind-ioc";
+        else if (kind.includes("note")) td.className = "kind-note";
+        else if (kind.includes("ai") || kind.includes("chat") || kind.includes("grok") || kind.includes("claude") || kind.includes("openai")) td.className = "kind-ai";
+        else td.className = "kind-query";
+      }
       tr.append(td);
-    }
+    });
     if (item.kind === "IOC hit" || item.kind === "hunt") {
       tr.style.cursor = "pointer";
       tr.onclick = () => showHuntMatches(item.id);
@@ -1102,6 +1143,32 @@ window.mcparser.onGrokConnect((name) => {
 window.mcparser.onGrokChat((shown) => {
   grok.hidden = !shown;
 });
+
+function rememberPanes() {
+  document.querySelectorAll("aside details").forEach((details, index) => {
+    const key = "mcparser-pane-" + index;
+    const saved = localStorage.getItem(key);
+    if (saved === "open") details.open = true;
+    if (saved === "closed") details.open = false;
+    details.addEventListener("toggle", () => localStorage.setItem(key, details.open ? "open" : "closed"));
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  const meta = event.metaKey || event.ctrlKey;
+  if (!meta) return;
+  if (event.key === "Enter") {
+    event.preventDefault();
+    document.getElementById("run").click();
+  } else if (event.key.toLowerCase() === "s") {
+    event.preventDefault();
+    document.getElementById("tb-save").click();
+  } else if (event.key.toLowerCase() === "h") {
+    event.preventDefault();
+    document.getElementById("tb-hunt").click();
+  }
+});
+
 window.mcparser.onShowNotes(showNotes);
 window.mcparser.onShowRuns(showRuns);
 window.mcparser.onShowTrail(showTrail);
@@ -1231,6 +1298,7 @@ document.getElementById("tb-open").onclick = async () => {
 };
 document.getElementById("tb-new").onclick = () => addTab("");
 addTab(sql.value, "SQLQuery1.sql");
+rememberPanes();
 document.getElementById("tb-save").onclick = () => saveSql();
 document.getElementById("tb-save-all").onclick = () => saveSql();
 document.getElementById("tb-run").onclick = run;
