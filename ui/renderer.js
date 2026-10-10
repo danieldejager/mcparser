@@ -1140,6 +1140,30 @@ function splitter(handle, pane, edge, key) {
   };
 }
 
+function splitterHeight(handle, pane, key) {
+  const saved = localStorage.getItem(key);
+  if (saved) pane.style.height = saved;
+  handle.onpointerdown = (event) => {
+    event.preventDefault();
+    handle.classList.add("dragging");
+    const startY = event.clientY;
+    const start = pane.getBoundingClientRect().height;
+    function move(next) {
+      const height = Math.max(120, Math.min(window.innerHeight - 180, start + next.clientY - startY));
+      pane.style.height = height + "px";
+    }
+    function up() {
+      handle.classList.remove("dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      localStorage.setItem(key, pane.style.height);
+    }
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+}
+
+splitterHeight(document.getElementById("split-editor"), document.querySelector(".editor"), "mcparser-editor-height");
 splitter(document.getElementById("split-left"), document.getElementById("case-pane"), "left", "mcparser-case-width");
 splitter(document.getElementById("split-right"), document.getElementById("grok"), "right", "mcparser-chat-width");
 

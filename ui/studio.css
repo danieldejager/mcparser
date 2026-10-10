@@ -104,3 +104,6 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 .state svg { width: 14px; height: 14px; }
 .plug { color: #333; }
 .plug svg { width: 16px; height: 16px; }
+.split-h { height: 6px; flex: 0 0 6px; cursor: row-resize; background: #e1e1e1; border-radius: 4px; }
+.split-h:hover, .split-h.dragging { background: #1f6b4a; }
+.editor { flex: 0 0 auto; }
