@@ -509,6 +509,7 @@ fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
         return ExitCode::from(2);
     };
     let db = case_dir.join("events.duckdb");
+    let _ = case::ensure_hunt_table(&db);
     let table = match case::query_table(&db, sql) {
         Ok(table) => table,
         Err(err) => {
