@@ -1757,7 +1757,7 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
     let mut matches = Vec::new();
     for (index, (source, sql, column, host_col)) in scans.iter().enumerate() {
         let pct = ((index as f64 + 1.0) / scans.len() as f64 * 100.0) as u8;
-        println!("progress\t{}\tHunting {}", pct, source);
+        report_progress(pct, &format!("Scanning {source}"));
         let mut stmt = match db.prepare(sql) {
             Ok(stmt) => stmt,
             Err(_) => continue,
@@ -1790,6 +1790,6 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
             }
         }
     }
-    println!("progress\t100\tHunt complete");
+    report_progress(100, "Hunt complete");
     Ok(matches)
 }
