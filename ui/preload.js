@@ -31,6 +31,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   saveSqlFile: (caseDir, suggested, sql) => ipcRenderer.invoke("save-sql-file", caseDir, suggested, sql),
   notes: (caseDir) => ipcRenderer.invoke("notes", caseDir),
   runs: (caseDir) => ipcRenderer.invoke("runs", caseDir),
+  huntMatches: (caseDir, runId) => ipcRenderer.invoke("hunt-matches", caseDir, runId),
   saveRun: (caseDir, rows, sql, label, analyst, kind) => ipcRenderer.invoke("save-run", caseDir, rows, sql, label, analyst, kind),
   saveNote: (caseDir, recordId, body, sql) => ipcRenderer.invoke("save-note", caseDir, recordId, body, sql),
   grokStatus: () => ipcRenderer.invoke("grok-status"),

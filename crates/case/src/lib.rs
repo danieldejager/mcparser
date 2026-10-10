@@ -241,6 +241,17 @@ fn open_catalog(path: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
             note TEXT NOT NULL DEFAULT '',
             added_at TEXT NOT NULL,
             UNIQUE(kind, value)
+        );
+        CREATE TABLE IF NOT EXISTS hunt_matches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            source TEXT NOT NULL,
+            host_id TEXT NOT NULL,
+            column_name TEXT NOT NULL,
+            value TEXT NOT NULL,
+            ioc_kind TEXT NOT NULL,
+            ioc_value TEXT NOT NULL,
+            context TEXT NOT NULL DEFAULT ''
         )",
     )?;
     Ok(conn)
@@ -1708,6 +1719,37 @@ pub fn iocs(catalog: &Path) -> Result<Vec<Ioc>, rusqlite::Error> {
             value: row.get(2)?,
             note: row.get(3)?,
             added_at: row.get(4)?,
+        });
+    }
+    Ok(out)
+}
+
+
+pub fn save_hunt_matches(catalog: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    for row in matches {
+        conn.execute(
+            "INSERT INTO hunt_matches (run_id, source, host_id, column_name, value, ioc_kind, ioc_value, context) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![run_id, row.source, row.host_id, row.column, row.value, row.ioc_kind, row.ioc_value, row.context],
+        )?;
+    }
+    Ok(())
+}
+
+pub fn hunt_matches(catalog: &Path, run_id: i64) -> Result<Vec<HuntMatch>, rusqlite::Error> {
+    let conn = open_catalog(catalog)?;
+    let mut stmt = conn.prepare("SELECT source, host_id, column_name, value, ioc_kind, ioc_value, context FROM hunt_matches WHERE run_id = ?1 ORDER BY id")?;
+    let mut rows = stmt.query([run_id])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(HuntMatch {
+            source: row.get(0)?,
+            host_id: row.get(1)?,
+            column: row.get(2)?,
+            value: row.get(3)?,
+            ioc_kind: row.get(4)?,
+            ioc_value: row.get(5)?,
+            context: row.get(6)?,
         });
     }
     Ok(out)

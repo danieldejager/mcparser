@@ -22,6 +22,7 @@ fn main() -> ExitCode {
         Some("ioc-remove") => ioc_remove(&mut args),
         Some("ioc-update") => ioc_update(&mut args),
         Some("hunt") => hunt(&mut args),
+        Some("hunt-matches") => hunt_matches(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
@@ -914,6 +915,33 @@ fn print_rows(columns: &[String], rows: &[Vec<String>], format: &str) {
 
 
 
+
+fn hunt_matches(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let Some(case_dir) = case_dir(args) else {
+        eprintln!("usage: mcparser hunt-matches --case <dir> --run <id>");
+        return ExitCode::from(2);
+    };
+    let rest: Vec<String> = args.collect();
+    let run_id = flag(&rest, "--run").and_then(|v| v.parse::<i64>().ok()).unwrap_or(0);
+    match case::hunt_matches(&case_dir.join("catalog.sqlite"), run_id) {
+        Ok(rows) => {
+            println!("source\thost\tcolumn\tvalue\tioc_kind\tioc_value\tcontext");
+            for row in rows {
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                    row.source, row.host_id, row.column,
+                    row.value.replace('\t', " "),
+                    row.ioc_kind, row.ioc_value,
+                    row.context.replace('\t', " ").replace('\n', " "));
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::from(1)
+        }
+    }
+}
+
 fn hunt(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let Some(case_dir) = case_dir(args) else {
         eprintln!("usage: mcparser hunt --case <dir>");
@@ -935,8 +963,10 @@ fn hunt(args: &mut impl Iterator<Item = String>) -> ExitCode {
                 .duration_since(std::time::UNIX_EPOCH)
                 .map(|d| d.as_secs().to_string())
                 .unwrap_or_default();
-            let label = format!("IOC hunt, {} matches", rows.len());
-            let _ = case::save_run(&case_dir.join("catalog.sqlite"), "hunt", &ran_at, rows.len() as i64, &label, &analyst, "hunt");
+            let label = format!("IOC hits, {} matches", rows.len());
+            if let Ok(run_id) = case::save_run(&case_dir.join("catalog.sqlite"), "hunt", &ran_at, rows.len() as i64, &label, &analyst, "IOC hit") {
+                let _ = case::save_hunt_matches(&case_dir.join("catalog.sqlite"), run_id, &rows);
+            }
             ExitCode::SUCCESS
         }
         Err(err) => {

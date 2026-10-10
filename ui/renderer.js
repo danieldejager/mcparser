@@ -567,6 +567,29 @@ async function showRuns() {
 }
 
 
+
+async function showHuntMatches(runId) {
+  const result = await window.mcparser.huntMatches(caseDir(), runId);
+  if (!result || result.code !== 0) {
+    status.textContent = result && result.err ? result.err : "No hits";
+    return;
+  }
+  const lines = result.out.trim().split(/\n/).filter(Boolean);
+  const table = document.createElement("table");
+  for (const [index, line] of lines.entries()) {
+    const tr = document.createElement("tr");
+    for (const cell of line.split("\t")) {
+      const node = document.createElement(index === 0 ? "th" : "td");
+      node.textContent = cell;
+      tr.append(node);
+    }
+    table.append(tr);
+  }
+  makeResizable(table);
+  results.replaceChildren(table);
+  status.textContent = "IOC hits for hunt " + runId;
+}
+
 async function showTrail() {
   const notes = await window.mcparser.notes(caseDir());
   const runs = await window.mcparser.runs(caseDir());
@@ -580,7 +603,7 @@ async function showTrail() {
   if (runs && runs.code === 0) {
     for (const line of runs.out.split("\n").filter(Boolean)) {
       const parts = line.split("\t");
-      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}  ${(parts[7] || "").replaceAll("\\n", " ")}` });
+      items.push({ when: parts[1] || "0", kind: parts[6] || "run", label: parts[4] || "query", detail: `${parts[5] || ""}  rows ${parts[2] || ""}  ${(parts[7] || "").replaceAll("\\n", " ")}`, id: parts[0] || "" });
     }
   }
   items.sort((a, b) => Number(a.when) - Number(b.when));
@@ -599,6 +622,10 @@ async function showTrail() {
       const td = document.createElement("td");
       td.textContent = value;
       tr.append(td);
+    }
+    if (item.kind === "IOC hit") {
+      tr.style.cursor = "pointer";
+      tr.onclick = () => showHuntMatches(item.id);
     }
     table.append(tr);
   }
