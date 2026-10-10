@@ -108,5 +108,6 @@ button.icon { width: 28px; height: 26px; padding: 0; display: inline-grid; place
 .split-h:hover, .split-h.dragging { background: #1f6b4a; }
 .editor { flex: 0 0 auto; min-height: 180px; }
 
-.spin { width: 12px; height: 12px; border: 2px solid #d0d0d0; border-top-color: #1f6b4a; border-radius: 50%; display: inline-block; margin-left: 8px; animation: spin 0.8s linear infinite; }
+.spin { width: 12px; height: 12px; border: 2px solid #d0d0d0; border-top-color: #1f6b4a; border-radius: 50%; display: none; margin-left: 8px; animation: spin 0.8s linear infinite; vertical-align: middle; }
+.spin:not([hidden]) { display: inline-block; }
 @keyframes spin { to { transform: rotate(360deg); } }
