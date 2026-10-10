@@ -492,6 +492,11 @@ function buildMenu() {
           ],
         },
         {
+          label: "Hash Sources",
+          enabled: caseOpen,
+          click: () => win.webContents.send("marketplace"),
+        },
+        {
           label: "IOC Management",
           submenu: [
             { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
