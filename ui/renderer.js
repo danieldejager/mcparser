@@ -553,6 +553,28 @@ async function saveSql(name) {
   status.textContent = `saved ${saved.path}`;
 }
 
+async function saveAll() {
+  const dir = caseDir();
+  if (!dir) {
+    status.textContent = "Open a case first";
+    return;
+  }
+  if (editorTabs[activeTab]) editorTabs[activeTab].sql = sql.value;
+  const saved = [];
+  for (let i = 0; i < editorTabs.length; i++) {
+    const tab = editorTabs[i];
+    status.textContent = `saving ${i + 1} of ${editorTabs.length}: ${tab.name}`;
+    const result = await window.mcparser.saveSqlFile(dir, tab.name, tab.sql);
+    if (!result.saved) continue;
+    const file = result.path.split(/[\\/]/).pop();
+    await window.mcparser.saveQuery(dir, file.replace(/\.sql$/i, ""), tab.sql);
+    tab.name = file;
+    saved.push(file);
+  }
+  renderTabs();
+  status.textContent = saved.length ? `saved ${saved.length}: ${saved.join(", ")}` : "nothing saved";
+}
+
 async function saveQuery(event) {
   event.preventDefault();
   const name = document.getElementById("query-name").value.trim();
@@ -1300,7 +1322,7 @@ document.getElementById("tb-new").onclick = () => addTab("");
 addTab(sql.value, "SQLQuery1.sql");
 rememberPanes();
 document.getElementById("tb-save").onclick = () => saveSql();
-document.getElementById("tb-save-all").onclick = () => saveSql();
+document.getElementById("tb-save-all").onclick = () => saveAll();
 document.getElementById("tb-run").onclick = run;
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;
