@@ -1323,6 +1323,8 @@ addTab(sql.value, "SQLQuery1.sql");
 rememberPanes();
 document.getElementById("tb-save").onclick = () => saveSql();
 document.getElementById("tb-save-all").onclick = () => saveAll();
+if (window.mcparser.onSaveSql) window.mcparser.onSaveSql(() => saveSql());
+if (window.mcparser.onSaveAll) window.mcparser.onSaveAll(() => saveAll());
 document.getElementById("tb-run").onclick = run;
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;

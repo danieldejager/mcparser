@@ -409,6 +409,9 @@ function buildMenu() {
           ],
         },
         { type: "separator" },
+        { label: "Save", enabled: caseOpen, click: () => win.webContents.send("save-sql") },
+        { label: "Save All", enabled: caseOpen, accelerator: "CmdOrCtrl+Shift+S", click: () => win.webContents.send("save-all-sql") },
+        { type: "separator" },
         { label: "Import EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
         {
