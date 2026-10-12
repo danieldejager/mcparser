@@ -73,8 +73,47 @@ pub fn query(db_path: &Path, sql: &str) -> Result<Vec<Vec<String>>, duckdb::Erro
     Ok(query_table(db_path, sql)?.rows)
 }
 
+
+fn expose_iocs(conn: &duckdb::Connection, catalog: Option<&Path>, store: Option<&Path>) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE OR REPLACE TABLE iocs (id BIGINT, kind TEXT, value TEXT, note TEXT, added_at TEXT);
+         CREATE OR REPLACE TABLE uploaded_iocs (kind TEXT, value TEXT, source_file TEXT, added_at TEXT)",
+    ).map_err(|err| err.to_string())?;
+    if let Some(catalog) = catalog {
+        if let Ok(rows) = iocs(catalog) {
+            for row in rows {
+                conn.execute(
+                    "INSERT INTO iocs (id, kind, value, note, added_at) VALUES (?, ?, ?, ?, ?)",
+                    duckdb::params![row.id, row.kind, row.value, row.note, row.added_at],
+                ).map_err(|err| err.to_string())?;
+            }
+        }
+    }
+    if let Some(store) = store {
+        if let Ok(rows) = uploaded_iocs(store) {
+            for (kind, value, source_file) in rows {
+                conn.execute(
+                    "INSERT INTO uploaded_iocs (kind, value, source_file, added_at) VALUES (?, ?, ?, '')",
+                    duckdb::params![kind, value, source_file],
+                ).map_err(|err| err.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn query_table(db_path: &Path, sql: &str) -> Result<Table, duckdb::Error> {
+    query_table_with_iocs(db_path, None, None, sql)
+}
+
+pub fn query_table_with_iocs(
+    db_path: &Path,
+    catalog: Option<&Path>,
+    store: Option<&Path>,
+    sql: &str,
+) -> Result<Table, duckdb::Error> {
     let conn = Connection::open(db_path)?;
+    let _ = expose_iocs(&conn, catalog, store);
     let mut stmt = conn.prepare(sql)?;
     let mut rows = stmt.query([])?;
     let mut table = Table {

@@ -516,13 +516,19 @@ fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
     } else {
         "table".to_string()
     };
+    let store = rest.iter().position(|a| a == "--store").and_then(|i| rest.get(i + 1)).map(PathBuf::from);
+    if let Some(index) = rest.iter().position(|a| a == "--store") {
+        rest.remove(index);
+        if rest.len() > index { rest.remove(index); }
+    }
     let Some(sql) = rest.first() else {
         eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
         return ExitCode::from(2);
     };
     let db = case_dir.join("events.duckdb");
     let _ = case::ensure_hunt_table(&db);
-    let table = match case::query_table(&db, sql) {
+    let catalog = case_dir.join("catalog.sqlite");
+    let table = match case::query_table_with_iocs(&db, Some(&catalog), store.as_deref(), sql) {
         Ok(table) => table,
         Err(err) => {
             eprintln!("{err}");
