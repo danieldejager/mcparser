@@ -32,9 +32,9 @@ tr:nth-child(even) td { background: #fafafa; }
 #transcript { flex: 1; overflow: auto; background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 8px; min-height: 120px; }
 #ask { width: 100%; box-sizing: border-box; min-height: 72px; border: 1px solid #d0d0d0; border-radius: 6px; margin: 6px 0; }
 #send { align-self: flex-end; }
-.sheet { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.2); display: grid; place-items: center; }
+.sheet { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.45); display: grid; place-items: center; }
 .sheet[hidden] { display: none; }
-.sheet form { width: 360px; background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 16px; }
+.sheet form { width: 360px; background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; padding: 16px; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25); }
 .sheet p { color: #666; }
 .sheet-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
