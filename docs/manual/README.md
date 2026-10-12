@@ -17,4 +17,5 @@ Current packages are on the [releases page](https://github.com/danieldejager/mcp
 9. [The command line](09-cli.md)
 10. [What this release does not do](10-limits.md)
 11. [How a change gets to a release](11-cicd.md
-- [Hash Sources](12-marketplace.md))
+- [Hash Sources](12-marketplace.md)
+13. [Schema](13-schema.md)
