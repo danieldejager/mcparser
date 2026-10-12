@@ -28,6 +28,7 @@ fn main() -> ExitCode {
         Some("uninstall-source") => uninstall_source(&mut args),
         Some("import-hashes") => import_hashes(&mut args),
         Some("match-hashes") => match_hashes(&mut args),
+        Some("ioc-upload") => ioc_upload(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
@@ -80,6 +81,7 @@ Commands:
   uninstall-source Remove a hash source and its hashes
   import-hashes  Import a local hash list into an installed source
   match-hashes   Match enabled hash sources against the case
+  ioc-upload     Import a CSV of kind,value pairs into the machine store
   iocs           List indicators of compromise on the case
   ioc-add        Add an indicator
   ioc-remove     Remove an indicator by id
@@ -1320,6 +1322,22 @@ fn match_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
             }
             ExitCode::SUCCESS
         }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn ioc_upload(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    let file = rest.iter().position(|a| a == "--file")
+        .and_then(|i| rest.get(i + 1))
+        .map(PathBuf::from);
+    let Some(file) = file else {
+        eprintln!("usage: mcparser ioc-upload --file <csv>");
+        return ExitCode::from(2);
+    };
+    match case::import_ioc_file(&store, &file) {
+        Ok(count) => { println!("imported={count}"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }

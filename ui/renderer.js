@@ -1326,6 +1326,11 @@ document.getElementById("tb-save-all").onclick = () => saveAll();
 if (window.mcparser.onSaveSql) window.mcparser.onSaveSql(() => saveSql());
 if (window.mcparser.onSaveAll) window.mcparser.onSaveAll(() => saveAll());
 document.getElementById("tb-run").onclick = run;
+document.getElementById("tb-ioc-upload").onclick = async () => {
+  const result = await window.mcparser.iocUpload();
+  if (result.canceled) return;
+  status.textContent = result.code === 0 ? result.out.trim() : (result.err || "upload failed");
+};
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;
   showIocs();

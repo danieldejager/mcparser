@@ -543,6 +543,16 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
 ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
+ipcMain.handle("ioc-upload", async () => {
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Upload IOC file",
+    filters: [{ name: "CSV", extensions: ["csv", "txt"] }],
+    properties: ["openFile"],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
+  return run(["ioc-upload", "--file", picked.filePaths[0], "--store", store]);
+});
 ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
 ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
 ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));

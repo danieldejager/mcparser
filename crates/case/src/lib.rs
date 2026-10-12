@@ -2056,3 +2056,75 @@ pub fn match_hashes(store: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Stri
     }
     Ok(matches)
 }
+
+
+pub fn import_ioc_file(store: &Path, file: &Path) -> Result<usize, String> {
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS uploaded_iocs (
+            kind TEXT NOT NULL,
+            value TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (kind, value)
+        )",
+    ).map_err(|err| err.to_string())?;
+    let text = std::fs::read_to_string(file).map_err(|err| err.to_string())?;
+    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("upload").to_string();
+    let now = chrono_now();
+    let mut added = 0;
+    for (index, line) in text.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') { continue; }
+        let (kind, value) = split_pair(line);
+        if index == 0 && is_header(&kind, &value) { continue; }
+        if kind.is_empty() || value.is_empty() { continue; }
+        let changed = conn.execute(
+            "INSERT OR IGNORE INTO uploaded_iocs (kind, value, source_file, added_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![kind.to_lowercase(), value, name, now],
+        ).map_err(|err| err.to_string())?;
+        added += changed;
+    }
+    Ok(added)
+}
+
+fn split_pair(line: &str) -> (String, String) {
+    if let Some((left, right)) = line.split_once(',') {
+        return (left.trim().trim_matches('"').to_string(), right.trim().trim_matches('"').to_string());
+    }
+    if let Some((left, right)) = line.split_once('\t') {
+        return (left.trim().to_string(), right.trim().to_string());
+    }
+    (String::new(), String::new())
+}
+
+fn is_header(kind: &str, value: &str) -> bool {
+    let k = kind.to_ascii_lowercase();
+    let v = value.to_ascii_lowercase();
+    matches!(k.as_str(), "kind" | "type" | "ioc_type" | "indicator_type")
+        || matches!(v.as_str(), "value" | "indicator" | "ioc")
+}
+
+fn chrono_now() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default()
+}
+
+pub fn uploaded_iocs(store: &Path) -> Result<Vec<(String, String, String)>, String> {
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS uploaded_iocs (
+            kind TEXT NOT NULL, value TEXT NOT NULL, source_file TEXT NOT NULL, added_at TEXT NOT NULL,
+            PRIMARY KEY (kind, value)
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut stmt = conn.prepare("SELECT kind, value, source_file FROM uploaded_iocs ORDER BY kind, value")
+        .map_err(|err| err.to_string())?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    Ok(rows)
+}
