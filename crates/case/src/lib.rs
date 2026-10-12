@@ -1882,7 +1882,6 @@ pub struct HashSource {
 const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
     ("malwarebazaar", "MalwareBazaar", "Local import of CSV or plain-text hash exports. No network call.", "abuse.ch", "Hash Sources"),
     ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
-    ("custom", "Custom hash list", "Import any text or CSV list of hashes from a file.", "Local", "Hash Sources"),
     ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
     ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
 ];
@@ -1922,6 +1921,8 @@ pub fn seed_hash_sources(store: &Path) -> Result<(), rusqlite::Error> {
             rusqlite::params![id, name, description, publisher, category],
         )?;
     }
+    let _ = conn.execute("DELETE FROM hash_sources WHERE id = 'custom'", []);
+    let _ = conn.execute("DELETE FROM hash_sets WHERE source_id = 'custom'", []);
     Ok(())
 }
 
