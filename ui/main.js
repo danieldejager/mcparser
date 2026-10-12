@@ -551,8 +551,33 @@ ipcMain.handle("ioc-upload", async () => {
   });
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
   const store = path.join(app.getPath("userData"), "marketplace.sqlite");
-  return run(["ioc-upload", "--file", picked.filePaths[0], "--store", store]);
+  return runIocUpload(["ioc-upload", "--file", picked.filePaths[0], "--store", store]);
 });
+
+function runIocUpload(args) {
+  return new Promise((resolve) => {
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo });
+    let out = "";
+    let err = "";
+    let pending = "";
+    child.stdout.on("data", (chunk) => {
+      pending += chunk.toString();
+      const lines = pending.split(/\n/);
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("progress\t")) {
+          const parts = line.split("\t");
+          if (win) win.webContents.send("ioc-progress", { pct: Number(parts[1] || 0), label: parts.slice(2).join(" ") });
+        } else if (line) {
+          out += line + "\n";
+        }
+      }
+    });
+    child.stderr.on("data", (chunk) => { err += chunk.toString(); });
+    child.on("close", (code) => resolve({ code, out, err }));
+    child.on("error", (error) => resolve({ code: 1, out: "", err: error.message }));
+  });
+}
 ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
 ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
 ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));

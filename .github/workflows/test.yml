@@ -22,6 +22,8 @@ jobs:
         run: cargo test -p mcparser --test baseline save_case_stores_the_analyst
       - name: Host and collection CLI
         run: cargo test -p mcparser --test baseline case_holds_two_hosts_keyed_by_host_id
+      - name: IOC upload CLI
+        run: cargo test -p mcparser --test baseline ioc_upload_imports_pairs
 
   security:
     runs-on: ubuntu-latest

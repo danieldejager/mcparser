@@ -75,6 +75,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   iocRemove: (caseDir, id) => ipcRenderer.invoke("ioc-remove", caseDir, id),
   hunt: (caseDir) => ipcRenderer.invoke("hunt", caseDir),
   onHuntProgress: (handler) => ipcRenderer.on("hunt-progress", (_event, payload) => handler(payload)),
+  onIocProgress: (handler) => ipcRenderer.on("ioc-progress", (_event, payload) => handler(payload)),
   onIocView: (handler) => ipcRenderer.on("ioc-view", () => handler()),
   onIocAdd: (handler) => ipcRenderer.on("ioc-add", () => handler()),
   onIocUpdate: (handler) => ipcRenderer.on("ioc-update", () => handler()),

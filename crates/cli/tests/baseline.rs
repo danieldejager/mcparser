@@ -20,7 +20,7 @@ fn help_lists_every_command() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes"] {
+    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes", "ioc-upload"] {
         assert!(text.contains(command), "{command} missing from help");
     }
 }
@@ -142,4 +142,21 @@ fn marketplace_install_and_match_respects_enabled_sources() {
     assert!(removed.status.success());
     let after = bin().args(["marketplace", "--store"]).arg(&store).output().unwrap();
     assert!(String::from_utf8_lossy(&after.stdout).contains("malwarebazaar\tMalwareBazaar\tnot-installed"));
+}
+
+
+#[test]
+fn ioc_upload_imports_pairs() {
+    let dir = std::env::temp_dir().join(format!("mcparser-ioc-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    let csv = dir.join("iocs.csv");
+    std::fs::write(&csv, "kind,value\nsha1,abc123\ndomain,evil.example\nip,203.0.113.5\n").unwrap();
+    let store = dir.join("store.sqlite");
+    let out = bin().args(["ioc-upload", "--file"]).arg(&csv).arg("--store").arg(&store).output().unwrap();
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.contains("imported=3"), "{text}");
+    let again = bin().args(["ioc-upload", "--file"]).arg(&csv).arg("--store").arg(&store).output().unwrap();
+    assert!(String::from_utf8_lossy(&again.stdout).contains("imported=0"));
 }

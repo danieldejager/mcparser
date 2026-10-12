@@ -2073,8 +2073,13 @@ pub fn import_ioc_file(store: &Path, file: &Path) -> Result<usize, String> {
     let text = std::fs::read_to_string(file).map_err(|err| err.to_string())?;
     let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("upload").to_string();
     let now = chrono_now();
+    let lines: Vec<&str> = text.lines().collect();
+    let total = lines.len().max(1);
     let mut added = 0;
-    for (index, line) in text.lines().enumerate() {
+    for (index, line) in lines.iter().enumerate() {
+        if index % 50 == 0 || index + 1 == total {
+            report_progress(((index + 1) * 100 / total) as u8, &format!("Reading IOCs {}/{}", index + 1, total));
+        }
         let line = line.trim();
         if line.is_empty() || line.starts_with('#') { continue; }
         let (kind, value) = split_pair(line);
@@ -2086,6 +2091,7 @@ pub fn import_ioc_file(store: &Path, file: &Path) -> Result<usize, String> {
         ).map_err(|err| err.to_string())?;
         added += changed;
     }
+    report_progress(100, &format!("Imported {added}"));
     Ok(added)
 }
 
