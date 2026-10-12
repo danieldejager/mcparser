@@ -1329,7 +1329,11 @@ document.getElementById("tb-run").onclick = run;
 document.getElementById("tb-ioc-upload").onclick = async () => {
   const result = await window.mcparser.iocUpload();
   if (result.canceled) return;
-  status.textContent = result.code === 0 ? result.out.trim() : (result.err || "upload failed");
+  const message = result.code === 0
+    ? (result.out || "").split("\n").filter((line) => !line.startsWith("progress")).join(" ").trim()
+    : (result.err || result.out || "upload failed").trim();
+  status.textContent = message;
+  results.replaceChildren(document.createTextNode(message));
 };
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;

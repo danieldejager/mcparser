@@ -156,7 +156,7 @@ fn ioc_upload_imports_pairs() {
     let out = bin().args(["ioc-upload", "--file"]).arg(&csv).arg("--store").arg(&store).output().unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let text = String::from_utf8_lossy(&out.stdout);
-    assert!(text.contains("imported=3"), "{text}");
+    assert!(text.contains("imported 3 IOCs"), "{text}");
     let again = bin().args(["ioc-upload", "--file"]).arg(&csv).arg("--store").arg(&store).output().unwrap();
-    assert!(String::from_utf8_lossy(&again.stdout).contains("imported=0"));
+    assert!(String::from_utf8_lossy(&again.stdout).contains("imported 0 IOCs"));
 }

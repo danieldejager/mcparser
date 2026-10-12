@@ -1337,7 +1337,7 @@ fn ioc_upload(args: &mut impl Iterator<Item = String>) -> ExitCode {
         return ExitCode::from(2);
     };
     match case::import_ioc_file(&store, &file) {
-        Ok(count) => { println!("imported={count}"); ExitCode::SUCCESS }
+        Ok(count) => { println!("imported {count} IOCs"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
