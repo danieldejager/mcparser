@@ -1598,6 +1598,7 @@ async function showIocs() {
 
 window.mcparser.onIocView(() => showIocs());
 window.mcparser.onIocAdd(() => openIocSheet("add"));
+if (window.mcparser.onIocUpload) window.mcparser.onIocUpload(() => document.getElementById("tb-ioc-upload").click());
 
 let marketFilter = "all";
 let marketSearch = "";

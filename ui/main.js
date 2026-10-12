@@ -503,6 +503,7 @@ function buildMenu() {
           submenu: [
             { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
             { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
+            { label: "Upload", click: () => win.webContents.send("ioc-upload") },
           ],
         },
       ],
