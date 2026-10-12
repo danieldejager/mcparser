@@ -1327,15 +1327,10 @@ if (window.mcparser.onSaveSql) window.mcparser.onSaveSql(() => saveSql());
 if (window.mcparser.onSaveAll) window.mcparser.onSaveAll(() => saveAll());
 document.getElementById("tb-run").onclick = run;
 document.getElementById("tb-ioc-upload").onclick = async () => {
-  setLoading(true, "Uploading IOCs", 0);
   const result = await window.mcparser.iocUpload();
-  setLoading(false);
   if (result.canceled) return;
   status.textContent = result.code === 0 ? result.out.trim() : (result.err || "upload failed");
 };
-if (window.mcparser.onIocProgress) {
-  window.mcparser.onIocProgress((payload) => setLoading(true, payload.label || "Uploading IOCs", payload.pct));
-}
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;
   showIocs();
