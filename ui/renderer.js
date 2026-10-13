@@ -1655,8 +1655,10 @@ function renderMarket(rows) {
       if (row.id === "malwarebazaar" || row.id === "virustotal") {
         const test = document.createElement("a");
         test.textContent = "Test";
-        test.onclick = () => testSource(row.id);
-        links.append(test);
+        const result = document.createElement("span");
+        result.className = "test-result";
+        test.onclick = () => testSource(row.id, result);
+        links.append(test, result);
       }
     }
     body.append(title, pub, desc, links);
@@ -1752,8 +1754,7 @@ document.getElementById("market-close").onclick = () => { document.getElementByI
 document.getElementById("tb-market").onclick = openMarket;
 if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
 
-async function testSource(id) {
-  const line = document.getElementById("market-status");
+async function testSource(id, line) {
   line.textContent = "Testing...";
   const result = await window.mcparser.testSource(id);
   line.textContent = (result && (result.out || result.err)) || "Test failed";
