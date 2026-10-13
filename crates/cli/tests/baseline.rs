@@ -129,6 +129,7 @@ fn marketplace_install_and_match_respects_enabled_sources() {
     assert!(String::from_utf8_lossy(&imported.stdout).contains("imported 1"));
 
     let dir = case("market");
+    std::fs::create_dir_all(&dir).unwrap();
     let matched = bin().args(["match-hashes", "--case"]).arg(&dir).args(["--store"]).arg(&store).output().unwrap();
     assert!(matched.status.success(), "{}", String::from_utf8_lossy(&matched.stderr));
     assert!(String::from_utf8_lossy(&matched.stdout).starts_with("hits "));
