@@ -29,6 +29,13 @@ function keyFile(name) {
   return path.join(app.getPath("userData"), `${name}-key.bin`);
 }
 
+function loadSourceKey(name) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
+  const file = keyFile(name);
+  if (!fs.existsSync(file)) throw new Error("No key is stored");
+  return safeStorage.decryptString(fs.readFileSync(file));
+}
+
 function storeKey(name, key) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
   const file = keyFile(name);
@@ -409,6 +416,9 @@ function buildMenu() {
           ],
         },
         { type: "separator" },
+        { label: "Save", enabled: caseOpen, click: () => win.webContents.send("save-sql") },
+        { label: "Save All", enabled: caseOpen, accelerator: "CmdOrCtrl+Shift+S", click: () => win.webContents.send("save-all-sql") },
+        { type: "separator" },
         { label: "Import EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
         {
@@ -492,10 +502,15 @@ function buildMenu() {
           ],
         },
         {
+          label: "Marketplace",
+          click: () => win.webContents.send("marketplace"),
+        },
+        {
           label: "IOC Management",
           submenu: [
             { label: "View", enabled: caseOpen, click: () => win.webContents.send("ioc-view") },
             { label: "Add", enabled: caseOpen, click: () => win.webContents.send("ioc-add") },
+            { label: "Upload", click: () => win.webContents.send("ioc-upload") },
           ],
         },
       ],
@@ -525,6 +540,7 @@ function createWindow() {
   win.webContents.once("did-finish-load", () => {
     if (chatShown) win.webContents.send("grok-chat", true);
   });
+  win.on("focus", () => buildMenu());
 }
 
 ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
@@ -535,6 +551,41 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
 ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
+ipcMain.handle("ioc-upload", async () => {
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Upload IOC file",
+    filters: [{ name: "CSV", extensions: ["csv", "txt"] }],
+    properties: ["openFile"],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
+  return runIocUpload(["ioc-upload", "--file", picked.filePaths[0], "--store", store]);
+});
+
+function runIocUpload(args) {
+  return new Promise((resolve) => {
+    const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo });
+    let out = "";
+    let err = "";
+    let pending = "";
+    child.stdout.on("data", (chunk) => {
+      pending += chunk.toString();
+      const lines = pending.split(/\n/);
+      pending = lines.pop() || "";
+      for (const line of lines) {
+        if (line.startsWith("progress\t")) {
+          const parts = line.split("\t");
+          if (win) win.webContents.send("ioc-progress", { pct: Number(parts[1] || 0), label: parts.slice(2).join(" ") });
+        } else if (line) {
+          out += line + "\n";
+        }
+      }
+    });
+    child.stderr.on("data", (chunk) => { err += chunk.toString(); });
+    child.on("close", (code) => resolve({ code, out, err }));
+    child.on("error", (error) => resolve({ code: 1, out: "", err: error.message }));
+  });
+}
 ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
 ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
 ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
@@ -641,6 +692,48 @@ function runHunt(args) {
 }
 
 ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
+ipcMain.handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+ipcMain.handle("store-key", (_event, name, key) => { try { storeKey(name, key); return { code: 0 }; } catch (err) { return { code: 1, err: err.message }; } });
+ipcMain.handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+ipcMain.handle("uninstall-source", (_event, id) => {
+  const file = keyFile(id);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+  return run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+});
+ipcMain.handle("test-source", async (_event, id) => {
+  try {
+    const key = loadSourceKey(id);
+    if (id === "malwarebazaar") {
+      const body = new URLSearchParams({ query: "get_info", hash: "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d" });
+      const response = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", headers: { "Auth-Key": key }, body });
+      const json = await response.json().catch(() => ({}));
+      const state = json.query_status || response.status;
+      return { code: response.ok ? 0 : 1, out: "MalwareBazaar: " + state };
+    }
+    return { code: 1, err: "No test for " + id };
+  } catch (err) {
+    return { code: 1, err: err.message };
+  }
+});
+ipcMain.handle("lookup-hash", async (_event, hash) => {
+  try {
+    const key = loadSourceKey("malwarebazaar");
+    const body = new URLSearchParams({ query: "get_info", hash });
+    const response = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", headers: { "Auth-Key": key }, body });
+    const json = await response.json().catch(() => ({}));
+    const state = json.query_status || response.status;
+    const name = (json.data && json.data[0] && (json.data[0].signature || json.data[0].file_name)) || "";
+    return { code: response.ok ? 0 : 1, out: state + (name ? ": " + name : "") };
+  } catch (err) {
+    return { code: 1, err: err.message };
+  }
+});
+ipcMain.handle("import-hashes", async (_event, id) => {
+  const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "Hash list", extensions: ["txt", "csv"] }] });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  return run(["import-hashes", "--source", id, "--file", picked.filePaths[0], "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+});
+ipcMain.handle("match-hashes", (_event, caseDir) => run(["match-hashes", "--case", casePath(caseDir), "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
 ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
 
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
@@ -648,7 +741,7 @@ ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessa
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
-ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", sql]));
+ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]));
 ipcMain.handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
     title: "Export results",

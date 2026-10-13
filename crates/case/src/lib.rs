@@ -73,8 +73,47 @@ pub fn query(db_path: &Path, sql: &str) -> Result<Vec<Vec<String>>, duckdb::Erro
     Ok(query_table(db_path, sql)?.rows)
 }
 
+
+fn expose_iocs(conn: &duckdb::Connection, catalog: Option<&Path>, store: Option<&Path>) -> Result<(), String> {
+    conn.execute_batch(
+        "CREATE OR REPLACE TABLE iocs (id BIGINT, kind TEXT, value TEXT, note TEXT, added_at TEXT);
+         CREATE OR REPLACE TABLE uploaded_iocs (kind TEXT, value TEXT, source_file TEXT, added_at TEXT)",
+    ).map_err(|err| err.to_string())?;
+    if let Some(catalog) = catalog {
+        if let Ok(rows) = iocs(catalog) {
+            for row in rows {
+                conn.execute(
+                    "INSERT INTO iocs (id, kind, value, note, added_at) VALUES (?, ?, ?, ?, ?)",
+                    duckdb::params![row.id, row.kind, row.value, row.note, row.added_at],
+                ).map_err(|err| err.to_string())?;
+            }
+        }
+    }
+    if let Some(store) = store {
+        if let Ok(rows) = uploaded_iocs(store) {
+            for (kind, value, source_file) in rows {
+                conn.execute(
+                    "INSERT INTO uploaded_iocs (kind, value, source_file, added_at) VALUES (?, ?, ?, '')",
+                    duckdb::params![kind, value, source_file],
+                ).map_err(|err| err.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn query_table(db_path: &Path, sql: &str) -> Result<Table, duckdb::Error> {
+    query_table_with_iocs(db_path, None, None, sql)
+}
+
+pub fn query_table_with_iocs(
+    db_path: &Path,
+    catalog: Option<&Path>,
+    store: Option<&Path>,
+    sql: &str,
+) -> Result<Table, duckdb::Error> {
     let conn = Connection::open(db_path)?;
+    let _ = expose_iocs(&conn, catalog, store);
     let mut stmt = conn.prepare(sql)?;
     let mut rows = stmt.query([])?;
     let mut table = Table {
@@ -892,6 +931,52 @@ pub fn ingest_amcache(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         for hive in amcache_hives(&root) {
             inserted += load_amcache_hive(&db, &host_id, &hive)?;
         }
+        for jsonl in amcache_jsonl(&root) {
+            inserted += load_amcache_jsonl(&db, &host_id, &jsonl)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn amcache_jsonl(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
+            let decoded = name.replace("%2f", "/");
+            let leaf = decoded.rsplit('/').next().unwrap_or(&decoded);
+            if leaf == "inventoryapplicationfile.json" || leaf == "file.json" {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_amcache_jsonl(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let text = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        let value: serde_json::Value = match serde_json::from_str(line) { Ok(v) => v, Err(_) => continue };
+        let sha = value.get("SHA1").and_then(|v| v.as_str()).unwrap_or("");
+        if sha.is_empty() { continue; }
+        let name = value.get("Name").and_then(|v| v.as_str()).unwrap_or("");
+        let full = value.get("FullPath").and_then(|v| v.as_str()).unwrap_or("");
+        let size = value.get("Size").and_then(|v| v.as_i64()).unwrap_or(0);
+        let modified = value.get("Timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        let publisher = value.get("ProductName").and_then(|v| v.as_str()).unwrap_or("");
+        let version = value.get("ProductVersion").and_then(|v| v.as_str()).unwrap_or("");
+        db.execute(
+            "INSERT INTO amcache (host_id, kind, name, path, sha1, size, modified, publisher, version, key_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![host_id, "file", name, full, sha, size, modified, publisher, version, path.display().to_string()],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
     }
     Ok(inserted)
 }
@@ -1865,4 +1950,273 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
     }
     report_progress(100, "Hunt complete");
     Ok(matches)
+}
+
+pub struct HashSource {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub publisher: String,
+    pub category: String,
+    pub installed: bool,
+    pub enabled: bool,
+    pub config: String,
+    pub hash_count: i64,
+}
+
+const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
+    ("malwarebazaar", "MalwareBazaar", "Query a sample hash against the abuse.ch API. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
+    ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
+    ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
+    ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
+];
+
+fn open_store(store: &Path) -> Result<rusqlite::Connection, rusqlite::Error> {
+    if let Some(parent) = store.parent() { let _ = std::fs::create_dir_all(parent); }
+    let conn = rusqlite::Connection::open(store)?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS hash_sources (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            description TEXT NOT NULL,
+            publisher TEXT NOT NULL,
+            category TEXT NOT NULL,
+            installed INTEGER NOT NULL DEFAULT 0,
+            enabled INTEGER NOT NULL DEFAULT 0,
+            config TEXT NOT NULL DEFAULT '{}',
+            installed_at TEXT NOT NULL DEFAULT ''
+        );
+        CREATE TABLE IF NOT EXISTS hash_sets (
+            source_id TEXT NOT NULL,
+            hash TEXT NOT NULL,
+            hash_kind TEXT NOT NULL,
+            note TEXT NOT NULL DEFAULT '',
+            PRIMARY KEY (source_id, hash)
+        );",
+    )?;
+    Ok(conn)
+}
+
+pub fn seed_hash_sources(store: &Path) -> Result<(), rusqlite::Error> {
+    let conn = open_store(store)?;
+    for (id, name, description, publisher, category) in CATALOG {
+        conn.execute(
+            "INSERT INTO hash_sources (id, name, description, publisher, category) VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET name = excluded.name, description = excluded.description, publisher = excluded.publisher, category = excluded.category",
+            rusqlite::params![id, name, description, publisher, category],
+        )?;
+    }
+    let _ = conn.execute("DELETE FROM hash_sources WHERE id = 'custom'", []);
+    let _ = conn.execute("DELETE FROM hash_sets WHERE source_id = 'custom'", []);
+    Ok(())
+}
+
+pub fn hash_sources(store: &Path) -> Result<Vec<HashSource>, rusqlite::Error> {
+    seed_hash_sources(store)?;
+    let conn = open_store(store)?;
+    let mut stmt = conn.prepare(
+        "SELECT s.id, s.name, s.description, s.publisher, s.category, s.installed, s.enabled, s.config,
+                (SELECT count(*) FROM hash_sets h WHERE h.source_id = s.id)
+         FROM hash_sources s ORDER BY s.category, s.name",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push(HashSource {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            publisher: row.get(3)?,
+            category: row.get(4)?,
+            installed: row.get::<_, i64>(5)? != 0,
+            enabled: row.get::<_, i64>(6)? != 0,
+            config: row.get(7)?,
+            hash_count: row.get(8)?,
+        });
+    }
+    Ok(out)
+}
+
+pub fn install_hash_source(store: &Path, id: &str, config: &str) -> Result<(), String> {
+    seed_hash_sources(store).map_err(|err| err.to_string())?;
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_default();
+    let changed = conn.execute(
+        "UPDATE hash_sources SET installed = 1, enabled = 1, config = ?1, installed_at = ?2 WHERE id = ?3",
+        rusqlite::params![config, now, id],
+    ).map_err(|err| err.to_string())?;
+    if changed == 0 { return Err(format!("unknown source {id}")); }
+    Ok(())
+}
+
+pub fn uninstall_hash_source(store: &Path, id: &str) -> Result<(), String> {
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    conn.execute("UPDATE hash_sources SET installed = 0, enabled = 0, config = '{}' WHERE id = ?1", [id]).map_err(|err| err.to_string())?;
+    conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [id]).map_err(|err| err.to_string())?;
+    Ok(())
+}
+
+fn hash_kind(value: &str) -> Option<&'static str> {
+    let clean = value.trim().trim_start_matches("0x").to_ascii_lowercase();
+    if !clean.chars().all(|c| c.is_ascii_hexdigit()) { return None; }
+    match clean.len() {
+        32 => Some("md5"),
+        40 => Some("sha1"),
+        64 => Some("sha256"),
+        _ => None,
+    }
+}
+
+pub fn import_hashes(store: &Path, id: &str, text: &str) -> Result<usize, String> {
+    seed_hash_sources(store).map_err(|err| err.to_string())?;
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    let installed: i64 = conn.query_row("SELECT installed FROM hash_sources WHERE id = ?1", [id], |row| row.get(0)).map_err(|err| err.to_string())?;
+    if installed == 0 { return Err(format!("{id} is not installed")); }
+    let mut count = 0usize;
+    for raw in text.lines() {
+        for part in raw.split([',', ';', '\t', ' ']) {
+            let value = part.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
+            if let Some(kind) = hash_kind(&value) {
+                conn.execute(
+                    "INSERT OR IGNORE INTO hash_sets (source_id, hash, hash_kind) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![id, value, kind],
+                ).map_err(|err| err.to_string())?;
+                count += 1;
+            }
+        }
+    }
+    Ok(count)
+}
+
+pub fn enabled_hashes(store: &Path) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
+    let conn = open_store(store)?;
+    let mut stmt = conn.prepare(
+        "SELECT h.source_id, h.hash, h.hash_kind FROM hash_sets h
+         JOIN hash_sources s ON s.id = h.source_id
+         WHERE s.installed = 1 AND s.enabled = 1",
+    )?;
+    let mut rows = stmt.query([])?;
+    let mut out = Vec::new();
+    while let Some(row) = rows.next()? {
+        out.push((row.get(0)?, row.get(1)?, row.get(2)?));
+    }
+    Ok(out)
+}
+
+pub fn match_hashes(store: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
+    let hashes = enabled_hashes(store).map_err(|err| err.to_string())?;
+    if hashes.is_empty() { return Ok(Vec::new()); }
+    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let scans: &[(&str, &str)] = &[
+        ("amcache", "SELECT host_id, sha1, name, path FROM amcache"),
+        ("prefetch", "SELECT host_id, executable, path FROM prefetch"),
+        ("events", "SELECT computer, event_data FROM events"),
+        ("shimcache", "SELECT host_id, path FROM shimcache"),
+    ];
+    let mut matches = Vec::new();
+    for (source, sql) in scans {
+        let mut stmt = match db.prepare(sql) { Ok(stmt) => stmt, Err(_) => continue };
+        let mut rows = match stmt.query([]) { Ok(rows) => rows, Err(_) => continue };
+        while let Ok(Some(row)) = rows.next() {
+            let host: String = row.get(0).unwrap_or_default();
+            let text = (0..row.as_ref().column_count())
+                .map(|i| row.get::<_, String>(i).unwrap_or_default())
+                .collect::<Vec<_>>()
+                .join(" ")
+                .to_ascii_lowercase();
+            for (source_id, hash, kind) in &hashes {
+                if text.contains(hash) {
+                    matches.push(HuntMatch {
+                        source: source.to_string(),
+                        host_id: host.clone(),
+                        column: kind.clone(),
+                        value: hash.clone(),
+                        ioc_kind: "hash".to_string(),
+                        ioc_value: format!("{source_id}:{hash}"),
+                        context: text.chars().take(180).collect(),
+                    });
+                    break;
+                }
+            }
+        }
+    }
+    Ok(matches)
+}
+
+
+pub fn import_ioc_file(store: &Path, file: &Path) -> Result<usize, String> {
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS uploaded_iocs (
+            kind TEXT NOT NULL,
+            value TEXT NOT NULL,
+            source_file TEXT NOT NULL,
+            added_at TEXT NOT NULL,
+            PRIMARY KEY (kind, value)
+        )",
+    ).map_err(|err| err.to_string())?;
+    let text = std::fs::read_to_string(file).map_err(|err| err.to_string())?;
+    let name = file.file_name().and_then(|n| n.to_str()).unwrap_or("upload").to_string();
+    let now = chrono_now();
+    let lines: Vec<&str> = text.lines().collect();
+    let total = lines.len().max(1);
+    let mut added = 0;
+    for (index, line) in lines.iter().enumerate() {
+        if index % 50 == 0 || index + 1 == total {
+            report_progress(((index + 1) * 100 / total) as u8, &format!("Reading IOCs {}/{}", index + 1, total));
+        }
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') { continue; }
+        let (kind, value) = split_pair(line);
+        if index == 0 && is_header(&kind, &value) { continue; }
+        if kind.is_empty() || value.is_empty() { continue; }
+        let changed = conn.execute(
+            "INSERT OR IGNORE INTO uploaded_iocs (kind, value, source_file, added_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![kind.to_lowercase(), value, name, now],
+        ).map_err(|err| err.to_string())?;
+        added += changed;
+    }
+    report_progress(100, &format!("Imported {added}"));
+    Ok(added)
+}
+
+fn split_pair(line: &str) -> (String, String) {
+    if let Some((left, right)) = line.split_once(',') {
+        return (left.trim().trim_matches('"').to_string(), right.trim().trim_matches('"').to_string());
+    }
+    if let Some((left, right)) = line.split_once('\t') {
+        return (left.trim().to_string(), right.trim().to_string());
+    }
+    (String::new(), String::new())
+}
+
+fn is_header(kind: &str, value: &str) -> bool {
+    let k = kind.to_ascii_lowercase();
+    let v = value.to_ascii_lowercase();
+    matches!(k.as_str(), "kind" | "type" | "ioc_type" | "indicator_type")
+        || matches!(v.as_str(), "value" | "indicator" | "ioc")
+}
+
+fn chrono_now() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default()
+}
+
+pub fn uploaded_iocs(store: &Path) -> Result<Vec<(String, String, String)>, String> {
+    let conn = open_store(store).map_err(|err| err.to_string())?;
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS uploaded_iocs (
+            kind TEXT NOT NULL, value TEXT NOT NULL, source_file TEXT NOT NULL, added_at TEXT NOT NULL,
+            PRIMARY KEY (kind, value)
+        )",
+    ).map_err(|err| err.to_string())?;
+    let mut stmt = conn.prepare("SELECT kind, value, source_file FROM uploaded_iocs ORDER BY kind, value")
+        .map_err(|err| err.to_string())?;
+    let rows = stmt.query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .map_err(|err| err.to_string())?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|err| err.to_string())?;
+    Ok(rows)
 }

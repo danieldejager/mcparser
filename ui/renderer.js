@@ -407,7 +407,10 @@ function renderCsv(text) {
       tr.onclick = () => {
         table.querySelectorAll("tr.selected").forEach((row) => row.classList.remove("selected"));
         tr.classList.add("selected");
-        showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
+      };
+      tr.oncontextmenu = (event) => {
+        event.preventDefault();
+        showRowMenu(event, recordId, rowNotes.get(recordId) || "", row);
       };
     }
     table.append(tr);
@@ -460,6 +463,45 @@ async function showNotes() {
   makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Notes";
+}
+
+function rowHash(row) {
+  const hex = /^[a-f0-9]{32,64}$/i;
+  for (const cell of row) {
+    const value = String(cell).trim();
+    if (hex.test(value)) return value;
+  }
+  return "";
+}
+
+function showRowMenu(event, recordId, note, row) {
+  const old = document.getElementById("row-menu");
+  if (old) old.remove();
+  const menu = document.createElement("div");
+  menu.id = "row-menu";
+  menu.className = "row-menu";
+  menu.style.left = event.clientX + "px";
+  menu.style.top = event.clientY + "px";
+  const noteItem = document.createElement("a");
+  noteItem.textContent = "Add note";
+  noteItem.onclick = () => { menu.remove(); showNoteSheet(recordId, note, row.join(" | ")); };
+  menu.append(noteItem);
+  const hash = rowHash(row);
+  if (hash) {
+    const look = document.createElement("a");
+    look.textContent = "MalwareBazaar lookup";
+    look.onclick = () => { menu.remove(); lookupHash(hash); };
+    menu.append(look);
+  }
+  document.body.append(menu);
+  const close = () => { menu.remove(); document.removeEventListener("click", close); };
+  setTimeout(() => document.addEventListener("click", close), 0);
+}
+
+async function lookupHash(hash) {
+  status.textContent = "Looking up " + hash.slice(0, 12) + "...";
+  const result = await window.mcparser.lookupHash(hash);
+  status.textContent = result && (result.out || result.err) ? "MalwareBazaar: " + (result.out || result.err) : "Lookup failed";
 }
 
 function showNoteSheet(recordId, body, rowText) {
@@ -551,6 +593,28 @@ async function saveSql(name) {
     renderTabs();
   }
   status.textContent = `saved ${saved.path}`;
+}
+
+async function saveAll() {
+  const dir = caseDir();
+  if (!dir) {
+    status.textContent = "Open a case first";
+    return;
+  }
+  if (editorTabs[activeTab]) editorTabs[activeTab].sql = sql.value;
+  const saved = [];
+  for (let i = 0; i < editorTabs.length; i++) {
+    const tab = editorTabs[i];
+    status.textContent = `saving ${i + 1} of ${editorTabs.length}: ${tab.name}`;
+    const result = await window.mcparser.saveSqlFile(dir, tab.name, tab.sql);
+    if (!result.saved) continue;
+    const file = result.path.split(/[\\/]/).pop();
+    await window.mcparser.saveQuery(dir, file.replace(/\.sql$/i, ""), tab.sql);
+    tab.name = file;
+    saved.push(file);
+  }
+  renderTabs();
+  status.textContent = saved.length ? `saved ${saved.length}: ${saved.join(", ")}` : "nothing saved";
 }
 
 async function saveQuery(event) {
@@ -1300,8 +1364,19 @@ document.getElementById("tb-new").onclick = () => addTab("");
 addTab(sql.value, "SQLQuery1.sql");
 rememberPanes();
 document.getElementById("tb-save").onclick = () => saveSql();
-document.getElementById("tb-save-all").onclick = () => saveSql();
+document.getElementById("tb-save-all").onclick = () => saveAll();
+if (window.mcparser.onSaveSql) window.mcparser.onSaveSql(() => saveSql());
+if (window.mcparser.onSaveAll) window.mcparser.onSaveAll(() => saveAll());
 document.getElementById("tb-run").onclick = run;
+document.getElementById("tb-ioc-upload").onclick = async () => {
+  const result = await window.mcparser.iocUpload();
+  if (result.canceled) return;
+  const message = result.code === 0
+    ? (result.out || "").split("\n").filter((line) => !line.startsWith("progress")).join(" ").trim()
+    : (result.err || result.out || "upload failed").trim();
+  status.textContent = message;
+  results.replaceChildren(document.createTextNode(message));
+};
 document.getElementById("tb-ioc").onclick = () => {
   if (!caseDir()) return;
   showIocs();
@@ -1565,3 +1640,164 @@ async function showIocs() {
 
 window.mcparser.onIocView(() => showIocs());
 window.mcparser.onIocAdd(() => openIocSheet("add"));
+if (window.mcparser.onIocUpload) window.mcparser.onIocUpload(() => document.getElementById("tb-ioc-upload").click());
+
+let marketFilter = "all";
+let marketSearch = "";
+let marketRows = [];
+
+function renderMarket(rows) {
+  marketRows = rows;
+  const cards = document.getElementById("market-cards");
+  cards.replaceChildren();
+  const cats = new Set([...document.querySelectorAll(".market-cats input:checked")].map((box) => box.dataset.cat));
+  const filtered = rows.filter((row) => {
+    if (marketFilter === "installed" && !row.installed) return false;
+    if (marketFilter === "not-installed" && row.installed) return false;
+    if (!cats.has("all") && !cats.has(row.category)) return false;
+    if (marketSearch && !(row.name + row.description + row.publisher).toLowerCase().includes(marketSearch)) return false;
+    return true;
+  });
+  document.getElementById("market-count").textContent = filtered.length + " of " + rows.length;
+  if (filtered.length === 0) {
+    const empty = document.createElement("p");
+    empty.textContent = "No sources in this view.";
+    cards.append(empty);
+    return;
+  }
+  for (const row of filtered) {
+    const card = document.createElement("article");
+    card.className = "card";
+    const logo = document.createElement("img");
+    logo.src = "logos/" + row.id + ".svg";
+    logo.alt = row.name;
+    const body = document.createElement("div");
+    const title = document.createElement("h2");
+    title.textContent = row.name;
+    const pub = document.createElement("div");
+    pub.className = "pub";
+    pub.textContent = "by " + row.publisher;
+    const desc = document.createElement("p");
+    desc.textContent = row.description;
+    const links = document.createElement("div");
+    links.className = "links";
+    if (!row.installed) {
+      const install = document.createElement("a");
+      install.textContent = "Install";
+      install.onclick = () => installSource(row);
+      links.append(install);
+    } else {
+      const status = document.createElement("div");
+      status.className = "status";
+      status.textContent = "Installed";
+      const remove = document.createElement("a");
+      remove.textContent = "Uninstall";
+      remove.onclick = () => uninstallSource(row.id);
+      links.append(status, remove);
+      if (row.id === "malwarebazaar" || row.id === "virustotal") {
+        const test = document.createElement("a");
+        test.textContent = "Test";
+        const result = document.createElement("span");
+        result.className = "test-result";
+        test.onclick = () => testSource(row.id, result);
+        links.append(test, result);
+      }
+    }
+    body.append(title, pub, desc, links);
+    card.append(logo, body);
+    cards.append(card);
+  }
+}
+
+function parseMarket(text) {
+  return text.split("\n").filter(Boolean).map((line) => {
+    const [id, name, state, count, publisher, category, description] = line.split("\t");
+    return {
+      id, name, publisher, category, description,
+      installed: state !== "not-installed",
+      enabled: state === "enabled",
+      hashCount: Number(count) || 0,
+    };
+  });
+}
+
+async function openMarket() {
+  const result = await window.mcparser.marketplace();
+  if (!result || result.code !== 0) { status.textContent = (result && result.err) || "Marketplace failed"; return; }
+  renderMarket(parseMarket(result.out || ""));
+  document.getElementById("market-sheet").hidden = false;
+}
+
+function askKey(name) {
+  return new Promise((resolve) => {
+    const box = document.createElement("div");
+    box.className = "key-ask";
+    const label = document.createElement("p");
+    label.textContent = name + " API key. It is stored in the keychain, not in the case.";
+    const input = document.createElement("input");
+    input.type = "password";
+    input.placeholder = "API key";
+    const save = document.createElement("a");
+    save.textContent = "Save";
+    const cancel = document.createElement("a");
+    cancel.textContent = "Cancel";
+    const done = (value) => { box.remove(); resolve(value); };
+    save.onclick = () => done(input.value.trim());
+    cancel.onclick = () => done("");
+    input.onkeydown = (event) => { if (event.key === "Enter") done(input.value.trim()); };
+    box.append(label, input, save, cancel);
+    document.getElementById("market-sheet").append(box);
+    input.focus();
+  });
+}
+
+async function installSource(row) {
+  let config = "{}";
+  if (row.id === "malwarebazaar" || row.id === "virustotal") {
+    const key = await askKey(row.name);
+    if (!key) return;
+    const stored = await window.mcparser.storeKey(row.id, key);
+    if (!stored || stored.code !== 0) { status.textContent = (stored && stored.err) || "The keychain is not available"; return; }
+    config = JSON.stringify({ keyName: row.id });
+  }
+  const result = await window.mcparser.installSource(row.id, config);
+  status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Install failed";
+  openMarket();
+}
+
+async function uninstallSource(id) {
+  const result = await window.mcparser.uninstallSource(id);
+  status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Uninstall failed";
+  openMarket();
+}
+
+async function importSource(id) {
+  const result = await window.mcparser.importHashes(id);
+  if (result && result.canceled) return;
+  status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Import failed";
+  openMarket();
+}
+
+document.querySelectorAll(".market-filter button").forEach((button) => {
+  button.onclick = () => {
+    marketFilter = button.dataset.filter;
+    document.querySelectorAll(".market-filter button").forEach((b) => b.classList.toggle("active", b === button));
+    renderMarket(marketRows);
+  };
+});
+document.querySelectorAll(".market-cats input").forEach((box) => {
+  box.onchange = () => renderMarket(marketRows);
+});
+document.getElementById("market-search").oninput = (event) => {
+  marketSearch = event.target.value.toLowerCase();
+  renderMarket(marketRows);
+};
+document.getElementById("market-close").onclick = () => { document.getElementById("market-sheet").hidden = true; };
+document.getElementById("tb-market").onclick = openMarket;
+if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
+
+async function testSource(id, line) {
+  line.textContent = "Testing...";
+  const result = await window.mcparser.testSource(id);
+  line.textContent = (result && (result.out || result.err)) || "Test failed";
+}

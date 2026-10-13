@@ -23,6 +23,12 @@ fn main() -> ExitCode {
         Some("ioc-update") => ioc_update(&mut args),
         Some("hunt") => hunt(&mut args),
         Some("hunt-matches") => hunt_matches(&mut args),
+        Some("marketplace") => marketplace(&mut args),
+        Some("install-source") => install_source(&mut args),
+        Some("uninstall-source") => uninstall_source(&mut args),
+        Some("import-hashes") => import_hashes(&mut args),
+        Some("match-hashes") => match_hashes(&mut args),
+        Some("ioc-upload") => ioc_upload(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
         Some("collections") => collections(&mut args),
@@ -70,6 +76,12 @@ Commands:
   save-run       Store a run without the window
   chats          List stored vendor turns
   save-chat      Store a question, a SELECT, and an answer
+  marketplace    List hash sources and their install state
+  install-source Install and enable a hash source
+  uninstall-source Remove a hash source and its hashes
+  import-hashes  Import a local hash list into an installed source
+  match-hashes   Match enabled hash sources against the case
+  ioc-upload     Import a CSV of kind,value pairs into the machine store
   iocs           List indicators of compromise on the case
   ioc-add        Add an indicator
   ioc-remove     Remove an indicator by id
@@ -504,13 +516,19 @@ fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
     } else {
         "table".to_string()
     };
+    let store = rest.iter().position(|a| a == "--store").and_then(|i| rest.get(i + 1)).map(PathBuf::from);
+    if let Some(index) = rest.iter().position(|a| a == "--store") {
+        rest.remove(index);
+        if rest.len() > index { rest.remove(index); }
+    }
     let Some(sql) = rest.first() else {
         eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
         return ExitCode::from(2);
     };
     let db = case_dir.join("events.duckdb");
     let _ = case::ensure_hunt_table(&db);
-    let table = match case::query_table(&db, sql) {
+    let catalog = case_dir.join("catalog.sqlite");
+    let table = match case::query_table_with_iocs(&db, Some(&catalog), store.as_deref(), sql) {
         Ok(table) => table,
         Err(err) => {
             eprintln!("{err}");
@@ -1219,5 +1237,113 @@ fn userassist(args: &mut impl Iterator<Item = String>) -> ExitCode {
             eprintln!("{err}");
             ExitCode::from(1)
         }
+    }
+}
+
+fn store_path(args: &[String]) -> PathBuf {
+    if let Some(i) = args.iter().position(|a| a == "--store") {
+        if let Some(path) = args.get(i + 1) { return PathBuf::from(path); }
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home).join(".mcparser").join("marketplace.sqlite")
+}
+
+fn marketplace(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    match case::hash_sources(&store) {
+        Ok(rows) => {
+            for row in rows {
+                let state = if !row.installed { "not-installed" } else if row.enabled { "enabled" } else { "disabled" };
+                println!("{}\t{}\t{}\t{}\t{}\t{}\t{}", row.id, row.name, state, row.hash_count, row.publisher, row.category, row.description);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn install_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
+    let config = rest.windows(2).find(|w| w[0] == "--config").map(|w| w[1].clone()).unwrap_or_else(|| "{}".into());
+    if id.is_empty() {
+        eprintln!("usage: mcparser install-source --source <id> [--store <path>] [--config <json>]");
+        return ExitCode::from(2);
+    }
+    match case::install_hash_source(&store, &id, &config) {
+        Ok(()) => { println!("installed {id}"); ExitCode::SUCCESS }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn uninstall_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
+    if id.is_empty() {
+        eprintln!("usage: mcparser uninstall-source --source <id> [--store <path>]");
+        return ExitCode::from(2);
+    }
+    match case::uninstall_hash_source(&store, &id) {
+        Ok(()) => { println!("uninstalled {id}"); ExitCode::SUCCESS }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn import_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
+    let file = rest.windows(2).find(|w| w[0] == "--file").map(|w| w[1].clone()).unwrap_or_default();
+    if id.is_empty() || file.is_empty() {
+        eprintln!("usage: mcparser import-hashes --source <id> --file <path> [--store <path>]");
+        return ExitCode::from(2);
+    }
+    let text = match std::fs::read_to_string(&file) {
+        Ok(text) => text,
+        Err(err) => { eprintln!("{file}: {err}"); return ExitCode::from(1); }
+    };
+    match case::import_hashes(&store, &id, &text) {
+        Ok(count) => { println!("imported {count} into {id}"); ExitCode::SUCCESS }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn match_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let case_dir = rest.windows(2).find(|w| w[0] == "--case").map(|w| PathBuf::from(&w[1]));
+    let Some(case_dir) = case_dir else {
+        eprintln!("usage: mcparser match-hashes --case <dir> [--store <path>]");
+        return ExitCode::from(2);
+    };
+    let store = store_path(&rest);
+    let db = case_dir.join("events.duckdb");
+    match case::match_hashes(&store, &db) {
+        Ok(rows) => {
+            println!("hits {}", rows.len());
+            for row in &rows {
+                println!("{}\t{}\t{}\t{}\t{}", row.source, row.host_id, row.column, row.value, row.ioc_value);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn ioc_upload(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    let file = rest.iter().position(|a| a == "--file")
+        .and_then(|i| rest.get(i + 1))
+        .map(PathBuf::from);
+    let Some(file) = file else {
+        eprintln!("usage: mcparser ioc-upload --file <csv>");
+        return ExitCode::from(2);
+    };
+    match case::import_ioc_file(&store, &file) {
+        Ok(count) => { println!("imported {count} IOCs"); ExitCode::SUCCESS }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
