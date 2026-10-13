@@ -688,7 +688,11 @@ ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(
 ipcMain.handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
 ipcMain.handle("store-key", (_event, name, key) => { try { storeKey(name, key); return { code: 0 }; } catch (err) { return { code: 1, err: err.message }; } });
 ipcMain.handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
-ipcMain.handle("uninstall-source", (_event, id) => run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+ipcMain.handle("uninstall-source", (_event, id) => {
+  const file = keyFile(id);
+  if (fs.existsSync(file)) fs.unlinkSync(file);
+  return run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+});
 ipcMain.handle("import-hashes", async (_event, id) => {
   const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "Hash list", extensions: ["txt", "csv"] }] });
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
