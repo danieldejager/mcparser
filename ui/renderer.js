@@ -407,7 +407,10 @@ function renderCsv(text) {
       tr.onclick = () => {
         table.querySelectorAll("tr.selected").forEach((row) => row.classList.remove("selected"));
         tr.classList.add("selected");
-        showNoteSheet(recordId, rowNotes.get(recordId) || "", row.join(" | "));
+      };
+      tr.oncontextmenu = (event) => {
+        event.preventDefault();
+        showRowMenu(event, recordId, rowNotes.get(recordId) || "", row);
       };
     }
     table.append(tr);
@@ -460,6 +463,45 @@ async function showNotes() {
   makeResizable(table);
   results.replaceChildren(table);
   status.textContent = "Notes";
+}
+
+function rowHash(row) {
+  const hex = /^[a-f0-9]{32,64}$/i;
+  for (const cell of row) {
+    const value = String(cell).trim();
+    if (hex.test(value)) return value;
+  }
+  return "";
+}
+
+function showRowMenu(event, recordId, note, row) {
+  const old = document.getElementById("row-menu");
+  if (old) old.remove();
+  const menu = document.createElement("div");
+  menu.id = "row-menu";
+  menu.className = "row-menu";
+  menu.style.left = event.clientX + "px";
+  menu.style.top = event.clientY + "px";
+  const noteItem = document.createElement("a");
+  noteItem.textContent = "Add note";
+  noteItem.onclick = () => { menu.remove(); showNoteSheet(recordId, note, row.join(" | ")); };
+  menu.append(noteItem);
+  const hash = rowHash(row);
+  if (hash) {
+    const look = document.createElement("a");
+    look.textContent = "MalwareBazaar lookup";
+    look.onclick = () => { menu.remove(); lookupHash(hash); };
+    menu.append(look);
+  }
+  document.body.append(menu);
+  const close = () => { menu.remove(); document.removeEventListener("click", close); };
+  setTimeout(() => document.addEventListener("click", close), 0);
+}
+
+async function lookupHash(hash) {
+  status.textContent = "Looking up " + hash.slice(0, 12) + "...";
+  const result = await window.mcparser.lookupHash(hash);
+  status.textContent = result && (result.out || result.err) ? "MalwareBazaar: " + (result.out || result.err) : "Lookup failed";
 }
 
 function showNoteSheet(recordId, body, rowText) {

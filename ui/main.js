@@ -715,6 +715,19 @@ ipcMain.handle("test-source", async (_event, id) => {
     return { code: 1, err: err.message };
   }
 });
+ipcMain.handle("lookup-hash", async (_event, hash) => {
+  try {
+    const key = loadSourceKey("malwarebazaar");
+    const body = new URLSearchParams({ query: "get_info", hash });
+    const response = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", headers: { "Auth-Key": key }, body });
+    const json = await response.json().catch(() => ({}));
+    const state = json.query_status || response.status;
+    const name = (json.data && json.data[0] && (json.data[0].signature || json.data[0].file_name)) || "";
+    return { code: response.ok ? 0 : 1, out: state + (name ? ": " + name : "") };
+  } catch (err) {
+    return { code: 1, err: err.message };
+  }
+});
 ipcMain.handle("import-hashes", async (_event, id) => {
   const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "Hash list", extensions: ["txt", "csv"] }] });
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
