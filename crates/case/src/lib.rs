@@ -931,6 +931,50 @@ pub fn ingest_amcache(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         for hive in amcache_hives(&root) {
             inserted += load_amcache_hive(&db, &host_id, &hive)?;
         }
+        for jsonl in amcache_jsonl(&root) {
+            inserted += load_amcache_jsonl(&db, &host_id, &jsonl)?;
+        }
+    }
+    Ok(inserted)
+}
+
+fn amcache_jsonl(root: &Path) -> Vec<std::path::PathBuf> {
+    let mut found = Vec::new();
+    let mut pending = vec![root.to_path_buf()];
+    while let Some(dir) = pending.pop() {
+        let entries = match std::fs::read_dir(&dir) { Ok(entries) => entries, Err(_) => continue };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); continue; }
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
+            if name == "inventoryapplicationfile.json" || name == "file.json" {
+                found.push(path);
+            }
+        }
+    }
+    found
+}
+
+fn load_amcache_jsonl(db: &duckdb::Connection, host_id: &str, path: &Path) -> Result<usize, String> {
+    let text = std::fs::read_to_string(path).map_err(|err| err.to_string())?;
+    let mut inserted = 0;
+    for line in text.lines() {
+        let line = line.trim();
+        if line.is_empty() { continue; }
+        let value: serde_json::Value = match serde_json::from_str(line) { Ok(v) => v, Err(_) => continue };
+        let sha = value.get("SHA1").and_then(|v| v.as_str()).unwrap_or("");
+        if sha.is_empty() { continue; }
+        let name = value.get("Name").and_then(|v| v.as_str()).unwrap_or("");
+        let full = value.get("FullPath").and_then(|v| v.as_str()).unwrap_or("");
+        let size = value.get("Size").and_then(|v| v.as_i64()).unwrap_or(0);
+        let modified = value.get("Timestamp").and_then(|v| v.as_str()).unwrap_or("");
+        let publisher = value.get("ProductName").and_then(|v| v.as_str()).unwrap_or("");
+        let version = value.get("ProductVersion").and_then(|v| v.as_str()).unwrap_or("");
+        db.execute(
+            "INSERT INTO amcache (host_id, kind, name, path, sha1, size, modified, publisher, version, key_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            duckdb::params![host_id, "file", name, full, sha, size, modified, publisher, version, path.display().to_string()],
+        ).map_err(|err| err.to_string())?;
+        inserted += 1;
     }
     Ok(inserted)
 }
