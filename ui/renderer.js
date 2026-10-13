@@ -1647,14 +1647,11 @@ function renderMarket(rows) {
     } else {
       const status = document.createElement("div");
       status.className = "status";
-      status.textContent = "Installed · " + row.hashCount + " hashes";
-      const imp = document.createElement("a");
-      imp.textContent = "Import list";
-      imp.onclick = () => importSource(row.id);
+      status.textContent = "Installed";
       const remove = document.createElement("a");
       remove.textContent = "Uninstall";
       remove.onclick = () => uninstallSource(row.id);
-      links.append(status, imp, remove);
+      links.append(status, remove);
     }
     body.append(title, pub, desc, links);
     card.append(logo, body);
