@@ -1753,7 +1753,8 @@ document.getElementById("tb-market").onclick = openMarket;
 if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
 
 async function testSource(id) {
-  status.textContent = "Testing...";
+  const line = document.getElementById("market-status");
+  line.textContent = "Testing...";
   const result = await window.mcparser.testSource(id);
-  status.textContent = (result && (result.out || result.err)) || "Test failed";
+  line.textContent = (result && (result.out || result.err)) || "Test failed";
 }
