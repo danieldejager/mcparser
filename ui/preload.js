@@ -36,6 +36,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   huntMatches: (caseDir, runId) => ipcRenderer.invoke("hunt-matches", caseDir, runId),
   marketplace: () => ipcRenderer.invoke("marketplace"),
   installSource: (id, config) => ipcRenderer.invoke("install-source", id, config),
+  storeKey: (name, key) => ipcRenderer.invoke("store-key", name, key),
   uninstallSource: (id) => ipcRenderer.invoke("uninstall-source", id),
   importHashes: (id) => ipcRenderer.invoke("import-hashes", id),
   matchHashes: (caseDir) => ipcRenderer.invoke("match-hashes", caseDir),

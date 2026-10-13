@@ -1680,10 +1680,12 @@ async function openMarket() {
 
 async function installSource(row) {
   let config = "{}";
-  if (row.id === "virustotal") {
-    const key = window.prompt("VirusTotal API key. It is stored in the keychain, not in the case.");
+  if (row.id === "malwarebazaar" || row.id === "virustotal") {
+    const key = window.prompt(row.name + " API key. It is stored in the keychain, not in the case.");
     if (!key) return;
-    config = JSON.stringify({ keyName: "virustotal" });
+    const stored = await window.mcparser.storeKey(row.id, key);
+    if (!stored || stored.code !== 0) { status.textContent = (stored && stored.err) || "The keychain is not available"; return; }
+    config = JSON.stringify({ keyName: row.id });
   }
   const result = await window.mcparser.installSource(row.id, config);
   status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Install failed";

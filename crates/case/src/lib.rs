@@ -1919,7 +1919,7 @@ pub struct HashSource {
 }
 
 const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
-    ("malwarebazaar", "MalwareBazaar", "Local import of CSV or plain-text hash exports. No network call.", "abuse.ch", "Hash Sources"),
+    ("malwarebazaar", "MalwareBazaar", "Query a sample hash against the abuse.ch API. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
     ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
     ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
     ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
