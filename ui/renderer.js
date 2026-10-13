@@ -1652,6 +1652,12 @@ function renderMarket(rows) {
       remove.textContent = "Uninstall";
       remove.onclick = () => uninstallSource(row.id);
       links.append(status, remove);
+      if (row.id === "malwarebazaar" || row.id === "virustotal") {
+        const test = document.createElement("a");
+        test.textContent = "Test";
+        test.onclick = () => testSource(row.id);
+        links.append(test);
+      }
     }
     body.append(title, pub, desc, links);
     card.append(logo, body);
@@ -1745,3 +1751,9 @@ document.getElementById("market-search").oninput = (event) => {
 document.getElementById("market-close").onclick = () => { document.getElementById("market-sheet").hidden = true; };
 document.getElementById("tb-market").onclick = openMarket;
 if (window.mcparser.onMarketplace) window.mcparser.onMarketplace(openMarket);
+
+async function testSource(id) {
+  status.textContent = "Testing...";
+  const result = await window.mcparser.testSource(id);
+  status.textContent = (result && (result.out || result.err)) || "Test failed";
+}

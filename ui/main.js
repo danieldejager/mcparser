@@ -29,6 +29,13 @@ function keyFile(name) {
   return path.join(app.getPath("userData"), `${name}-key.bin`);
 }
 
+function loadSourceKey(name) {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
+  const file = keyFile(name);
+  if (!fs.existsSync(file)) throw new Error("No key is stored");
+  return safeStorage.decryptString(fs.readFileSync(file));
+}
+
 function storeKey(name, key) {
   if (!safeStorage.isEncryptionAvailable()) throw new Error("The keychain is not available");
   const file = keyFile(name);
@@ -692,6 +699,21 @@ ipcMain.handle("uninstall-source", (_event, id) => {
   const file = keyFile(id);
   if (fs.existsSync(file)) fs.unlinkSync(file);
   return run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+});
+ipcMain.handle("test-source", async (_event, id) => {
+  try {
+    const key = loadSourceKey(id);
+    if (id === "malwarebazaar") {
+      const body = new URLSearchParams({ query: "get_info", hash: "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d" });
+      const response = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", headers: { "Auth-Key": key }, body });
+      const json = await response.json().catch(() => ({}));
+      const state = json.query_status || response.status;
+      return { code: response.ok ? 0 : 1, out: "MalwareBazaar: " + state };
+    }
+    return { code: 1, err: "No test for " + id };
+  } catch (err) {
+    return { code: 1, err: err.message };
+  }
 });
 ipcMain.handle("import-hashes", async (_event, id) => {
   const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "Hash list", extensions: ["txt", "csv"] }] });
