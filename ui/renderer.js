@@ -1640,8 +1640,7 @@ function renderMarket(rows) {
     const links = document.createElement("div");
     links.className = "links";
     if (!row.installed) {
-      const install = document.createElement("button");
-      install.type = "button";
+      const install = document.createElement("a");
       install.textContent = "Install";
       install.onclick = () => installSource(row);
       links.append(install);
@@ -1688,11 +1687,9 @@ function askKey(name) {
     const input = document.createElement("input");
     input.type = "password";
     input.placeholder = "API key";
-    const save = document.createElement("button");
-    save.type = "button";
+    const save = document.createElement("a");
     save.textContent = "Save";
-    const cancel = document.createElement("button");
-    cancel.type = "button";
+    const cancel = document.createElement("a");
     cancel.textContent = "Cancel";
     const done = (value) => { box.remove(); resolve(value); };
     save.onclick = () => done(input.value.trim());
