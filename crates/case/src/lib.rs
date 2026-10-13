@@ -947,7 +947,9 @@ fn amcache_jsonl(root: &Path) -> Vec<std::path::PathBuf> {
             let path = entry.path();
             if path.is_dir() { pending.push(path); continue; }
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_ascii_lowercase();
-            if name == "inventoryapplicationfile.json" || name == "file.json" {
+            let decoded = name.replace("%2f", "/");
+            let leaf = decoded.rsplit('/').next().unwrap_or(&decoded);
+            if leaf == "inventoryapplicationfile.json" || leaf == "file.json" {
                 found.push(path);
             }
         }
