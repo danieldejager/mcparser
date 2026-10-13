@@ -1640,7 +1640,8 @@ function renderMarket(rows) {
     const links = document.createElement("div");
     links.className = "links";
     if (!row.installed) {
-      const install = document.createElement("a");
+      const install = document.createElement("button");
+      install.type = "button";
       install.textContent = "Install";
       install.onclick = () => installSource(row);
       links.append(install);
@@ -1678,10 +1679,35 @@ async function openMarket() {
   document.getElementById("market-sheet").hidden = false;
 }
 
+function askKey(name) {
+  return new Promise((resolve) => {
+    const box = document.createElement("div");
+    box.className = "key-ask";
+    const label = document.createElement("p");
+    label.textContent = name + " API key. It is stored in the keychain, not in the case.";
+    const input = document.createElement("input");
+    input.type = "password";
+    input.placeholder = "API key";
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = "Save";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.textContent = "Cancel";
+    const done = (value) => { box.remove(); resolve(value); };
+    save.onclick = () => done(input.value.trim());
+    cancel.onclick = () => done("");
+    input.onkeydown = (event) => { if (event.key === "Enter") done(input.value.trim()); };
+    box.append(label, input, save, cancel);
+    document.getElementById("market-sheet").append(box);
+    input.focus();
+  });
+}
+
 async function installSource(row) {
   let config = "{}";
   if (row.id === "malwarebazaar" || row.id === "virustotal") {
-    const key = window.prompt(row.name + " API key. It is stored in the keychain, not in the case.");
+    const key = await askKey(row.name);
     if (!key) return;
     const stored = await window.mcparser.storeKey(row.id, key);
     if (!stored || stored.code !== 0) { status.textContent = (stored && stored.err) || "The keychain is not available"; return; }
