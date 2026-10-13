@@ -2,18 +2,35 @@
 
 ## 0.3.2 — 2026-10-13
 
-Marketplace sources and a right-click lookup. Amcache hashes from a Velociraptor collection sit in the case.
+Thirty-three commits. A marketplace for hash sources, a right-click lookup, and Amcache hashes from a Velociraptor collection.
 
-### Added
+### Marketplace
 
-- Marketplace under Administration. Install, test and uninstall a source. The key stays in the keychain
-- MalwareBazaar is an API source. Test posts a known hash. Uninstall removes the key
-- Right click a result row. Add a note, or look up a hash on MalwareBazaar
-- Velociraptor Amcache JSONL loads into the amcache table. The SHA1 is on the row
+- Hash Sources marketplace. Machine-local, not in the case. Menu under Administration, toolbar button, sheet that fills the window
+- A card shows the source. Install is the action. The API key is asked in the sheet and stored in the keychain
+- MalwareBazaar is the first API source. Test posts a known hash and shows the result on the card. Uninstall removes the key
+- Upload a CSV of IOCs under Administration, IOC Management. Progress shows. The result lands in the results pane. The IOC tables are queryable in the SQL editor
+- The custom hash list is gone. Upload replaces it
 
-### Fixed
+### Lookup
 
-- The Amcache loader matches the URL-encoded file name from a Velociraptor zip
+- Right click a result row. Choose Add note or MalwareBazaar lookup
+- The lookup posts the hash from the row. The status bar shows the result
+- Left click selects the row. The note sheet sits above the results grid
+
+### Amcache
+
+- A Velociraptor collection zip carries InventoryApplicationFile.json, not a raw Amcache.hve
+- The loader reads the JSONL. Rows with a SHA1 go into the amcache table
+- The file name is URL-encoded. The finder decodes it and matches the leaf
+
+### Polish
+
+- File menu gains Save and Save All. Save All writes every SQL tab
+- Run is renamed Execute. The label is white
+- Marketplace toolbar button is an icon. The sheet is wide. The heading is white
+- The marketplace rebuilds its menu on focus
+- Schema documented, with a query example
 
 ## 0.3.1 — 2026-10-10
 
