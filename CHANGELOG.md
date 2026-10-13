@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.2 — 2026-10-13
+
+Marketplace sources and a right-click lookup. Amcache hashes from a Velociraptor collection sit in the case.
+
+### Added
+
+- Marketplace under Administration. Install, test and uninstall a source. The key stays in the keychain
+- MalwareBazaar is an API source. Test posts a known hash. Uninstall removes the key
+- Right click a result row. Add a note, or look up a hash on MalwareBazaar
+- Velociraptor Amcache JSONL loads into the amcache table. The SHA1 is on the row
+
+### Fixed
+
+- The Amcache loader matches the URL-encoded file name from a Velociraptor zip
+
 ## 0.3.1 — 2026-10-10
 
 IOCs are a working list on the case. A hunt scans the timeline and the loaded artifacts, and the hits stay with the case.
