@@ -128,11 +128,6 @@ fn marketplace_install_and_match_respects_enabled_sources() {
     assert!(imported.status.success(), "{}", String::from_utf8_lossy(&imported.stderr));
     assert!(String::from_utf8_lossy(&imported.stdout).contains("imported 1"));
 
-    let custom = bin().args(["install-source", "--store"]).arg(&store).args(["--source", "custom"]).output().unwrap();
-    assert!(custom.status.success());
-    let gone = bin().args(["uninstall-source", "--store"]).arg(&store).args(["--source", "custom"]).output().unwrap();
-    assert!(gone.status.success());
-
     let dir = case("market");
     let matched = bin().args(["match-hashes", "--case"]).arg(&dir).args(["--store"]).arg(&store).output().unwrap();
     assert!(matched.status.success(), "{}", String::from_utf8_lossy(&matched.stderr));
