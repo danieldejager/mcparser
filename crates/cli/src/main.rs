@@ -27,6 +27,7 @@ fn main() -> ExitCode {
         Some("install-source") => install_source(&mut args),
         Some("uninstall-source") => uninstall_source(&mut args),
         Some("import-hashes") => import_hashes(&mut args),
+        Some("import-bazaar-full") => import_bazaar_full(&mut args),
         Some("match-hashes") => match_hashes(&mut args),
         Some("ioc-upload") => ioc_upload(&mut args),
         Some("collect") => collect(&mut args),
@@ -80,6 +81,7 @@ Commands:
   install-source Install and enable a hash source
   uninstall-source Remove a hash source and its hashes
   import-hashes  Import a local hash list into an installed source
+  import-bazaar-full  Import the MalwareBazaar full CSV or zip into the machine store
   match-hashes   Match enabled hash sources against the case
   ioc-upload     Import a CSV of kind,value pairs into the machine store
   iocs           List indicators of compromise on the case
@@ -1290,6 +1292,45 @@ fn uninstall_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
         Ok(()) => { println!("uninstalled {id}"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
+}
+
+
+fn import_bazaar_full(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let file = rest.iter().position(|a| a == "--file").and_then(|i| rest.get(i + 1)).map(PathBuf::from);
+    let Some(file) = file else {
+        eprintln!("usage: mcparser import-bazaar-full --file <csv-or-zip> [--store <path>]");
+        return ExitCode::from(2);
+    };
+    let store = store_path(&rest);
+    let csv = match read_bazaar_csv(&file) {
+        Ok(text) => text,
+        Err(err) => { eprintln!("{err}"); return ExitCode::from(1); }
+    };
+    match case::import_bazaar_full(&store, &csv) {
+        Ok((added, unchanged, updated)) => { println!("added {added} unchanged {unchanged} updated {updated}"); ExitCode::SUCCESS }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn read_bazaar_csv(path: &Path) -> Result<String, String> {
+    let bytes = std::fs::read(path).map_err(|err| err.to_string())?;
+    let lower = path.to_string_lossy().to_ascii_lowercase();
+    if lower.ends_with(".zip") {
+        let cursor = std::io::Cursor::new(bytes);
+        let mut archive = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
+        for i in 0..archive.len() {
+            let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
+            let name = entry.name().to_ascii_lowercase();
+            if name.ends_with(".csv") {
+                let mut body = String::new();
+                std::io::Read::read_to_string(&mut entry, &mut body).map_err(|err| err.to_string())?;
+                return Ok(body);
+            }
+        }
+        return Err("no csv in the zip".into());
+    }
+    String::from_utf8(bytes).map_err(|err| err.to_string())
 }
 
 fn import_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {

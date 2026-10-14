@@ -1966,6 +1966,7 @@ pub struct HashSource {
 
 const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
     ("malwarebazaar", "MalwareBazaar", "Query a sample hash against the abuse.ch API. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
+    ("malwarebazaar-full", "MalwareBazaar full", "Full CSV dump. Fetch with the stored key, or upload a zip or csv. New hashes are added. An existing row updates only when a column changed.", "abuse.ch", "Hash Sources"),
     ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
     ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
     ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
@@ -2088,6 +2089,72 @@ pub fn import_hashes(store: &Path, id: &str, text: &str) -> Result<usize, String
     Ok(count)
 }
 
+
+pub fn import_bazaar_full(store: &Path, csv: &str) -> Result<(usize, usize, usize), String> {
+    seed_hash_sources(store).map_err(|err| err.to_string())?;
+    let mut conn = open_store(store).map_err(|err| err.to_string())?;
+    let installed: i64 = conn.query_row("SELECT installed FROM hash_sources WHERE id = 'malwarebazaar-full'", [], |row| row.get(0)).unwrap_or(0);
+    if installed == 0 { return Err("malwarebazaar-full is not installed".into()); }
+    let mut existing = std::collections::HashMap::new();
+    {
+        let mut stmt = conn.prepare("SELECT hash, note FROM hash_sets WHERE source_id = 'malwarebazaar-full'").map_err(|err| err.to_string())?;
+        let rows = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))).map_err(|err| err.to_string())?;
+        for row in rows { let (h, n) = row.map_err(|err| err.to_string())?; existing.insert(h, n); }
+    }
+    let mut added = 0usize;
+    let mut unchanged = 0usize;
+    let mut updated = 0usize;
+    let tx = conn.transaction().map_err(|err| err.to_string())?;
+    for line in csv.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with("first_seen") { continue; }
+        let cols = split_csv(line);
+        if cols.len() < 3 { continue; }
+        let sha = cols.get(1).map(|s| s.to_ascii_lowercase()).unwrap_or_default();
+        if sha.len() != 64 { continue; }
+        let note = serde_json::json!({
+            "first_seen": cols.first().cloned().unwrap_or_default(),
+            "md5": cols.get(2).cloned().unwrap_or_default(),
+            "sha1": cols.get(3).cloned().unwrap_or_default(),
+            "reporter": cols.get(4).cloned().unwrap_or_default(),
+            "file_name": cols.get(5).cloned().unwrap_or_default(),
+            "file_type": cols.get(6).cloned().unwrap_or_default(),
+            "mime": cols.get(7).cloned().unwrap_or_default(),
+            "signature": cols.get(8).cloned().unwrap_or_default(),
+            "clamav": cols.get(9).cloned().unwrap_or_default(),
+            "vtpercent": cols.get(10).cloned().unwrap_or_default(),
+            "imphash": cols.get(11).cloned().unwrap_or_default(),
+            "ssdeep": cols.get(12).cloned().unwrap_or_default(),
+            "tlsh": cols.get(13).cloned().unwrap_or_default(),
+        }).to_string();
+        match existing.get(&sha) {
+            None => {
+                tx.execute("INSERT INTO hash_sets (source_id, hash, hash_kind, note) VALUES ('malwarebazaar-full', ?1, 'sha256', ?2)", rusqlite::params![sha, note]).map_err(|err| err.to_string())?;
+                added += 1;
+            }
+            Some(old) if old != &note => {
+                tx.execute("UPDATE hash_sets SET note = ?2 WHERE source_id = 'malwarebazaar-full' AND hash = ?1", rusqlite::params![sha, note]).map_err(|err| err.to_string())?;
+                updated += 1;
+            }
+            _ => { unchanged += 1; }
+        }
+    }
+    tx.commit().map_err(|err| err.to_string())?;
+    Ok((added, unchanged, updated))
+}
+
+fn split_csv(line: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut in_quote = false;
+    for c in line.chars() {
+        if c == '"' { in_quote = !in_quote; continue; }
+        if c == ',' && !in_quote { out.push(cur.trim().to_string()); cur.clear(); continue; }
+        cur.push(c);
+    }
+    out.push(cur.trim().to_string());
+    out
+}
 pub fn enabled_hashes(store: &Path) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
     let conn = open_store(store)?;
     let mut stmt = conn.prepare(

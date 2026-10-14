@@ -41,6 +41,8 @@ contextBridge.exposeInMainWorld("mcparser", {
   testSource: (id) => ipcRenderer.invoke("test-source", id),
   lookupHash: (hash) => ipcRenderer.invoke("lookup-hash", hash),
   importHashes: (id) => ipcRenderer.invoke("import-hashes", id),
+  fetchBazaarFull: () => ipcRenderer.invoke("fetch-bazaar-full"),
+  importBazaarFull: () => ipcRenderer.invoke("import-bazaar-full"),
   matchHashes: (caseDir) => ipcRenderer.invoke("match-hashes", caseDir),
   onMarketplace: (handler) => ipcRenderer.on("marketplace", () => handler()),
   saveRun: (caseDir, rows, sql, label, analyst, kind) => ipcRenderer.invoke("save-run", caseDir, rows, sql, label, analyst, kind),

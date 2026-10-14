@@ -733,6 +733,26 @@ ipcMain.handle("import-hashes", async (_event, id) => {
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
   return run(["import-hashes", "--source", id, "--file", picked.filePaths[0], "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
 });
+ipcMain.handle("fetch-bazaar-full", async () => {
+  let key;
+  try { key = loadSourceKey("malwarebazaar"); } catch (err) { return { code: 1, out: "", err: "Install MalwareBazaar and store the key first" }; }
+  const url = "https://mb-api.abuse.ch/v2/files/exports/" + encodeURIComponent(key) + "/full.csv.zip";
+  const res = await fetch(url);
+  if (!res.ok) return { code: 1, out: "", err: "MalwareBazaar returned " + res.status };
+  const buf = Buffer.from(await res.arrayBuffer());
+  const tmp = path.join(app.getPath("temp"), "mcparser-bazaar-full.zip");
+  fs.writeFileSync(tmp, buf);
+  return run(["import-bazaar-full", "--file", tmp, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+});
+ipcMain.handle("import-bazaar-full", async () => {
+  const picked = await dialog.showOpenDialog(win, {
+    title: "Upload MalwareBazaar full CSV or zip",
+    filters: [{ name: "CSV or zip", extensions: ["csv", "zip"] }],
+    properties: ["openFile"],
+  });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  return run(["import-bazaar-full", "--file", picked.filePaths[0], "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+});
 ipcMain.handle("match-hashes", (_event, caseDir) => run(["match-hashes", "--case", casePath(caseDir), "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
 ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
 

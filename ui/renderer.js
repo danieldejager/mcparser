@@ -1702,6 +1702,26 @@ function renderMarket(rows) {
         test.onclick = () => testSource(row.id, result);
         links.append(test, result);
       }
+      if (row.id === "malwarebazaar-full") {
+        const fetchLink = document.createElement("a");
+        fetchLink.textContent = "Fetch latest";
+        const result = document.createElement("span");
+        result.className = "test-result";
+        fetchLink.onclick = async () => {
+          result.textContent = "Fetching...";
+          const out = await window.mcparser.fetchBazaarFull();
+          result.textContent = out && out.code === 0 ? out.out.trim() : (out && out.err) || "Fetch failed";
+          openMarketplace();
+        };
+        const upload = document.createElement("a");
+        upload.textContent = "Upload";
+        upload.onclick = async () => {
+          const out = await window.mcparser.importBazaarFull();
+          if (out && !out.canceled) result.textContent = out.code === 0 ? out.out.trim() : out.err || "Upload failed";
+          openMarketplace();
+        };
+        links.append(fetchLink, upload, result);
+      }
     }
     body.append(title, pub, desc, links);
     card.append(logo, body);
