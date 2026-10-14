@@ -20,7 +20,7 @@ fn help_lists_every_command() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes", "ioc-upload"] {
+    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "import-bazaar-full", "match-hashes", "ioc-upload"] {
         assert!(text.contains(command), "{command} missing from help");
     }
 }
@@ -154,4 +154,20 @@ fn ioc_upload_imports_pairs() {
     assert!(text.contains("imported 3 IOCs"), "{text}");
     let again = bin().args(["ioc-upload", "--file"]).arg(&csv).arg("--store").arg(&store).output().unwrap();
     assert!(String::from_utf8_lossy(&again.stdout).contains("imported 0 IOCs"));
+}
+
+#[test]
+fn bazaar_full_adds_and_skips_unchanged() {
+    let store = std::env::temp_dir().join(format!("mcparser-bazaar-{}.sqlite", std::process::id()));
+    let _ = std::fs::remove_file(&store);
+    let install = bin().args(["install-source", "--store"]).arg(&store).args(["--source", "malwarebazaar-full"]).output().unwrap();
+    assert!(install.status.success(), "{}", String::from_utf8_lossy(&install.stderr));
+    let csv = std::env::temp_dir().join(format!("bazaar-{}.csv", std::process::id()));
+    std::fs::write(&csv, "first_seen_utc,sha256_hash,md5_hash,sha1_hash\n2026-01-01,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa,bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb,cccccccccccccccccccccccccccccccccccccccc\n").unwrap();
+    let first = bin().args(["import-bazaar-full", "--store"]).arg(&store).args(["--file"]).arg(&csv).output().unwrap();
+    assert!(first.status.success(), "{}", String::from_utf8_lossy(&first.stderr));
+    assert!(String::from_utf8_lossy(&first.stdout).contains("added 1"));
+    let second = bin().args(["import-bazaar-full", "--store"]).arg(&store).args(["--file"]).arg(&csv).output().unwrap();
+    assert!(second.status.success());
+    assert!(String::from_utf8_lossy(&second.stdout).contains("unchanged 1"));
 }
