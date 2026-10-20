@@ -286,6 +286,7 @@ const schema = [
   "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
   "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
   "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path, shimcache.path, services.path and tasks.command. The case context shows non-Windows services, tasks and shimcache rows, the busiest SRUM network rows, and the top event ids. Query the table for the rest.",
+  "Table malwarebazaar(sha256, note). It is not inside events. It is the machine-local MalwareBazaar full dump. note is JSON with file_name, signature, file_type, reporter. Match a hash with malwarebazaar.sha256. The case context shows a sample of rows.",
   "Return one DuckDB SELECT and no other text."
 ].join(" ");
 
@@ -317,6 +318,10 @@ async function caseContext(caseDir) {
   const tasks = await run(["query", "--case", casePath(caseDir), "--format", "csv",
     "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40"]);
   const tasksText = tasks.code === 0 ? tasks.out || "" : "tasks table is not loaded";
+  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
+  const bazaar = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", store,
+    "SELECT sha256, json_extract_string(note, '$.file_name') AS file_name, json_extract_string(note, '$.signature') AS signature FROM malwarebazaar LIMIT 20"]);
+  const bazaarText = bazaar.code === 0 ? bazaar.out || "" : "malwarebazaar is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
     "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
     "\nEvent ids in this case, csv event_id, channel, events:\n" + clip(eventsText) +
@@ -326,7 +331,8 @@ async function caseContext(caseDir) {
     "\nShimcache outside Windows, newest 30, csv position, executed, modified, path:\n" + clip(shimcacheText) +
     "\nSRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles:\n" + clip(srumText) +
     "\nServices outside System32, csv name, state, start_mode, user_id, path:\n" + clip(servicesText) +
-    "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText);
+    "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText) +
+    "\nMalwareBazaar sample, csv sha256, file_name, signature:\n" + clip(bazaarText);
 }
 
 function vendorLabel() {
@@ -349,11 +355,16 @@ async function coverage(caseDir) {
     ["srum", "SELECT app, bytes_sent FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 3"],
     ["services", "SELECT name, start_mode, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
     ["tasks", "SELECT command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
+    ["malwarebazaar", "SELECT sha256, json_extract_string(note, '$.file_name') AS file_name FROM malwarebazaar LIMIT 3"],
   ];
   const parts = [];
+  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
   for (const [name, sql] of samples) {
     askProgress("Querying " + name);
-    const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
+    const args = ["query", "--case", casePath(caseDir), "--format", "csv"];
+    if (name === "malwarebazaar") args.push("--store", store);
+    args.push(sql);
+    const queried = await run(args);
     parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + (queried.err || queried.out || "unknown")));
   }
   return parts.join("\n");
