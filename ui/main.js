@@ -16,6 +16,22 @@ const repo = path.resolve(__dirname, "..");
 const repository = "https://github.com/danieldejager/mcparser";
 const linkedin = "https://www.linkedin.com/in/daniel-de-jager-544162135/";
 const iconPath = path.join(__dirname, "icon.png");
+const MAX_OUT = 50 * 1024 * 1024;
+
+function debugLog(message) {
+  if (app.isPackaged) return;
+  try {
+    const file = path.join(app.getPath("userData"), "debug.log");
+    fs.appendFileSync(file, new Date().toISOString() + " " + message + "\n");
+  } catch {}
+}
+
+process.on("uncaughtException", (err) => {
+  debugLog("uncaught " + (err && err.stack ? err.stack : err));
+});
+process.on("unhandledRejection", (err) => {
+  debugLog("rejection " + (err && err.stack ? err.stack : err));
+});
 const iconPng = "iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAYAAADDPmHLAAABxklEQVR42u3aMU7DQBCG0ZyBwpVvQMM5OC2nySloqYMokBBCilDs2d3535O2wg07X5J1nMsFAAAAAAAAAAAAoIG3fb/ZhbCB31t2KXTwQjB8ERi+CAQgAMMXgQAEIAABCEAAhi8CERi+ABAAAiAwArsoAFIjsHvBEdi10BDsUlgQdgEA8uyvz84A3Qb6tZ5e9j/X999/r/9cb5cncdRAj7jeNAqHXjHQR643pcavdO8MXuneGSoH3ykAh8jBp/fZrjf1H4N/dMM/3q/l66hgDD88gLgIznhrHRHAGR8NPuvDA2gdwZmHq04BtIzg7NN1twBanQsqbq86BtAigqr7664BLB1B5Rcvq98Gtrs7qP7mrXsAy0UggOAARnz3nhDAEhGMeviSEsD0h0IBhAcw6jFr59vAZX5YMvI5e1IA00YgAAEIQAACEIAA8gIY/SPMpNvAaR8SCaDu/4197i8AAbheAK4XgADG2rbtZs21RGD4AhCACAxfAAIQgABEYPgCEIAIDF8AAhCAAERg+AIQgAgMXwACEIAARGD4AhCACAx/MSv8Zs+UCmOYJQDTmERFAHa5WTB2AQAAAAAAAAAAAAAAAICFfALz+NrUdqiEIwAAAABJRU5ErkJggg==";
 let win;
 let grokKey = "";
@@ -123,14 +139,25 @@ function run(args, password) {
     const child = spawn(parserBinary(), args, { cwd: app.isPackaged ? app.getPath("home") : repo, env });
     let out = "";
     let err = "";
+    let tooBig = false;
     child.stdout.on("data", (chunk) => {
-      out += chunk.toString();
+      if (tooBig) return;
+      const text = chunk.toString();
+      if (out.length + text.length > MAX_OUT) {
+        tooBig = true;
+        out = "";
+        err = "Result is too large to display. Add a LIMIT or a WHERE clause.";
+        debugLog("output exceeded " + MAX_OUT + " bytes for " + args.join(" "));
+        return;
+      }
+      out += text;
     });
     child.stderr.on("data", (chunk) => {
       err += chunk.toString();
     });
     child.on("close", (code) => {
-      resolve({ code, out, err });
+      if (tooBig) resolve({ code: 1, out: "", err });
+      else resolve({ code, out, err });
     });
     child.on("error", (error) => {
       resolve({ code: 1, out: "", err: error.message });
