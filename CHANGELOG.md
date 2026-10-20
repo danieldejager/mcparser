@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.3.3 — 2026-10-21
+
+MalwareBazaar full dump. The machine holds the hashes. The case holds the hits.
+
+### Full dump
+
+- MalwareBazaar full is a second card. Fetch with the stored key, or upload a zip or csv
+- The dump lives in its own database next to the marketplace store. It is not in the case
+- New hashes are added. An existing row updates only when a column changed
+- Uninstall removes the database
+- A query of SELECT * FROM malwarebazaar reads the store. No case is required
+- A result larger than 50 MB says so instead of crashing the window
+
+### Chat
+
+- The AI schema names the malwarebazaar table
+- The case context and the coverage check include a sample of its rows
+
+### Dev
+
+- Uncaught errors in dev mode write to debug.log in the app data folder
+
+
 ## 0.3.2 — 2026-10-13
 
 Thirty-three commits. A marketplace for hash sources, a right-click lookup, and Amcache hashes from a Velociraptor collection.
