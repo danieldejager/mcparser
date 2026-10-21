@@ -22,6 +22,11 @@ MalwareBazaar full dump. The machine holds the hashes. The case holds the hits.
 
 - Uncaught errors in dev mode write to debug.log in the app data folder
 
+### Supply chain
+
+- A CycloneDX SBOM (mcparser.cdx.json) is attached to the release
+- SHA256SUMS.txt lists the hash of every release asset
+
 
 ## 0.3.2 — 2026-10-13
 
