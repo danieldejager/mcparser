@@ -564,7 +564,7 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
     let entry_total = archive.len().max(1);
     for i in 0..entry_total {
         let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
-        let name = entry.name().to_string();
+        let name = entry.name().map(|s| s.to_string()).unwrap_or_default();
         report_progress((2 + (i * 10 / entry_total)) as u8, &format!("Reading collector {}/{entry_total} {name}", i + 1));
         if name.ends_with("client_info.json") {
             client_info_names.push(name);
@@ -636,7 +636,7 @@ pub fn import_collector(catalog: &Path, zip_path: &Path) -> Result<(Vec<Host>, V
         let mut nested = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
         for i in 0..nested.len() {
             let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
-            let entry_name = entry.name().to_string();
+            let entry_name = entry.name().map(|s| s.to_string()).unwrap_or_default();
             let lower_name = name.to_ascii_lowercase();
             let from_bundle = lower_name.contains("task") || lower_name.contains("service");
             if entry_name.ends_with('/') || entry.size() >= 80_000_000 || !(from_bundle || keep_raw(&entry_name)) { continue; }
@@ -708,7 +708,7 @@ fn nested_collector(bytes: &[u8], sha: &str, name: &str) -> Option<(String, Host
     let mut context = String::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).ok()?;
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name().map(|s| s.to_string()).unwrap_or_default();
         if entry_name.ends_with("client_info.json") {
             std::io::Read::read_to_string(&mut entry, &mut client).ok()?;
         } else if entry_name.ends_with("collection_context.json") {
@@ -773,7 +773,7 @@ pub fn eventlog_payloads(zip_path: &Path) -> Result<Vec<LogPayload>, String> {
     let mut raw = Vec::new();
     for i in 0..archive.len() {
         let mut entry = archive.by_index(i).map_err(|err| err.to_string())?;
-        let name = entry.name().to_string();
+        let name = entry.name().map(|s| s.to_string()).unwrap_or_default();
         if is_eventlogs_zip(&name) && entry.size() < 200_000_000 {
             let mut bytes = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut bytes).map_err(|err| err.to_string())?;
@@ -791,7 +791,7 @@ pub fn eventlog_payloads(zip_path: &Path) -> Result<Vec<LogPayload>, String> {
         let mut nested = zip::ZipArchive::new(cursor).map_err(|err| err.to_string())?;
         for i in 0..nested.len() {
             let mut entry = nested.by_index(i).map_err(|err| err.to_string())?;
-            let entry_name = entry.name().to_string();
+            let entry_name = entry.name().map(|s| s.to_string()).unwrap_or_default();
             if !entry_name.to_ascii_lowercase().ends_with(".evtx") || entry.size() >= 200_000_000 { continue; }
             let mut body = Vec::new();
             std::io::Read::read_to_end(&mut entry, &mut body).map_err(|err| err.to_string())?;
