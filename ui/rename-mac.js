@@ -14,11 +14,11 @@ if (!fs.existsSync(plist)) {
   process.exit(0);
 }
 
-function setKey(key) {
+function setKey(key, value = NAME) {
   try {
-    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ${NAME}`, plist], { stdio: "ignore" });
+    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Set :${key} ${value}`, plist], { stdio: "ignore" });
   } catch {
-    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Add :${key} string ${NAME}`, plist], { stdio: "ignore" });
+    execFileSync("/usr/libexec/PlistBuddy", ["-c", `Add :${key} string ${value}`, plist], { stdio: "ignore" });
   }
 }
 
@@ -41,6 +41,9 @@ if (fs.existsSync(renamed)) {
 
 setKey("CFBundleName");
 setKey("CFBundleDisplayName");
+// A distinct identifier stops the Dock reusing the label it cached for the
+// stock Electron app (com.github.Electron).
+setKey("CFBundleIdentifier", "com.danieldejager.mcparser.dev");
 
 // Changing the bundle invalidates its signature; re-sign it ad hoc so macOS
 // still launches it.
