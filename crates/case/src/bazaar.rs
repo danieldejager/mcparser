@@ -241,11 +241,7 @@ fn table_exists(conn: &duckdb::Connection, name: &str) -> bool {
 
 const HEX: &str = r"'\b([0-9a-f]{64}|[0-9a-f]{40}|[0-9a-f]{32})\b'";
 
-/// Gather every hash-like value in the case and join it against the dump.
-pub fn match_case(store: &Path, db_path: &Path, progress: &mut dyn FnMut(u8, &str)) -> Result<MatchOutcome, String> {
-    let (dump_rows, dump_meta) = dump_info(store).ok_or("The MalwareBazaar dump is not loaded. Upload or fetch it first.")?;
-    let conn = duckdb::Connection::open(db_path).map_err(|e| e.to_string())?;
-    progress(10, "Gathering hashes from the case");
+fn gather(conn: &duckdb::Connection) -> Result<(), String> {
     conn.execute_batch("CREATE OR REPLACE TEMP TABLE case_hashes (host_id VARCHAR, artifact VARCHAR, name VARCHAR, hash VARCHAR)").map_err(|e| e.to_string())?;
     let mut parts: Vec<String> = Vec::new();
     if table_exists(&conn, "amcache") {
@@ -263,6 +259,15 @@ pub fn match_case(store: &Path, db_path: &Path, progress: &mut dyn FnMut(u8, &st
         conn.execute(&format!("INSERT INTO case_hashes {part}"), []).map_err(|e| e.to_string())?;
     }
     conn.execute_batch("DELETE FROM case_hashes WHERE length(hash) NOT IN (32, 40, 64)").map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Gather every hash-like value in the case and join it against the dump.
+pub fn match_case(store: &Path, db_path: &Path, progress: &mut dyn FnMut(u8, &str)) -> Result<MatchOutcome, String> {
+    let (dump_rows, dump_meta) = dump_info(store).ok_or("The MalwareBazaar dump is not loaded. Upload or fetch it first.")?;
+    let conn = duckdb::Connection::open(db_path).map_err(|e| e.to_string())?;
+    progress(10, "Gathering hashes from the case");
+    gather(&conn)?;
     let checked: i64 = conn.query_row("SELECT count(DISTINCT hash) FROM case_hashes", [], |r| r.get(0)).map_err(|e| e.to_string())?;
     progress(40, &format!("Comparing {checked} hashes against {dump_rows} dump rows"));
     attach_dump(&conn, store)?;
@@ -337,6 +342,48 @@ pub fn write_report(case_dir: &Path, stamp: &str, outcome: &MatchOutcome) -> Res
     if outcome.hits.is_empty() { text.push_str("| none | | | | | | |\n"); }
     std::fs::write(&md, text).map_err(|e| e.to_string())?;
     Ok((csv, md, un))
+}
+
+/// Turn online get_info results (hash, sha256, signature, file_name) into hits
+/// attributed to every host and artifact in the case that holds the hash.
+pub fn online_hits(db_path: &Path, found: &[(String, String, String, String)]) -> Result<Vec<BazaarHit>, String> {
+    let conn = duckdb::Connection::open(db_path).map_err(|e| e.to_string())?;
+    gather(&conn)?;
+    conn.execute_batch("CREATE OR REPLACE TEMP TABLE online_found (hash VARCHAR, sha256 VARCHAR, signature VARCHAR, file_name VARCHAR)").map_err(|e| e.to_string())?;
+    for (h, s, sig, f) in found {
+        conn.execute("INSERT INTO online_found VALUES (lower(trim(?)), lower(trim(?)), ?, ?)", [h, s, sig, f]).map_err(|e| e.to_string())?;
+    }
+    let mut stmt = conn.prepare("SELECT DISTINCT c.host_id, c.artifact, c.name, c.hash, CASE length(c.hash) WHEN 64 THEN 'sha256' WHEN 40 THEN 'sha1' ELSE 'md5' END, o.sha256, o.signature, o.file_name FROM case_hashes c JOIN online_found o ON o.hash = c.hash ORDER BY 1, 2, 3").map_err(|e| e.to_string())?;
+    let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
+    let mut hits = Vec::new();
+    let s = |r: &duckdb::Row, i: usize| r.get::<_, Option<String>>(i).ok().flatten().unwrap_or_default();
+    while let Some(r) = rows.next().map_err(|e| e.to_string())? {
+        hits.push(BazaarHit { host_id: s(r, 0), artifact: s(r, 1), name: s(r, 2), hash: s(r, 3), kind: s(r, 4), sha256: s(r, 5), signature: s(r, 6), file_name: s(r, 7), source: "online lookup".into() });
+    }
+    Ok(hits)
+}
+
+/// Append online lookup hits to an existing report pair.
+pub fn append_report(csv: &Path, md: &Path, hits: &[BazaarHit], looked_up: usize) -> Result<(), String> {
+    use std::io::Write as _;
+    let mut f = std::fs::OpenOptions::new().append(true).open(csv).map_err(|e| e.to_string())?;
+    for h in hits {
+        writeln!(f, "{}", [&h.host_id, &h.artifact, &h.name, &h.hash, &h.kind, &h.sha256, &h.signature, &h.file_name, &h.source].iter().map(|v| csv_cell(v)).collect::<Vec<_>>().join(",")).map_err(|e| e.to_string())?;
+    }
+    let mut text = std::fs::read_to_string(md).map_err(|e| e.to_string())?;
+    text.push_str(&format!("
+## Online lookup
+
+- Hashes looked up online: {looked_up}
+- Matched (online lookup): {}
+
+| Host | Artifact | Path or name | Hash | Signature | File name | Source |\n|---|---|---|---|---|---|---|\n", hits.len()));
+    for h in hits {
+        let c = |v: &str| v.replace('|', "\\|");
+        text.push_str(&format!("| {} | {} | {} | {} | {} | {} | {} |\n", c(&h.host_id), c(&h.artifact), c(&h.name), c(&h.hash), c(&h.signature), c(&h.file_name), c(&h.source)));
+    }
+    if hits.is_empty() { text.push_str("| none | | | | | | |\n"); }
+    std::fs::write(md, text).map_err(|e| e.to_string())
 }
 
 impl BazaarHit {
