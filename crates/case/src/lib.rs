@@ -3,6 +3,8 @@ use model::Event;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+pub mod bazaar;
+
 pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")
 }
@@ -112,8 +114,9 @@ pub fn query_table_with_iocs(
     store: Option<&Path>,
     sql: &str,
 ) -> Result<Table, duckdb::Error> {
-    let conn = Connection::open(db_path)?;
+    let conn = if db_path.as_os_str().is_empty() { Connection::open_in_memory()? } else { Connection::open(db_path)? };
     let _ = expose_iocs(&conn, catalog, store);
+    if let Some(store) = store { let _ = bazaar::attach_dump(&conn, store); }
     let mut stmt = conn.prepare(sql)?;
     let mut rows = stmt.query([])?;
     let mut table = Table {
@@ -1965,7 +1968,7 @@ pub struct HashSource {
 }
 
 const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
-    ("malwarebazaar", "MalwareBazaar", "Query a sample hash against the abuse.ch API. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
+    ("malwarebazaar", "MalwareBazaar full", "The MalwareBazaar dump in its own local database. Fetch the export with the stored key or upload a zip or csv, then match a case in the background. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
     ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
     ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
     ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
@@ -2053,6 +2056,7 @@ pub fn uninstall_hash_source(store: &Path, id: &str) -> Result<(), String> {
     let conn = open_store(store).map_err(|err| err.to_string())?;
     conn.execute("UPDATE hash_sources SET installed = 0, enabled = 0, config = '{}' WHERE id = ?1", [id]).map_err(|err| err.to_string())?;
     conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [id]).map_err(|err| err.to_string())?;
+    if id == "malwarebazaar" { bazaar::remove_dump(store).map_err(|err| err.to_string())?; }
     Ok(())
 }
 
@@ -2196,6 +2200,8 @@ fn is_header(kind: &str, value: &str) -> bool {
     matches!(k.as_str(), "kind" | "type" | "ioc_type" | "indicator_type")
         || matches!(v.as_str(), "value" | "indicator" | "ioc")
 }
+
+pub(crate) fn chrono_now_pub() -> String { chrono_now() }
 
 fn chrono_now() -> String {
     std::time::SystemTime::now()
