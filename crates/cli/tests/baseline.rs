@@ -20,7 +20,7 @@ fn help_lists_every_command() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes", "bazaar-import", "bazaar-info", "bazaar-match", "bazaar-online-hits", "ioc-upload"] {
+    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes", "source-config", "bazaar-import", "bazaar-info", "bazaar-match", "bazaar-online-hits", "ioc-upload"] {
         assert!(text.contains(command), "{command} missing from help");
     }
 }
@@ -212,8 +212,12 @@ fn bazaar_dump_import_query_match_and_uninstall() {
     let st = |c: &mut Command| -> std::process::Output { c.output().unwrap() };
     let ok = |o: &std::process::Output| assert!(o.status.success(), "{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
 
-    let install = st(bin().args(["install-source", "--store"]).arg(&store).args(["--source", "malwarebazaar"]));
+    let config = r#"{"lookupEndpoint":"http://127.0.0.1:9/api/v1/","exportUrl":"http://127.0.0.1:9/v2/files/exports/{key}/recent.csv","onlineLookup":false,"onlineMax":25}"#;
+    let install = st(bin().args(["install-source", "--store"]).arg(&store).args(["--source", "malwarebazaar", "--config", config]));
     ok(&install);
+    let cfg = st(bin().args(["source-config", "--store"]).arg(&store).args(["--source", "malwarebazaar"]));
+    ok(&cfg);
+    assert_eq!(String::from_utf8_lossy(&cfg.stdout).trim(), config);
 
     // First load: a plain CSV with two samples.
     let csv1 = base.join("recent.csv");

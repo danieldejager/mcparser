@@ -28,6 +28,7 @@ fn main() -> ExitCode {
         Some("uninstall-source") => uninstall_source(&mut args),
         Some("import-hashes") => import_hashes(&mut args),
         Some("match-hashes") => match_hashes(&mut args),
+        Some("source-config") => source_config(&mut args),
         Some("bazaar-import") => bazaar_import(&mut args),
         Some("bazaar-info") => bazaar_info(&mut args),
         Some("bazaar-match") => bazaar_match(&mut args),
@@ -85,6 +86,7 @@ Commands:
   uninstall-source Remove a hash source and its hashes
   import-hashes  Import a local hash list into an installed source
   match-hashes   Match enabled hash sources against the case
+  source-config  Print the settings JSON of an installed hash source
   bazaar-import  Load a MalwareBazaar CSV or zip into the full dump database
   bazaar-info    Row count and import details of the MalwareBazaar dump
   bazaar-match   Match every hash in the case against the dump and write a report
@@ -1139,6 +1141,21 @@ fn unix_now() -> String {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_default()
 }
 
+fn source_config(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let Some(id) = flag(&rest, "--source") else {
+        eprintln!("usage: mcparser source-config --source <id> [--store <file>]");
+        return ExitCode::from(2);
+    };
+    match case::hash_sources(&store_path(&rest)) {
+        Ok(rows) => match rows.into_iter().find(|r| r.id == id) {
+            Some(row) => { println!("{}", row.config); ExitCode::SUCCESS }
+            None => { eprintln!("unknown source: {id}"); ExitCode::from(1) }
+        },
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
 fn bazaar_import(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let rest: Vec<String> = args.collect();
     let Some(file) = flag(&rest, "--file") else {
@@ -1148,7 +1165,7 @@ fn bazaar_import(args: &mut impl Iterator<Item = String>) -> ExitCode {
     let store = store_path(&rest);
     let mut last = 0u64;
     let mut progress = |n: u64| {
-        if n >= last + 100_000 { last = n; println!("progress\t{n}"); }
+        if n >= last + 100_000 { last = n; println!("progress\t50\tRead {n} rows"); }
     };
     match case::bazaar::import_dump(&store, Path::new(&file), &mut progress) {
         Ok(c) => {
