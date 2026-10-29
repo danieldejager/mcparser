@@ -1776,13 +1776,6 @@ async function uninstallSource(id) {
   openMarket();
 }
 
-async function importSource(id) {
-  const result = await window.mcparser.importHashes(id);
-  if (result && result.canceled) return;
-  status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Import failed";
-  openMarket();
-}
-
 document.querySelectorAll(".market-filter button").forEach((button) => {
   button.onclick = () => {
     marketFilter = button.dataset.filter;

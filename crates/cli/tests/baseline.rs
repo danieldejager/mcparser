@@ -20,7 +20,7 @@ fn help_lists_every_command() {
     let out = bin().arg("--help").output().unwrap();
     assert!(out.status.success());
     let text = String::from_utf8(out.stdout).unwrap();
-    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "import-hashes", "match-hashes", "source-config", "bazaar-import", "bazaar-info", "bazaar-match", "bazaar-online-hits", "ioc-upload"] {
+    for command in ["ingest", "query", "stats", "queries", "save-query", "notes", "save-note", "runs", "save-run", "chats", "save-chat", "handoff", "open-handoff", "save-analyst", "hosts", "collect", "marketplace", "install-source", "uninstall-source", "source-config", "bazaar-import", "bazaar-info", "bazaar-match", "bazaar-online-hits", "ioc-upload"] {
         assert!(text.contains(command), "{command} missing from help");
     }
 }
@@ -110,7 +110,7 @@ fn case_holds_two_hosts_keyed_by_host_id() {
 }
 
 #[test]
-fn marketplace_install_and_match_respects_enabled_sources() {
+fn marketplace_install_and_uninstall() {
     let store = std::env::temp_dir().join(format!("mcparser-market-{}.sqlite", std::process::id()));
     let _ = std::fs::remove_file(&store);
     let listed = bin().args(["marketplace", "--store"]).arg(&store).output().unwrap();
@@ -121,18 +121,6 @@ fn marketplace_install_and_match_respects_enabled_sources() {
 
     let install = bin().args(["install-source", "--store"]).arg(&store).args(["--source", "malwarebazaar"]).output().unwrap();
     assert!(install.status.success(), "{}", String::from_utf8_lossy(&install.stderr));
-
-    let list = std::env::temp_dir().join(format!("hashes-{}.txt", std::process::id()));
-    std::fs::write(&list, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\nnot-a-hash\n").unwrap();
-    let imported = bin().args(["import-hashes", "--store"]).arg(&store).args(["--source", "malwarebazaar", "--file"]).arg(&list).output().unwrap();
-    assert!(imported.status.success(), "{}", String::from_utf8_lossy(&imported.stderr));
-    assert!(String::from_utf8_lossy(&imported.stdout).contains("imported 1"));
-
-    let dir = case("market");
-    std::fs::create_dir_all(&dir).unwrap();
-    let matched = bin().args(["match-hashes", "--case"]).arg(&dir).args(["--store"]).arg(&store).output().unwrap();
-    assert!(matched.status.success(), "{}", String::from_utf8_lossy(&matched.stderr));
-    assert!(String::from_utf8_lossy(&matched.stdout).starts_with("hits "));
 
     let removed = bin().args(["uninstall-source", "--store"]).arg(&store).args(["--source", "malwarebazaar"]).output().unwrap();
     assert!(removed.status.success());
@@ -249,10 +237,10 @@ fn bazaar_dump_import_query_match_and_uninstall() {
     assert!(out.contains("rows\t3") && out.contains("newest_first_seen\t2026-10-03"), "{out}");
 
     // SQL editor without a case.
-    let q = st(bin().args(["query", "--format", "csv", "--store"]).arg(&store).arg("SELECT sha256, md5, sha1, note FROM malwarebazaar WHERE note LIKE '%Formbook%'"));
+    let q = st(bin().args(["query", "--format", "csv", "--store"]).arg(&store).arg("SELECT sha256, md5, sha1, file_name, signature FROM malwarebazaar WHERE signature = 'Formbook'"));
     ok(&q);
     let out = String::from_utf8_lossy(&q.stdout).to_string();
-    assert!(out.contains(&h('c', 64)) && out.contains(&format!("{}a", h('2', 31))) && out.contains(&h('d', 40)), "{out}");
+    assert!(out.contains(&h('c', 64)) && out.contains(&format!("{}a", h('2', 31))) && out.contains(&h('d', 40)) && out.contains("worse.dll"), "{out}");
 
     // A case with amcache and events holding hashes.
     let dir = base.join("case");

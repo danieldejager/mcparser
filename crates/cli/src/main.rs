@@ -26,8 +26,6 @@ fn main() -> ExitCode {
         Some("marketplace") => marketplace(&mut args),
         Some("install-source") => install_source(&mut args),
         Some("uninstall-source") => uninstall_source(&mut args),
-        Some("import-hashes") => import_hashes(&mut args),
-        Some("match-hashes") => match_hashes(&mut args),
         Some("source-config") => source_config(&mut args),
         Some("bazaar-import") => bazaar_import(&mut args),
         Some("bazaar-info") => bazaar_info(&mut args),
@@ -84,8 +82,6 @@ Commands:
   marketplace    List hash sources and their install state
   install-source Install and enable a hash source
   uninstall-source Remove a hash source and its hashes
-  import-hashes  Import a local hash list into an installed source
-  match-hashes   Match enabled hash sources against the case
   source-config  Print the settings JSON of an installed hash source
   bazaar-import  Load a MalwareBazaar CSV or zip into the full dump database
   bazaar-info    Row count and import details of the MalwareBazaar dump
@@ -1430,46 +1426,6 @@ fn uninstall_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
     }
     match case::uninstall_hash_source(&store, &id) {
         Ok(()) => { println!("uninstalled {id}"); ExitCode::SUCCESS }
-        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
-    }
-}
-
-fn import_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let rest: Vec<String> = args.collect();
-    let store = store_path(&rest);
-    let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
-    let file = rest.windows(2).find(|w| w[0] == "--file").map(|w| w[1].clone()).unwrap_or_default();
-    if id.is_empty() || file.is_empty() {
-        eprintln!("usage: mcparser import-hashes --source <id> --file <path> [--store <path>]");
-        return ExitCode::from(2);
-    }
-    let text = match std::fs::read_to_string(&file) {
-        Ok(text) => text,
-        Err(err) => { eprintln!("{file}: {err}"); return ExitCode::from(1); }
-    };
-    match case::import_hashes(&store, &id, &text) {
-        Ok(count) => { println!("imported {count} into {id}"); ExitCode::SUCCESS }
-        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
-    }
-}
-
-fn match_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let rest: Vec<String> = args.collect();
-    let case_dir = rest.windows(2).find(|w| w[0] == "--case").map(|w| PathBuf::from(&w[1]));
-    let Some(case_dir) = case_dir else {
-        eprintln!("usage: mcparser match-hashes --case <dir> [--store <path>]");
-        return ExitCode::from(2);
-    };
-    let store = store_path(&rest);
-    let db = case_dir.join("events.duckdb");
-    match case::match_hashes(&store, &db) {
-        Ok(rows) => {
-            println!("hits {}", rows.len());
-            for row in &rows {
-                println!("{}\t{}\t{}\t{}\t{}", row.source, row.host_id, row.column, row.value, row.ioc_value);
-            }
-            ExitCode::SUCCESS
-        }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
