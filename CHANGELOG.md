@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.3.4 (unreleased)
+
+MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a background match with a report.
+
+### Marketplace
+
+- MalwareBazaar full by abuse.ch replaces the MalwareBazaar card. The id stays malwarebazaar, so the right-click hash lookup keeps working
+- Fetch recent downloads the abuse.ch recent export with the stored key. The key never appears in logs, messages, settings, or reports, and any address shown has it replaced with ***
+- 401, 403, and 429 answers get clear messages. The temporary download is deleted on success and on failure
+- Upload zip or csv stays available as an alternative
+- The card shows the row count, the newest sample date, the load time, and the file date, because the export covers recent samples only
+- The dump lives in malwarebazaar.duckdb next to marketplace.sqlite. Loads report added, updated, and unchanged rows
+- Uninstall deletes the dump database
+- Endpoints and the online lookup are settings in the source config JSON
+
+### Matching
+
+- Match case gathers hashes from Amcache, event data, Prefetch, and Shimcache and joins them against the dump in the background with progress
+- Reports go to reports/malwarebazaar-<time>.csv and .md, plus a list of unmatched hashes
+- Hits are saved as hunt matches with their own run
+- An optional online lookup, off by default and capped per run, checks misses against the get_info API and backs off on 429. Each hit names its source, local dump or online lookup
+
+### Query
+
+- SELECT * FROM malwarebazaar works in the SQL editor with or without an open case
+- A result over 50 MB says so instead of drawing
+
+### Command line
+
+- New commands: bazaar-import, bazaar-info, bazaar-match, bazaar-online-hits, and source-config
+- query no longer requires --case
+
 ## 0.3.3 — 2026-10-21
 
 MalwareBazaar full dump. The machine holds the hashes. The case holds the hits.
