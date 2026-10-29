@@ -4,7 +4,7 @@ The marketplace holds data sources the machine can match against any case. It is
 
 Sources appear as cards, grouped by category. Hash Sources is the first category. Filter by All, Not installed, or Installed. Each card shows the source logo, the name, the publisher, and a short description. Install and Uninstall are links on the card.
 
-Nothing is installed until you choose a card. MalwareBazaar and Custom hash list take a local file of MD5, SHA1, or SHA256 values. VirusTotal asks for an API key. The key is written to the operating system keychain. Uninstall removes the integration and its imported hashes from the machine.
+Nothing is installed until you choose a card. MalwareBazaar full loads the abuse.ch export into its own database, described below. VirusTotal asks for an API key. The key is written to the operating system keychain. Uninstall removes the integration and its data from the machine.
 
 The installed sources and their hash lists live in a local store under the app's user data directory. They do not travel in the case or the .mcpz. Two machines can have different sources installed. That is expected.
 
@@ -13,8 +13,6 @@ When you match a case, the hits are written to that case. Each hit names the art
 ```
 mcparser marketplace
 mcparser install-source --source malwarebazaar
-mcparser import-hashes --source malwarebazaar --file hashes.txt
-mcparser match-hashes --case fixtures/case.mcp
 ```
 
 ## MalwareBazaar full
@@ -28,7 +26,13 @@ There are two ways to load the dump, and both can be used on the same machine.
 - Fetch recent downloads the recent export from abuse.ch with the stored key. The download streams to a temporary file, which is deleted afterwards and also when the download fails. If abuse.ch answers 401 or 403 the card says the key was rejected. If it answers 429 the card says you are rate limited and should try again later. Any address shown in a message has the key replaced with ***.
 - Upload zip or csv loads an export you already have. A zip is read by its first .csv member.
 
-The dump lives in its own database, malwarebazaar.duckdb, next to marketplace.sqlite in the app's user data directory. It holds sha256, md5, sha1, and note. The note is JSON with file_name, signature, file_type, and reporter. A new hash is added. An existing row is updated only when one of its columns changed. After each load the card reports how many rows were added, updated, and unchanged.
+The dump lives in its own database, malwarebazaar.duckdb, next to marketplace.sqlite in the app's user data directory. Every field of the abuse.ch CSV has its own column in the malwarebazaar table:
+
+- Hashes: sha256 (the key), md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon
+- Sample: first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence
+- note: JSON with any header column the importer does not know, keyed by its header name. It is NULL when the export has no such column, which is the normal case
+
+The header line may start with #, as in the abuse.ch export, and other # lines are skipped. Header names are matched without regard to case, spaces, or quotes, and common variants are accepted, for example sha256_hash or sha256, file_type_guess or file_type, first_seen_utc or first_seen. A file without a header is read in the abuse.ch column order. Quoted fields may hold commas and doubled quotes. n/a and empty values are stored as NULL, and a hash value that is not hex of the right length is left empty. A dump loaded by an earlier version, where file_name, signature, file_type, and reporter sat inside note, is moved to the new columns the next time it is loaded or matched. A new hash is added. An existing row is updated only when one of its columns changed. After each load the card reports how many rows were added, updated, and unchanged.
 
 The recent export covers recent samples, not every sample ever seen. The card shows the row count, the newest first_seen date in the dump, when it was loaded, and the file date sent by abuse.ch. Load it again to keep it current. Rows from earlier loads are kept.
 
@@ -39,10 +43,10 @@ Uninstall deletes the dump database and the stored key.
 The SQL editor can read the dump as a table, with or without an open case:
 
 ```
-SELECT * FROM malwarebazaar WHERE note LIKE '%AgentTesla%' LIMIT 100
+SELECT sha256, md5, sha1, file_name, file_type, first_seen FROM malwarebazaar WHERE signature = 'AgentTesla' LIMIT 100
 ```
 
-The note column holds the JSON fields. A result larger than 50 MB is not drawn. The editor says so and asks for a LIMIT or a WHERE clause.
+Every field is a plain column, so filter on signature, file_name, imphash, tags, or any other column directly. A result larger than 50 MB is not drawn. The editor says so and asks for a LIMIT or a WHERE clause.
 
 ### Matching a case
 
@@ -50,7 +54,7 @@ Match case on the card, or the Bazaar button on the toolbar, runs in the backgro
 
 The result is written to the case under reports:
 
-- malwarebazaar-<time>.csv with host, artifact, path or name, hash, hash kind, sha256, signature, file name, and source
+- malwarebazaar-<time>.csv with host, artifact, path or name, hash, hash kind, sha256, signature, file name, file type, and source
 - malwarebazaar-<time>.md with the counts, the dump size and dates, and the same hits as a table
 - malwarebazaar-<time>-unmatched.txt with the hashes the dump did not know
 

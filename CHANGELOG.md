@@ -12,13 +12,16 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 - Upload zip or csv stays available as an alternative
 - The card shows the row count, the newest sample date, the load time, and the file date, because the export covers recent samples only
 - The dump lives in malwarebazaar.duckdb next to marketplace.sqlite. Loads report added, updated, and unchanged rows
+- Every CSV field has its own column, hashes first: sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, then first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence. note keeps only unknown header columns as JSON and is otherwise NULL
+- The importer accepts # header lines, header name variants, quoted fields, and n/a values. A dump from an earlier build is migrated out of the note JSON
+- The old import-hashes and match-hashes path is removed. No source used it any more
 - Uninstall deletes the dump database
 - Endpoints and the online lookup are settings in the source config JSON
 
 ### Matching
 
 - Match case gathers hashes from Amcache, event data, Prefetch, and Shimcache and joins them against the dump in the background with progress
-- Reports go to reports/malwarebazaar-<time>.csv and .md, plus a list of unmatched hashes
+- Reports go to reports/malwarebazaar-<time>.csv and .md, plus a list of unmatched hashes. Signature, file name, and file type come from their own columns
 - Hits are saved as hunt matches with their own run
 - An optional online lookup, off by default and capped per run, checks misses against the get_info API and backs off on 429. Each hit names its source, local dump or online lookup
 
@@ -30,6 +33,7 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 ### Command line
 
 - New commands: bazaar-import, bazaar-info, bazaar-match, bazaar-online-hits, and source-config
+- Removed: import-hashes and match-hashes
 - query no longer requires --case
 
 ## 0.3.3 — 2026-10-21
