@@ -2011,6 +2011,38 @@ pub fn seed_hash_sources(store: &Path) -> Result<(), rusqlite::Error> {
     }
     let _ = conn.execute("DELETE FROM hash_sources WHERE id = 'custom'", []);
     let _ = conn.execute("DELETE FROM hash_sets WHERE source_id = 'custom'", []);
+    prune_orphan_sources(&conn, store)?;
+    Ok(())
+}
+
+fn is_catalog_id(id: &str) -> bool { CATALOG.iter().any(|(c, ..)| *c == id) }
+
+/// Drops rows left over from earlier builds whose id is no longer in CATALOG,
+/// plus their hash_sets rows and any dump file named after that id. The
+/// current MalwareBazaar dump is never touched.
+fn prune_orphan_sources(conn: &rusqlite::Connection, store: &Path) -> Result<(), rusqlite::Error> {
+    let mut ids: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT id FROM hash_sources UNION SELECT DISTINCT source_id FROM hash_sets")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: String = row.get(0)?;
+            if !is_catalog_id(&id) { ids.push(id); }
+        }
+    }
+    let dir = store.parent().unwrap_or(Path::new("."));
+    for id in ids {
+        conn.execute("DELETE FROM hash_sources WHERE id = ?1", [&id])?;
+        conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [&id])?;
+        let safe = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !safe { continue; }
+        let file = format!("{id}.duckdb");
+        if file == bazaar::DUMP_FILE { continue; }
+        for name in [file.clone(), format!("{file}.wal")] {
+            let p = dir.join(name);
+            if p.is_file() { let _ = std::fs::remove_file(p); }
+        }
+    }
     Ok(())
 }
 
@@ -2138,4 +2170,52 @@ pub fn uploaded_iocs(store: &Path) -> Result<Vec<(String, String, String)>, Stri
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod orphan_source_tests {
+    use super::*;
+
+    #[test]
+    fn hash_sources_drops_orphan_rows_and_keeps_installed_card() {
+        let d = std::env::temp_dir().join(format!("mcparser-orphan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let store = d.join("marketplace.sqlite");
+        seed_hash_sources(&store).unwrap();
+        install_hash_source(&store, "malwarebazaar", "{\"a\":1}").unwrap();
+        let dump = bazaar::dump_path(&store);
+        std::fs::write(&dump, b"keep").unwrap();
+        {
+            let conn = open_store(&store).unwrap();
+            conn.execute("INSERT INTO hash_sets (source_id, hash, hash_kind) VALUES ('malwarebazaar', 'aa', 'sha256')", []).unwrap();
+            for legacy in ["malwarebazaar_full", "malwarebazaar-full"] {
+                conn.execute(
+                    "INSERT INTO hash_sources (id, name, description, publisher, category, installed, enabled) VALUES (?1, 'MalwareBazaar full', 'old', 'abuse.ch', 'Hash Sources', 1, 1)",
+                    [legacy],
+                ).unwrap();
+                conn.execute("INSERT INTO hash_sets (source_id, hash, hash_kind) VALUES (?1, 'bb', 'sha256')", [legacy]).unwrap();
+                std::fs::write(d.join(format!("{legacy}.duckdb")), b"old").unwrap();
+            }
+        }
+        let list = hash_sources(&store).unwrap();
+        let mut ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
+        ids.sort();
+        let mut want: Vec<&str> = CATALOG.iter().map(|(id, ..)| *id).collect();
+        want.sort();
+        assert_eq!(ids, want);
+        let mb = list.iter().find(|s| s.id == "malwarebazaar").unwrap();
+        assert!(mb.installed && mb.enabled);
+        assert_eq!(mb.config, "{\"a\":1}");
+        assert_eq!(mb.hash_count, 1);
+        let conn = open_store(&store).unwrap();
+        let left: i64 = conn.query_row(
+            "SELECT (SELECT count(*) FROM hash_sources WHERE id LIKE 'malwarebazaar%full') + (SELECT count(*) FROM hash_sets WHERE source_id LIKE 'malwarebazaar%full')",
+            [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
+        assert!(dump.exists());
+        assert!(!d.join("malwarebazaar_full.duckdb").exists());
+        assert!(!d.join("malwarebazaar-full.duckdb").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }
