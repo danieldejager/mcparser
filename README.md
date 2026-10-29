@@ -1,6 +1,6 @@
 # McParser
 
-![McParser](docs/banner.png)
+![McParser by Phantom Technologies Pty. Ltd.](docs/readme_lockup.png)
 
 McParser is for the host you cannot put an agent on. A one-shot collector zip, or a copied `.evtx`, leaves on a USB. The analysis runs on your Mac, Windows machine, or Ubuntu box, off the plant network. The case stays a folder on that machine. SQL runs locally. Notes, hunts, the run trail, and the chat transcript travel with the case. The API key does not.
 
