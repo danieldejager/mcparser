@@ -552,11 +552,12 @@ async function run() {
     return;
   }
   lastCsv = result.out;
-  await loadNotes();
+  if (caseDir()) await loadNotes();
   const rows = renderCsv(result.out);
-  status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir()}`;
+  status.textContent = `rows ${rows} | elapsed ${Math.round(performance.now() - started)} ms | case ${caseDir() || "none"}`;
   const analyst = document.getElementById("analyst").value.trim();
-  await window.mcparser.saveRun(caseDir(), rows, sql.value, runLabel, analyst, runKind);
+  // Without a case (for example SELECT * FROM malwarebazaar) there is no run trail to write.
+  if (caseDir()) await window.mcparser.saveRun(caseDir(), rows, sql.value, runLabel, analyst, runKind);
   runLabel = "query";
   runKind = "run";
 }
@@ -1702,8 +1703,10 @@ function renderMarket(rows) {
         test.onclick = () => testSource(row.id, result);
         links.append(test, result);
       }
+      if (row.id === "malwarebazaar") body.dataset.bazaar = "1";
     }
     body.append(title, pub, desc, links);
+    if (body.dataset.bazaar) body.append(bazaarPanel());
     card.append(logo, body);
     cards.append(card);
   }
@@ -1758,7 +1761,9 @@ async function installSource(row) {
     if (!key) return;
     const stored = await window.mcparser.storeKey(row.id, key);
     if (!stored || stored.code !== 0) { status.textContent = (stored && stored.err) || "The keychain is not available"; return; }
-    config = JSON.stringify({ keyName: row.id });
+    config = JSON.stringify(row.id === "malwarebazaar"
+      ? { keyName: row.id, lookupEndpoint: "https://mb-api.abuse.ch/api/v1/", exportUrl: "https://mb-api.abuse.ch/v2/files/exports/{key}/recent.csv", onlineLookup: false, onlineMax: 25 }
+      : { keyName: row.id });
   }
   const result = await window.mcparser.installSource(row.id, config);
   status.textContent = result && result.code === 0 ? result.out.trim() : (result && result.err) || "Install failed";
@@ -1801,3 +1806,98 @@ async function testSource(id, line) {
   const result = await window.mcparser.testSource(id);
   line.textContent = (result && (result.out || result.err)) || "Test failed";
 }
+
+// MalwareBazaar full dump: fetch or upload, row count and file date, the
+// opt-in online lookup, and the background case match with its report.
+let bazaarLine = null;
+
+function bazaarSay(text, report) {
+  status.textContent = text;
+  if (!bazaarLine) return;
+  bazaarLine.replaceChildren(document.createTextNode(text));
+  if (report) {
+    const open = document.createElement("a");
+    open.textContent = " Open report";
+    open.onclick = () => window.mcparser.openReport(report);
+    bazaarLine.append(open);
+  }
+}
+
+function bazaarPanel() {
+  const panel = document.createElement("div");
+  panel.className = "bazaar-panel";
+  const info = document.createElement("div");
+  info.className = "bazaar-info";
+  info.textContent = "Dump: checking...";
+  const actions = document.createElement("div");
+  actions.className = "links";
+  const fetchLink = document.createElement("a");
+  fetchLink.textContent = "Fetch recent";
+  fetchLink.title = "Download the recent export from abuse.ch with the stored key";
+  const upload = document.createElement("a");
+  upload.textContent = "Upload zip or csv";
+  const match = document.createElement("a");
+  match.textContent = "Match case";
+  const onlineLabel = document.createElement("label");
+  const online = document.createElement("input");
+  online.type = "checkbox";
+  const onlineMax = document.createElement("input");
+  onlineMax.type = "number";
+  onlineMax.min = "1";
+  onlineMax.max = "1000";
+  onlineMax.style.width = "4em";
+  onlineLabel.append(online, document.createTextNode(" Look up misses online, at most "), onlineMax);
+  bazaarLine = document.createElement("div");
+  bazaarLine.className = "test-result";
+  actions.append(fetchLink, upload, match);
+  panel.append(info, actions, onlineLabel, bazaarLine);
+
+  const refresh = async (fileDate) => {
+    const result = await window.mcparser.bazaarInfo();
+    const i = (result && result.info) || {};
+    const rows = Number(i.rows || 0);
+    const when = i.imported_at ? new Date(Number(i.imported_at) * 1000).toLocaleString() : "";
+    info.textContent = rows
+      ? `Dump: ${rows.toLocaleString()} rows, newest sample ${i.newest_first_seen || "unknown"}, loaded ${when}${fileDate ? ", file date " + fileDate : ""}. This is the recent export, not every sample ever seen.`
+      : "Dump: not loaded. Fetch the recent export or upload a zip or csv.";
+    if (result && result.config) {
+      online.checked = !!result.config.onlineLookup;
+      onlineMax.value = String(result.config.onlineMax || 25);
+    }
+  };
+  const loaded = (result) => {
+    if (!result || result.canceled) return;
+    if (result.code !== 0) { bazaarSay(result.err || "Loading the dump failed"); return; }
+    const c = result.counts || {};
+    bazaarSay(`Dump loaded: ${c.added || 0} added, ${c.updated || 0} updated, ${c.unchanged || 0} unchanged, ${c.total || 0} rows`);
+    refresh(result.fileDate);
+  };
+  fetchLink.onclick = async () => { bazaarSay("Fetching the recent export..."); loaded(await window.mcparser.bazaarFetch()); };
+  upload.onclick = async () => loaded(await window.mcparser.bazaarUpload());
+  match.onclick = () => runBazaarMatch();
+  const save = () => window.mcparser.bazaarSettings({ onlineLookup: online.checked, onlineMax: Number(onlineMax.value) });
+  online.onchange = save;
+  onlineMax.onchange = save;
+  refresh();
+  return panel;
+}
+
+async function runBazaarMatch() {
+  if (!caseDir()) { bazaarSay("Open a case first."); return; }
+  const spin = document.getElementById("hunt-spin");
+  spin.hidden = false;
+  bazaarSay("MalwareBazaar match 0%");
+  const result = await window.mcparser.bazaarMatch(caseDir());
+  spin.hidden = true;
+  if (!result || result.code !== 0) { bazaarSay((result && result.err) || "MalwareBazaar match failed"); return; }
+  const online = result.online && result.online.looked ? `, ${result.online.found} more from ${result.online.looked} online lookups` : "";
+  const note = result.online && result.online.note ? ` (${result.online.note})` : "";
+  bazaarSay(`MalwareBazaar: ${result.hits} hits in ${result.checked} hashes against ${result.dumpRows} dump rows${online}${note}.`, result.md);
+}
+
+document.getElementById("tb-bazaar").onclick = () => runBazaarMatch();
+window.mcparser.onBazaarProgress((payload) => {
+  const text = (payload.label || "MalwareBazaar") + (payload.pct > 2 && payload.pct < 100 ? " " + payload.pct + "%" : "");
+  status.textContent = text;
+  if (bazaarLine) bazaarLine.textContent = text;
+});
