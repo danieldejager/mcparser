@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.3.4 (unreleased)
+
+MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a background match with a report.
+
+### Marketplace
+
+- SQL: malwarebazaar is a six column lookup view (sha256, sha1, md5, signature, file_name, first_seen). malwarebazaar_full has every column. Long result cells are cut with an ellipsis and show the full value on hover
+- MalwareBazaar full by abuse.ch replaces the MalwareBazaar card. The id stays malwarebazaar, so the right-click hash lookup keeps working
+- Fetch recent downloads the abuse.ch recent export with the stored key. The key never appears in logs, messages, settings, or reports, and any address shown has it replaced with ***
+- 401, 403, and 429 answers get clear messages. The temporary download is deleted on success and on failure
+- Upload zip or csv stays available as an alternative
+- The card shows the row count, the newest sample date, the load time, and the file date, because the export covers recent samples only
+- The dump lives in malwarebazaar.duckdb next to marketplace.sqlite. Loads report added, updated, and unchanged rows
+- Every CSV field has its own column, hashes first: sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, then first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence. note keeps only unknown header columns as JSON and is otherwise NULL
+- The importer accepts # header lines, header name variants, quoted fields, and n/a values. A dump from an earlier build is migrated out of the note JSON
+- The old import-hashes and match-hashes path is removed. No source used it any more
+- Uninstall deletes the dump database
+- Endpoints and the online lookup are settings in the source config JSON
+- When the card is installed and a key is stored, the dump updates itself once per app start, with Updating MalwareBazaar..... and a result line in the Results area (or its status line when your results are showing). Turn it off with "autoUpdate": false. A failed update keeps the existing dump
+
+### Why the lookup view is narrow
+
+- `SELECT * FROM malwarebazaar` stays readable. It returns sha256, sha1, md5, signature (the malware family, for example AgentTesla), file_name, and first_seen. Nothing is dropped: `malwarebazaar_full` keeps every column
+- md5 is included because analysts often receive an md5 from other tools. first_seen shows how fresh a sample is
+- file_name is included because the signature is often blank, as with many RFQ and invoice lure files
+- Long hash values no longer overlap the next column in the results grid
+- The matcher, the report, and the chat keep reading the full data, so nothing else changes
+
+### Matching
+
+- Match case gathers hashes from Amcache, event data, Prefetch, and Shimcache and joins them against the dump in the background with progress
+- Reports go to reports/malwarebazaar-<time>.csv and .md, plus a list of unmatched hashes. Signature, file name, and file type come from their own columns
+- Hits are saved as hunt matches with their own run
+- An optional online lookup, off by default and capped per run, checks misses against the get_info API and backs off on 429. Each hit names its source, local dump or online lookup
+
+### Query
+
+- SELECT * FROM malwarebazaar works in the SQL editor with or without an open case
+- A result over 50 MB says so instead of drawing
+
+### Command line
+
+- New commands: bazaar-import, bazaar-info, bazaar-match, bazaar-online-hits, and source-config
+- Removed: import-hashes and match-hashes
+- query no longer requires --case
+
 ## 0.3.3 — 2026-10-21
 
 MalwareBazaar full dump. The machine holds the hashes. The case holds the hits.

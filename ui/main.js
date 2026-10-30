@@ -1,7 +1,9 @@
-const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage } = require("electron");
+const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage, Notification } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
+const bazaar = require("./bazaar-fetch");
+const { runStartupUpdate } = require("./bazaar-autoupdate");
 
 app.setName("McParser");
 app.setAboutPanelOptions({
@@ -146,7 +148,7 @@ function run(args, password) {
       if (out.length + text.length > MAX_OUT) {
         tooBig = true;
         out = "";
-        err = "Result is too large to display. Add a LIMIT or a WHERE clause.";
+        err = "Result is over " + Math.round(MAX_OUT / 1024 / 1024) + " MB and too large to display. Add a LIMIT or a WHERE clause.";
         debugLog("output exceeded " + MAX_OUT + " bytes for " + args.join(" "));
         return;
       }
@@ -286,7 +288,7 @@ const schema = [
   "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
   "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
   "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path, shimcache.path, services.path and tasks.command. The case context shows non-Windows services, tasks and shimcache rows, the busiest SRUM network rows, and the top event ids. Query the table for the rest.",
-  "Table malwarebazaar(sha256, note). It is not inside events. It is the machine-local MalwareBazaar full dump. note is JSON with file_name, signature, file_type, reporter. Match a hash with malwarebazaar.sha256. The case context shows a sample of rows.",
+  "Table malwarebazaar(sha256, sha1, md5, signature, file_name, first_seen) is the narrow lookup view of the machine-local MalwareBazaar full dump. It has only those six columns. Use it to match a hash with malwarebazaar.sha256, malwarebazaar.sha1 or malwarebazaar.md5. Table malwarebazaar_full(sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence, note) has every column; use it for file_type, tags, reporter, clamav, imphash and other fields. Neither is inside events. Every column is a plain VARCHAR column. note is NULL unless the export had columns not listed here. The case context shows a sample of rows.",
   "Return one DuckDB SELECT and no other text."
 ].join(" ");
 
@@ -320,7 +322,7 @@ async function caseContext(caseDir) {
   const tasksText = tasks.code === 0 ? tasks.out || "" : "tasks table is not loaded";
   const store = path.join(app.getPath("userData"), "marketplace.sqlite");
   const bazaar = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", store,
-    "SELECT sha256, json_extract_string(note, '$.file_name') AS file_name, json_extract_string(note, '$.signature') AS signature FROM malwarebazaar LIMIT 20"]);
+    "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20"]);
   const bazaarText = bazaar.code === 0 ? bazaar.out || "" : "malwarebazaar is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
     "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
@@ -332,7 +334,7 @@ async function caseContext(caseDir) {
     "\nSRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles:\n" + clip(srumText) +
     "\nServices outside System32, csv name, state, start_mode, user_id, path:\n" + clip(servicesText) +
     "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText) +
-    "\nMalwareBazaar sample, csv sha256, file_name, signature:\n" + clip(bazaarText);
+    "\nMalwareBazaar sample, csv sha256, md5, sha1, file_name, signature, file_type:\n" + clip(bazaarText);
 }
 
 function vendorLabel() {
@@ -355,7 +357,7 @@ async function coverage(caseDir) {
     ["srum", "SELECT app, bytes_sent FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 3"],
     ["services", "SELECT name, start_mode, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
     ["tasks", "SELECT command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
-    ["malwarebazaar", "SELECT sha256, json_extract_string(note, '$.file_name') AS file_name FROM malwarebazaar LIMIT 3"],
+    ["malwarebazaar", "SELECT sha256, file_name, signature FROM malwarebazaar LIMIT 3"],
   ];
   const parts = [];
   const store = path.join(app.getPath("userData"), "marketplace.sqlite");
@@ -577,6 +579,7 @@ function createWindow() {
   win.loadFile("index.html");
   win.webContents.once("did-finish-load", () => {
     if (chatShown) win.webContents.send("grok-chat", true);
+    startupBazaarUpdate();
   });
   win.on("focus", () => buildMenu());
 }
@@ -700,7 +703,7 @@ function runCollect(args) {
 }
 
 
-function runHunt(args) {
+function runHunt(args, channel = "hunt-progress") {
   return new Promise((resolve) => {
     const env = { ...process.env };
     delete env.XAI_API_KEY;
@@ -717,7 +720,7 @@ function runHunt(args) {
       for (const line of lines) {
         if (line.startsWith("progress\t")) {
           const parts = line.split("\t");
-          if (win) win.webContents.send("hunt-progress", { pct: Number(parts[1] || 0), label: parts.slice(2).join(" ") });
+          if (win) win.webContents.send(channel, { pct: Number(parts[1] || 0), label: parts.slice(2).join(" ") });
         } else if (line) {
           out += line + "\n";
         }
@@ -743,9 +746,10 @@ ipcMain.handle("test-source", async (_event, id) => {
     const key = loadSourceKey(id);
     if (id === "malwarebazaar") {
       const body = new URLSearchParams({ query: "get_info", hash: "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d" });
-      const response = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", headers: { "Auth-Key": key }, body });
+      const config = await bazaarConfig();
+      const response = await fetch(config.lookupEndpoint, { method: "POST", headers: { "Auth-Key": key }, body });
       const json = await response.json().catch(() => ({}));
-      const state = json.query_status || response.status;
+      const state = json.query_status || (response.status === 401 || response.status === 403 || response.status === 429 ? bazaar.statusMessage(response.status) : response.status);
       return { code: response.ok ? 0 : 1, out: "MalwareBazaar: " + state };
     }
     return { code: 1, err: "No test for " + id };
@@ -757,21 +761,179 @@ ipcMain.handle("lookup-hash", async (_event, hash) => {
   try {
     const key = loadSourceKey("malwarebazaar");
     const body = new URLSearchParams({ query: "get_info", hash });
-    const response = await fetch("https://mb-api.abuse.ch/api/v1/", { method: "POST", headers: { "Auth-Key": key }, body });
+    const config = await bazaarConfig();
+    const response = await fetch(config.lookupEndpoint, { method: "POST", headers: { "Auth-Key": key }, body });
     const json = await response.json().catch(() => ({}));
-    const state = json.query_status || response.status;
+    const state = json.query_status || (response.status === 429 ? bazaar.statusMessage(429) : response.status);
     const name = (json.data && json.data[0] && (json.data[0].signature || json.data[0].file_name)) || "";
     return { code: response.ok ? 0 : 1, out: state + (name ? ": " + name : "") };
   } catch (err) {
     return { code: 1, err: err.message };
   }
 });
-ipcMain.handle("import-hashes", async (_event, id) => {
-  const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "Hash list", extensions: ["txt", "csv"] }] });
-  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
-  return run(["import-hashes", "--source", id, "--file", picked.filePaths[0], "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
+// MalwareBazaar full dump. Settings live in the hash_sources.config JSON of
+// the malwarebazaar row: lookupEndpoint, exportUrl (a template with {key},
+// never the key itself), onlineLookup (off by default) and onlineMax.
+function marketStore() {
+  return path.join(app.getPath("userData"), "marketplace.sqlite");
+}
+
+async function bazaarConfig() {
+  const result = await run(["source-config", "--source", "malwarebazaar", "--store", marketStore()]);
+  let parsed = {};
+  try { parsed = JSON.parse(result.out || "{}") || {}; } catch (_) { parsed = {}; }
+  return {
+    lookupEndpoint: typeof parsed.lookupEndpoint === "string" && parsed.lookupEndpoint ? parsed.lookupEndpoint : bazaar.DEFAULT_LOOKUP_ENDPOINT,
+    exportUrl: typeof parsed.exportUrl === "string" && parsed.exportUrl.includes("{key}") ? parsed.exportUrl : bazaar.DEFAULT_EXPORT_TEMPLATE,
+    onlineLookup: parsed.onlineLookup === true,
+    onlineMax: Math.max(0, Math.min(1000, Number(parsed.onlineMax) || 25)),
+    autoUpdate: parsed.autoUpdate !== false,
+  };
+}
+
+function bazaarProgress(pct, label) {
+  if (win) win.webContents.send("bazaar-progress", { pct, label });
+}
+
+function notify(title, body) {
+  try { if (Notification.isSupported()) new Notification({ title, body }).show(); } catch (_) { /* notifications are optional */ }
+}
+
+function parseTsv(out) {
+  const info = {};
+  for (const line of String(out || "").split(/\n/)) {
+    const [k, ...rest] = line.split("\t");
+    if (k) info[k] = rest.join("\t");
+  }
+  return info;
+}
+
+async function bazaarImportFile(file, label) {
+  bazaarProgress(5, "Loading " + label);
+  const result = await runHunt(["bazaar-import", "--file", file, "--store", marketStore()], "bazaar-progress");
+  if (result.code !== 0) return { code: result.code, err: result.err };
+  const counts = parseTsv(result.out);
+  const info = parseTsv((await run(["bazaar-info", "--store", marketStore()])).out);
+  bazaarProgress(100, "Loaded");
+  return { code: 0, counts, info };
+}
+
+ipcMain.handle("bazaar-info", async () => {
+  const result = await run(["bazaar-info", "--store", marketStore()]);
+  const config = await bazaarConfig();
+  return { code: result.code, info: parseTsv(result.out), config: { onlineLookup: config.onlineLookup, onlineMax: config.onlineMax, lookupEndpoint: config.lookupEndpoint, exportUrl: config.exportUrl }, err: result.err };
 });
-ipcMain.handle("match-hashes", (_event, caseDir) => run(["match-hashes", "--case", casePath(caseDir), "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+
+ipcMain.handle("bazaar-settings", async (_event, changes) => {
+  const current = await bazaarConfig();
+  const next = { ...current };
+  if (changes && typeof changes.onlineLookup === "boolean") next.onlineLookup = changes.onlineLookup;
+  if (changes && Number(changes.onlineMax) > 0) next.onlineMax = Math.min(1000, Math.floor(Number(changes.onlineMax)));
+  if (changes && typeof changes.lookupEndpoint === "string" && /^https?:\/\//.test(changes.lookupEndpoint)) next.lookupEndpoint = changes.lookupEndpoint;
+  if (changes && typeof changes.exportUrl === "string" && changes.exportUrl.includes("{key}") && /^https?:\/\//.test(changes.exportUrl)) next.exportUrl = changes.exportUrl;
+  return run(["install-source", "--source", "malwarebazaar", "--config", JSON.stringify(next), "--store", marketStore()]);
+});
+
+ipcMain.handle("bazaar-upload", async () => {
+  const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "MalwareBazaar export", extensions: ["zip", "csv", "txt"] }] });
+  if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
+  const result = await bazaarImportFile(picked.filePaths[0], path.basename(picked.filePaths[0]));
+  if (result.code === 0) notify("MalwareBazaar dump loaded", `${result.counts.added || 0} added, ${result.counts.updated || 0} updated, ${result.counts.unchanged || 0} unchanged`);
+  return result;
+});
+
+ipcMain.handle("bazaar-fetch", async () => {
+  let key;
+  try { key = loadSourceKey("malwarebazaar"); } catch (err) { return { code: 1, err: err.message }; }
+  return bazaarFetchAndImport(key, await bazaarConfig());
+});
+
+// Shared by the Fetch recent button and the start-up update. The download
+// goes to a temp file that is always deleted; the dump only changes when the
+// import succeeds.
+async function bazaarFetchAndImport(key, config) {
+  let download;
+  try {
+    bazaarProgress(1, "Downloading the recent export from abuse.ch");
+    download = await bazaar.fetchExport({
+      template: config.exportUrl,
+      key,
+      dir: app.getPath("temp"),
+      onProgress: (bytes) => bazaarProgress(2, `Downloaded ${(bytes / 1024 / 1024).toFixed(1)} MB`),
+    });
+  } catch (err) {
+    debugLog("bazaar fetch failed: " + bazaar.redact(err.message, key));
+    return { code: 1, err: bazaar.redact(err.message, key) };
+  }
+  try {
+    const result = await bazaarImportFile(download.file, "recent export");
+    if (result.code === 0) {
+      result.fileDate = download.lastModified;
+      notify("MalwareBazaar dump fetched", `${result.info.rows || 0} rows, ${result.counts.added || 0} added`);
+    } else {
+      result.err = bazaar.redact(result.err, key);
+    }
+    return result;
+  } finally {
+    try { fs.unlinkSync(download.file); } catch (_) { /* already gone */ }
+  }
+}
+
+// Runs once per app start after the window has loaded. A reload does not run
+// it again (the guard lives in bazaar-autoupdate.js in the main process).
+function startupBazaarUpdate() {
+  runStartupUpdate({
+    isInstalled: async () => {
+      const r = await run(["marketplace", "--store", marketStore()]);
+      return r.code === 0 && String(r.out || "").split("\n").some((l) => { const [id, , state] = l.split("\t"); return id === "malwarebazaar" && state && state !== "not-installed"; });
+    },
+    loadKey: () => loadSourceKey("malwarebazaar"),
+    loadConfig: bazaarConfig,
+    fetchAndImport: bazaarFetchAndImport,
+    redact: bazaar.redact,
+    report: (payload) => { if (win) win.webContents.send("bazaar-auto", payload); },
+  }).then((r) => { if (r && r.error) debugLog("bazaar auto-update: " + r.error); })
+    .catch((err) => debugLog("bazaar auto-update: " + bazaar.redact(err && err.message)));
+}
+
+ipcMain.handle("bazaar-match", async (_event, caseDir) => {
+  const dir = casePath(caseDir);
+  if (!dir) return { code: 1, err: "Open a case first." };
+  const result = await runHunt(["bazaar-match", "--case", dir, "--store", marketStore()], "bazaar-progress");
+  if (result.code !== 0) return { code: result.code, err: result.err };
+  const lines = parseTsv(result.out);
+  const [checked, hits, unmatched, dumpRows] = (lines.counts || "").split("\t").map(Number);
+  const [csv, md, unmatchedFile, runId] = (lines.report || "").split("\t");
+  let online = { looked: 0, found: 0, note: "" };
+  const config = await bazaarConfig();
+  if (config.onlineLookup && unmatched > 0) {
+    try {
+      const key = loadSourceKey("malwarebazaar");
+      const hashes = fs.readFileSync(unmatchedFile, "utf8").split(/\n/).filter(Boolean);
+      const looked = await bazaar.lookupHashes({
+        endpoint: config.lookupEndpoint, key, hashes, max: config.onlineMax,
+        onProgress: (n, total) => bazaarProgress(90, `Online lookup ${n} of ${total}`),
+      });
+      const found = path.join(app.getPath("temp"), `mcparser-bazaar-online-${process.pid}-${Date.now()}.tsv`);
+      fs.writeFileSync(found, looked.found.map((row) => row.join("\t")).join("\n"));
+      const added = await run(["bazaar-online-hits", "--case", dir, "--file", found, "--csv", csv, "--md", md, "--looked-up", String(looked.looked)]);
+      try { fs.unlinkSync(found); } catch (_) { /* gone */ }
+      online = { looked: looked.looked, found: Number(parseTsv(added.out).online || 0), note: looked.note || (added.code ? added.err : "") };
+    } catch (err) {
+      online.note = err.message;
+    }
+  }
+  const total = (hits || 0) + online.found;
+  notify("MalwareBazaar match finished", `${total} hits in ${checked || 0} hashes`);
+  return { code: 0, checked, hits, unmatched, dumpRows, csv, md, runId, online };
+});
+
+ipcMain.handle("open-report", (_event, file) => {
+  const target = String(file || "");
+  if (!/[\\/]reports[\\/]malwarebazaar-[0-9]+\.(md|csv)$/.test(target) || !fs.existsSync(target)) return { code: 1, err: "Report not found" };
+  return shell.openPath(target).then((err) => ({ code: err ? 1 : 0, err }));
+});
+
 ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
 
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
@@ -779,7 +941,13 @@ ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessa
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
-ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]));
+ipcMain.handle("query", async (_event, caseDir, sql) => {
+  const result = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]);
+  if (result.code !== 0 && /malwarebazaar\b(?!_full)/i.test(sql) && /column|Binder/i.test(result.err || result.out || "")) {
+    result.err = (result.err || result.out || "") + "\nmalwarebazaar has six columns: sha256, sha1, md5, signature, file_name, first_seen. Use malwarebazaar_full for more columns.";
+  }
+  return result;
+});
 ipcMain.handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
     title: "Export results",

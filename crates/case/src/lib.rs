@@ -3,6 +3,8 @@ use model::Event;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+pub mod bazaar;
+
 pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")
 }
@@ -112,8 +114,9 @@ pub fn query_table_with_iocs(
     store: Option<&Path>,
     sql: &str,
 ) -> Result<Table, duckdb::Error> {
-    let conn = Connection::open(db_path)?;
+    let conn = if db_path.as_os_str().is_empty() { Connection::open_in_memory()? } else { Connection::open(db_path)? };
     let _ = expose_iocs(&conn, catalog, store);
+    if let Some(store) = store { let _ = bazaar::attach_dump(&conn, store); }
     let mut stmt = conn.prepare(sql)?;
     let mut rows = stmt.query([])?;
     let mut table = Table {
@@ -1965,7 +1968,7 @@ pub struct HashSource {
 }
 
 const CATALOG: &[(&str, &str, &str, &str, &str)] = &[
-    ("malwarebazaar", "MalwareBazaar", "Query a sample hash against the abuse.ch API. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
+    ("malwarebazaar", "MalwareBazaar full", "The MalwareBazaar dump in its own local database. Fetch the export with the stored key or upload a zip or csv, then match a case in the background. The key stays in the keychain.", "abuse.ch", "Hash Sources"),
     ("virustotal", "VirusTotal", "Optional. User-supplied API key, rate-limit aware. Key stays in the keychain.", "VirusTotal", "Hash Sources"),
     ("threatfox", "ThreatFox", "Coming later. IOC feed of hashes from abuse.ch.", "abuse.ch", "Hash Sources"),
     ("circl", "CIRCL hashlookup", "Coming later. Known-good hash lookup.", "CIRCL", "Hash Sources"),
@@ -2008,6 +2011,38 @@ pub fn seed_hash_sources(store: &Path) -> Result<(), rusqlite::Error> {
     }
     let _ = conn.execute("DELETE FROM hash_sources WHERE id = 'custom'", []);
     let _ = conn.execute("DELETE FROM hash_sets WHERE source_id = 'custom'", []);
+    prune_orphan_sources(&conn, store)?;
+    Ok(())
+}
+
+fn is_catalog_id(id: &str) -> bool { CATALOG.iter().any(|(c, ..)| *c == id) }
+
+/// Drops rows left over from earlier builds whose id is no longer in CATALOG,
+/// plus their hash_sets rows and any dump file named after that id. The
+/// current MalwareBazaar dump is never touched.
+fn prune_orphan_sources(conn: &rusqlite::Connection, store: &Path) -> Result<(), rusqlite::Error> {
+    let mut ids: Vec<String> = Vec::new();
+    {
+        let mut stmt = conn.prepare("SELECT id FROM hash_sources UNION SELECT DISTINCT source_id FROM hash_sets")?;
+        let mut rows = stmt.query([])?;
+        while let Some(row) = rows.next()? {
+            let id: String = row.get(0)?;
+            if !is_catalog_id(&id) { ids.push(id); }
+        }
+    }
+    let dir = store.parent().unwrap_or(Path::new("."));
+    for id in ids {
+        conn.execute("DELETE FROM hash_sources WHERE id = ?1", [&id])?;
+        conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [&id])?;
+        let safe = !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-');
+        if !safe { continue; }
+        let file = format!("{id}.duckdb");
+        if file == bazaar::DUMP_FILE { continue; }
+        for name in [file.clone(), format!("{file}.wal")] {
+            let p = dir.join(name);
+            if p.is_file() { let _ = std::fs::remove_file(p); }
+        }
+    }
     Ok(())
 }
 
@@ -2053,94 +2088,8 @@ pub fn uninstall_hash_source(store: &Path, id: &str) -> Result<(), String> {
     let conn = open_store(store).map_err(|err| err.to_string())?;
     conn.execute("UPDATE hash_sources SET installed = 0, enabled = 0, config = '{}' WHERE id = ?1", [id]).map_err(|err| err.to_string())?;
     conn.execute("DELETE FROM hash_sets WHERE source_id = ?1", [id]).map_err(|err| err.to_string())?;
+    if id == "malwarebazaar" { bazaar::remove_dump(store).map_err(|err| err.to_string())?; }
     Ok(())
-}
-
-fn hash_kind(value: &str) -> Option<&'static str> {
-    let clean = value.trim().trim_start_matches("0x").to_ascii_lowercase();
-    if !clean.chars().all(|c| c.is_ascii_hexdigit()) { return None; }
-    match clean.len() {
-        32 => Some("md5"),
-        40 => Some("sha1"),
-        64 => Some("sha256"),
-        _ => None,
-    }
-}
-
-pub fn import_hashes(store: &Path, id: &str, text: &str) -> Result<usize, String> {
-    seed_hash_sources(store).map_err(|err| err.to_string())?;
-    let conn = open_store(store).map_err(|err| err.to_string())?;
-    let installed: i64 = conn.query_row("SELECT installed FROM hash_sources WHERE id = ?1", [id], |row| row.get(0)).map_err(|err| err.to_string())?;
-    if installed == 0 { return Err(format!("{id} is not installed")); }
-    let mut count = 0usize;
-    for raw in text.lines() {
-        for part in raw.split([',', ';', '\t', ' ']) {
-            let value = part.trim().trim_matches('"').trim_matches('\'').to_ascii_lowercase();
-            if let Some(kind) = hash_kind(&value) {
-                conn.execute(
-                    "INSERT OR IGNORE INTO hash_sets (source_id, hash, hash_kind) VALUES (?1, ?2, ?3)",
-                    rusqlite::params![id, value, kind],
-                ).map_err(|err| err.to_string())?;
-                count += 1;
-            }
-        }
-    }
-    Ok(count)
-}
-
-pub fn enabled_hashes(store: &Path) -> Result<Vec<(String, String, String)>, rusqlite::Error> {
-    let conn = open_store(store)?;
-    let mut stmt = conn.prepare(
-        "SELECT h.source_id, h.hash, h.hash_kind FROM hash_sets h
-         JOIN hash_sources s ON s.id = h.source_id
-         WHERE s.installed = 1 AND s.enabled = 1",
-    )?;
-    let mut rows = stmt.query([])?;
-    let mut out = Vec::new();
-    while let Some(row) = rows.next()? {
-        out.push((row.get(0)?, row.get(1)?, row.get(2)?));
-    }
-    Ok(out)
-}
-
-pub fn match_hashes(store: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, String> {
-    let hashes = enabled_hashes(store).map_err(|err| err.to_string())?;
-    if hashes.is_empty() { return Ok(Vec::new()); }
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
-    let scans: &[(&str, &str)] = &[
-        ("amcache", "SELECT host_id, sha1, name, path FROM amcache"),
-        ("prefetch", "SELECT host_id, executable, path FROM prefetch"),
-        ("events", "SELECT computer, event_data FROM events"),
-        ("shimcache", "SELECT host_id, path FROM shimcache"),
-    ];
-    let mut matches = Vec::new();
-    for (source, sql) in scans {
-        let mut stmt = match db.prepare(sql) { Ok(stmt) => stmt, Err(_) => continue };
-        let mut rows = match stmt.query([]) { Ok(rows) => rows, Err(_) => continue };
-        while let Ok(Some(row)) = rows.next() {
-            let host: String = row.get(0).unwrap_or_default();
-            let text = (0..row.as_ref().column_count())
-                .map(|i| row.get::<_, String>(i).unwrap_or_default())
-                .collect::<Vec<_>>()
-                .join(" ")
-                .to_ascii_lowercase();
-            for (source_id, hash, kind) in &hashes {
-                if text.contains(hash) {
-                    matches.push(HuntMatch {
-                        source: source.to_string(),
-                        host_id: host.clone(),
-                        column: kind.clone(),
-                        value: hash.clone(),
-                        ioc_kind: "hash".to_string(),
-                        ioc_value: format!("{source_id}:{hash}"),
-                        context: text.chars().take(180).collect(),
-                    });
-                    break;
-                }
-            }
-        }
-    }
-    Ok(matches)
 }
 
 
@@ -2197,6 +2146,8 @@ fn is_header(kind: &str, value: &str) -> bool {
         || matches!(v.as_str(), "value" | "indicator" | "ioc")
 }
 
+pub(crate) fn chrono_now_pub() -> String { chrono_now() }
+
 fn chrono_now() -> String {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -2219,4 +2170,52 @@ pub fn uploaded_iocs(store: &Path) -> Result<Vec<(String, String, String)>, Stri
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     Ok(rows)
+}
+
+#[cfg(test)]
+mod orphan_source_tests {
+    use super::*;
+
+    #[test]
+    fn hash_sources_drops_orphan_rows_and_keeps_installed_card() {
+        let d = std::env::temp_dir().join(format!("mcparser-orphan-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let store = d.join("marketplace.sqlite");
+        seed_hash_sources(&store).unwrap();
+        install_hash_source(&store, "malwarebazaar", "{\"a\":1}").unwrap();
+        let dump = bazaar::dump_path(&store);
+        std::fs::write(&dump, b"keep").unwrap();
+        {
+            let conn = open_store(&store).unwrap();
+            conn.execute("INSERT INTO hash_sets (source_id, hash, hash_kind) VALUES ('malwarebazaar', 'aa', 'sha256')", []).unwrap();
+            for legacy in ["malwarebazaar_full", "malwarebazaar-full"] {
+                conn.execute(
+                    "INSERT INTO hash_sources (id, name, description, publisher, category, installed, enabled) VALUES (?1, 'MalwareBazaar full', 'old', 'abuse.ch', 'Hash Sources', 1, 1)",
+                    [legacy],
+                ).unwrap();
+                conn.execute("INSERT INTO hash_sets (source_id, hash, hash_kind) VALUES (?1, 'bb', 'sha256')", [legacy]).unwrap();
+                std::fs::write(d.join(format!("{legacy}.duckdb")), b"old").unwrap();
+            }
+        }
+        let list = hash_sources(&store).unwrap();
+        let mut ids: Vec<&str> = list.iter().map(|s| s.id.as_str()).collect();
+        ids.sort();
+        let mut want: Vec<&str> = CATALOG.iter().map(|(id, ..)| *id).collect();
+        want.sort();
+        assert_eq!(ids, want);
+        let mb = list.iter().find(|s| s.id == "malwarebazaar").unwrap();
+        assert!(mb.installed && mb.enabled);
+        assert_eq!(mb.config, "{\"a\":1}");
+        assert_eq!(mb.hash_count, 1);
+        let conn = open_store(&store).unwrap();
+        let left: i64 = conn.query_row(
+            "SELECT (SELECT count(*) FROM hash_sources WHERE id LIKE 'malwarebazaar%full') + (SELECT count(*) FROM hash_sets WHERE source_id LIKE 'malwarebazaar%full')",
+            [], |r| r.get(0)).unwrap();
+        assert_eq!(left, 0);
+        assert!(dump.exists());
+        assert!(!d.join("malwarebazaar_full.duckdb").exists());
+        assert!(!d.join("malwarebazaar-full.duckdb").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

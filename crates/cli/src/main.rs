@@ -26,8 +26,11 @@ fn main() -> ExitCode {
         Some("marketplace") => marketplace(&mut args),
         Some("install-source") => install_source(&mut args),
         Some("uninstall-source") => uninstall_source(&mut args),
-        Some("import-hashes") => import_hashes(&mut args),
-        Some("match-hashes") => match_hashes(&mut args),
+        Some("source-config") => source_config(&mut args),
+        Some("bazaar-import") => bazaar_import(&mut args),
+        Some("bazaar-info") => bazaar_info(&mut args),
+        Some("bazaar-match") => bazaar_match(&mut args),
+        Some("bazaar-online-hits") => bazaar_online_hits(&mut args),
         Some("ioc-upload") => ioc_upload(&mut args),
         Some("collect") => collect(&mut args),
         Some("hosts") => hosts(&mut args),
@@ -79,8 +82,11 @@ Commands:
   marketplace    List hash sources and their install state
   install-source Install and enable a hash source
   uninstall-source Remove a hash source and its hashes
-  import-hashes  Import a local hash list into an installed source
-  match-hashes   Match enabled hash sources against the case
+  source-config  Print the settings JSON of an installed hash source
+  bazaar-import  Load a MalwareBazaar CSV or zip into the full dump database
+  bazaar-info    Row count and import details of the MalwareBazaar dump
+  bazaar-match   Match every hash in the case against the dump and write a report
+  bazaar-online-hits  Add online get_info results to a bazaar-match report
   ioc-upload     Import a CSV of kind,value pairs into the machine store
   iocs           List indicators of compromise on the case
   ioc-add        Add an indicator
@@ -109,7 +115,9 @@ collections:
     The same path with a new hash replaces the old rows.
 
 query:
-  mcparser query --case <dir> [--format table|csv|jsonl] "<sql>"
+  mcparser query [--case <dir>] [--format table|csv|jsonl] [--store <file>] "<sql>"
+    Without --case the query runs in memory. The malwarebazaar table is
+    available whenever the dump is loaded in the store's folder.
     --format is table by default. csv includes a header row.
     A command-line query is not written to the run trail.
 
@@ -494,11 +502,21 @@ fn ingest(args: &mut impl Iterator<Item = String>) -> ExitCode {
 }
 
 fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let Some(case_dir) = case_dir(args) else {
-        eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
-        return ExitCode::from(2);
-    };
     let mut rest: Vec<String> = args.collect();
+    // --case may be omitted or empty: the query then runs in memory, which
+    // still sees the MalwareBazaar dump when --store points at a store.
+    let case_dir: Option<PathBuf> = match rest.iter().position(|a| a == "--case") {
+        Some(i) => {
+            if i + 1 >= rest.len() {
+                eprintln!("usage: mcparser query [--case <dir>] [--format table|csv|jsonl] [--store <file>] \"<sql>\"");
+                return ExitCode::from(2);
+            }
+            let v = rest.remove(i + 1);
+            rest.remove(i);
+            if v.is_empty() { None } else { Some(PathBuf::from(v)) }
+        }
+        None => None,
+    };
     let format = if rest.first().map(String::as_str) == Some("--format") {
         rest.remove(0);
         let Some(value) = rest.first().cloned() else {
@@ -525,10 +543,12 @@ fn query(args: &mut impl Iterator<Item = String>) -> ExitCode {
         eprintln!("usage: mcparser query --case <dir> [--format table|csv|jsonl] \"<sql>\"");
         return ExitCode::from(2);
     };
-    let db = case_dir.join("events.duckdb");
-    let _ = case::ensure_hunt_table(&db);
-    let catalog = case_dir.join("catalog.sqlite");
-    let table = match case::query_table_with_iocs(&db, Some(&catalog), store.as_deref(), sql) {
+    let (db, catalog) = match &case_dir {
+        Some(dir) => (dir.join("events.duckdb"), Some(dir.join("catalog.sqlite"))),
+        None => (PathBuf::new(), None),
+    };
+    if case_dir.is_some() { let _ = case::ensure_hunt_table(&db); }
+    let table = match case::query_table_with_iocs(&db, catalog.as_deref(), store.as_deref(), sql) {
         Ok(table) => table,
         Err(err) => {
             eprintln!("{err}");
@@ -1113,6 +1133,124 @@ fn json_escape(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
+fn unix_now() -> String {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs().to_string()).unwrap_or_default()
+}
+
+fn source_config(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let Some(id) = flag(&rest, "--source") else {
+        eprintln!("usage: mcparser source-config --source <id> [--store <file>]");
+        return ExitCode::from(2);
+    };
+    match case::hash_sources(&store_path(&rest)) {
+        Ok(rows) => match rows.into_iter().find(|r| r.id == id) {
+            Some(row) => { println!("{}", row.config); ExitCode::SUCCESS }
+            None => { eprintln!("unknown source: {id}"); ExitCode::from(1) }
+        },
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn bazaar_import(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let Some(file) = flag(&rest, "--file") else {
+        eprintln!("usage: mcparser bazaar-import --file <csv|zip> [--store <file>]");
+        return ExitCode::from(2);
+    };
+    let store = store_path(&rest);
+    let mut last = 0u64;
+    let mut progress = |n: u64| {
+        if n >= last + 100_000 { last = n; println!("progress\t50\tRead {n} rows"); }
+    };
+    match case::bazaar::import_dump(&store, Path::new(&file), &mut progress) {
+        Ok(c) => {
+            println!("read\t{}\nadded\t{}\nupdated\t{}\nunchanged\t{}\ntotal\t{}", c.read, c.added, c.updated, c.unchanged, c.total);
+            ExitCode::SUCCESS
+        }
+        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
+    }
+}
+
+fn bazaar_info(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let store = store_path(&rest);
+    match case::bazaar::dump_info(&store) {
+        Some((rows, meta)) => {
+            println!("rows\t{rows}");
+            for (k, v) in meta { println!("{k}\t{}", v.replace(['\t', '\n'], " ")); }
+        }
+        None => println!("rows\t0"),
+    }
+    ExitCode::SUCCESS
+}
+
+fn save_bazaar_hits(case_dir: &Path, hits: &[case::bazaar::BazaarHit], label: &str) -> Option<i64> {
+    let rows: Vec<case::HuntMatch> = hits.iter().map(|h| h.to_hunt()).collect();
+    let analyst = std::env::var("MCPARSER_ANALYST").unwrap_or_default();
+    let catalog = case_dir.join("catalog.sqlite");
+    let run_id = case::save_run(&catalog, "malwarebazaar", &unix_now(), rows.len() as i64, label, &analyst, "IOC hit").ok()?;
+    let _ = case::save_hunt_matches(&catalog, run_id, &rows);
+    if let Err(err) = case::save_hunt_matches_db(&case_dir.join("events.duckdb"), run_id, &rows) {
+        eprintln!("hits not written to events: {err}");
+    }
+    Some(run_id)
+}
+
+fn bazaar_match(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let Some(case_dir) = flag(&rest, "--case").map(PathBuf::from) else {
+        eprintln!("usage: mcparser bazaar-match --case <dir> [--store <file>]");
+        return ExitCode::from(2);
+    };
+    let store = store_path(&rest);
+    let db = case_dir.join("events.duckdb");
+    let _ = case::ensure_hunt_table(&db);
+    let mut progress = |pct: u8, msg: &str| println!("progress\t{pct}\t{msg}");
+    let outcome = match case::bazaar::match_case(&store, &db, &mut progress) {
+        Ok(o) => o,
+        Err(err) => { eprintln!("{err}"); return ExitCode::from(1); }
+    };
+    let stamp = unix_now();
+    let (csv, md, un) = match case::bazaar::write_report(&case_dir, &stamp, &outcome) {
+        Ok(p) => p,
+        Err(err) => { eprintln!("{err}"); return ExitCode::from(1); }
+    };
+    let label = format!("MalwareBazaar, {} hits in {} hashes", outcome.hits.len(), outcome.checked);
+    let run_id = save_bazaar_hits(&case_dir, &outcome.hits, &label).map(|i| i.to_string()).unwrap_or_default();
+    println!("progress\t100\tDone");
+    println!("counts\t{}\t{}\t{}\t{}", outcome.checked, outcome.hits.len(), outcome.unmatched.len(), outcome.dump_rows);
+    println!("report\t{}\t{}\t{}\t{}", csv.display(), md.display(), un.display(), run_id);
+    ExitCode::SUCCESS
+}
+
+fn bazaar_online_hits(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let (Some(case_dir), Some(file), Some(csv), Some(md)) = (flag(&rest, "--case").map(PathBuf::from), flag(&rest, "--file"), flag(&rest, "--csv"), flag(&rest, "--md")) else {
+        eprintln!("usage: mcparser bazaar-online-hits --case <dir> --file <found.tsv> --csv <report.csv> --md <report.md> [--looked-up <n>]");
+        return ExitCode::from(2);
+    };
+    let looked_up: usize = flag(&rest, "--looked-up").and_then(|v| v.parse().ok()).unwrap_or(0);
+    let text = match std::fs::read_to_string(&file) { Ok(t) => t, Err(err) => { eprintln!("{err}"); return ExitCode::from(1); } };
+    let found: Vec<(String, String, String, String)> = text.lines().filter_map(|l| {
+        let f: Vec<&str> = l.split('\t').collect();
+        (f.len() >= 4).then(|| (f[0].into(), f[1].into(), f[2].into(), f[3].into()))
+    }).collect();
+    let hits = match case::bazaar::online_hits(&case_dir.join("events.duckdb"), &found) {
+        Ok(h) => h,
+        Err(err) => { eprintln!("{err}"); return ExitCode::from(1); }
+    };
+    if let Err(err) = case::bazaar::append_report(Path::new(&csv), Path::new(&md), &hits, looked_up) {
+        eprintln!("{err}");
+        return ExitCode::from(1);
+    }
+    if !hits.is_empty() {
+        let _ = save_bazaar_hits(&case_dir, &hits, &format!("MalwareBazaar online lookup, {} hits", hits.len()));
+    }
+    println!("online\t{}", hits.len());
+    ExitCode::SUCCESS
+}
+
 fn case_dir(args: &mut impl Iterator<Item = String>) -> Option<PathBuf> {
     match args.next().as_deref() {
         Some("--case") => args.next().map(PathBuf::from),
@@ -1288,46 +1426,6 @@ fn uninstall_source(args: &mut impl Iterator<Item = String>) -> ExitCode {
     }
     match case::uninstall_hash_source(&store, &id) {
         Ok(()) => { println!("uninstalled {id}"); ExitCode::SUCCESS }
-        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
-    }
-}
-
-fn import_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let rest: Vec<String> = args.collect();
-    let store = store_path(&rest);
-    let id = rest.windows(2).find(|w| w[0] == "--source").map(|w| w[1].clone()).unwrap_or_default();
-    let file = rest.windows(2).find(|w| w[0] == "--file").map(|w| w[1].clone()).unwrap_or_default();
-    if id.is_empty() || file.is_empty() {
-        eprintln!("usage: mcparser import-hashes --source <id> --file <path> [--store <path>]");
-        return ExitCode::from(2);
-    }
-    let text = match std::fs::read_to_string(&file) {
-        Ok(text) => text,
-        Err(err) => { eprintln!("{file}: {err}"); return ExitCode::from(1); }
-    };
-    match case::import_hashes(&store, &id, &text) {
-        Ok(count) => { println!("imported {count} into {id}"); ExitCode::SUCCESS }
-        Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
-    }
-}
-
-fn match_hashes(args: &mut impl Iterator<Item = String>) -> ExitCode {
-    let rest: Vec<String> = args.collect();
-    let case_dir = rest.windows(2).find(|w| w[0] == "--case").map(|w| PathBuf::from(&w[1]));
-    let Some(case_dir) = case_dir else {
-        eprintln!("usage: mcparser match-hashes --case <dir> [--store <path>]");
-        return ExitCode::from(2);
-    };
-    let store = store_path(&rest);
-    let db = case_dir.join("events.duckdb");
-    match case::match_hashes(&store, &db) {
-        Ok(rows) => {
-            println!("hits {}", rows.len());
-            for row in &rows {
-                println!("{}\t{}\t{}\t{}\t{}", row.source, row.host_id, row.column, row.value, row.ioc_value);
-            }
-            ExitCode::SUCCESS
-        }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
 }
