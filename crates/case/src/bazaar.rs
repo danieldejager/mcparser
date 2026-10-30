@@ -283,14 +283,17 @@ pub fn dump_info(store: &Path) -> Option<(u64, Vec<(String, String)>)> {
     Some((total as u64, meta))
 }
 
-/// Make `malwarebazaar` queryable on a connection when the dump exists.
+/// Make the dump queryable on a connection when it exists. `malwarebazaar` is
+/// the narrow lookup view; `malwarebazaar_full` has every column. Internal code
+/// reads `mbz.malwarebazaar` directly.
 pub fn attach_dump(conn: &duckdb::Connection, store: &Path) -> Result<bool, String> {
     let path = dump_path(store);
     if !path.exists() { return Ok(false); }
     let lit = path.to_string_lossy().replace('\'', "''");
     conn.execute_batch(&format!(
         "ATTACH IF NOT EXISTS '{lit}' AS mbz (READ_ONLY);
-         CREATE OR REPLACE TEMP VIEW malwarebazaar AS SELECT * FROM mbz.malwarebazaar;"
+         CREATE OR REPLACE TEMP VIEW malwarebazaar_full AS SELECT * FROM mbz.malwarebazaar;
+         CREATE OR REPLACE TEMP VIEW malwarebazaar AS SELECT sha256, sha1, md5, signature, file_name, first_seen FROM mbz.malwarebazaar;"
     )).map_err(|e| e.to_string())?;
     Ok(true)
 }
@@ -549,6 +552,27 @@ mod tests {
         let (csv, md, _) = write_report(&d, "1", &out).unwrap();
         assert!(std::fs::read_to_string(csv).unwrap().contains("Sig7"));
         assert!(std::fs::read_to_string(md).unwrap().contains("Hashes checked: 3002"));
+    }
+
+    #[test]
+    fn narrow_and_full_views() {
+        let d = tmp("views");
+        let store = d.join("marketplace.sqlite");
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/malwarebazaar/recent-sample.csv");
+        import_dump(&store, &fixture, &mut |_| {}).unwrap();
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        assert!(attach_dump(&conn, &store).unwrap());
+        let cols = |t: &str| -> Vec<String> {
+            let mut st = conn.prepare(&format!("SELECT column_name FROM (DESCRIBE {t})")).unwrap();
+            st.query_map([], |r| r.get(0)).unwrap().map(|r| r.unwrap()).collect()
+        };
+        assert_eq!(cols("malwarebazaar"), ["sha256", "sha1", "md5", "signature", "file_name", "first_seen"]);
+        let full = cols("malwarebazaar_full");
+        for c in ["sha256", "md5", "sha1", "file_type", "tags", "reporter", "clamav", "imphash", "note"] { assert!(full.iter().any(|x| x == c), "{c}"); }
+        assert!(full.len() > 20);
+        let n: i64 = conn.query_row("SELECT count(*) FROM malwarebazaar", [], |r| r.get(0)).unwrap();
+        let m: i64 = conn.query_row("SELECT count(*) FROM malwarebazaar_full", [], |r| r.get(0)).unwrap();
+        assert_eq!((n, m), (3, 3));
     }
 
     #[test]
