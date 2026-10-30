@@ -193,3 +193,10 @@ aside summary { user-select: none; }
 .pe-table { border-collapse: collapse; width: 100%; font-size: 12px; }
 .pe-table th, .pe-table td { border-bottom: 1px solid #eee; padding: 3px 8px; text-align: left; }
 .pe-table td.pe-offset, .pe-table td.pe-size, .pe-table td.pe-value { font-family: ui-monospace, monospace; }
+.pe-tabs { display: flex; flex-wrap: wrap; gap: 2px; border-bottom: 1px solid var(--border, #444); margin: 6px 0; }
+.pe-tab { background: none; border: 1px solid transparent; border-bottom: none; padding: 4px 10px; cursor: pointer; color: inherit; font: inherit; }
+.pe-tab-on { border-color: var(--border, #444); background: var(--panel, rgba(255,255,255,0.06)); }
+.pe-pane { overflow: auto; }
+.pe-block h2 { font-size: 13px; margin: 10px 0 4px; }
+.pe-sev-high td { color: #e06c6c; }
+.pe-sev-medium td { color: #d9a441; }
