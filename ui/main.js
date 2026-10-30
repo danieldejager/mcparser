@@ -287,7 +287,7 @@ const schema = [
   "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
   "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
   "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path, shimcache.path, services.path and tasks.command. The case context shows non-Windows services, tasks and shimcache rows, the busiest SRUM network rows, and the top event ids. Query the table for the rest.",
-  "Table malwarebazaar(sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence, note). It is not inside events. It is the machine-local MalwareBazaar full dump. Every column is a plain VARCHAR column, so use malwarebazaar.signature or malwarebazaar.file_name directly. note is NULL unless the export had columns not listed here. Match a hash with malwarebazaar.sha256, malwarebazaar.sha1 or malwarebazaar.md5. The case context shows a sample of rows.",
+  "Table malwarebazaar(sha256, sha1, md5, signature, file_name, first_seen) is the narrow lookup view of the machine-local MalwareBazaar full dump. It has only those six columns. Use it to match a hash with malwarebazaar.sha256, malwarebazaar.sha1 or malwarebazaar.md5. Table malwarebazaar_full(sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence, note) has every column; use it for file_type, tags, reporter, clamav, imphash and other fields. Neither is inside events. Every column is a plain VARCHAR column. note is NULL unless the export had columns not listed here. The case context shows a sample of rows.",
   "Return one DuckDB SELECT and no other text."
 ].join(" ");
 
@@ -321,7 +321,7 @@ async function caseContext(caseDir) {
   const tasksText = tasks.code === 0 ? tasks.out || "" : "tasks table is not loaded";
   const store = path.join(app.getPath("userData"), "marketplace.sqlite");
   const bazaar = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", store,
-    "SELECT sha256, md5, sha1, file_name, signature, file_type FROM malwarebazaar LIMIT 20"]);
+    "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20"]);
   const bazaarText = bazaar.code === 0 ? bazaar.out || "" : "malwarebazaar is not loaded";
   return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
     "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
@@ -915,7 +915,13 @@ ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessa
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
-ipcMain.handle("query", (_event, caseDir, sql) => run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]));
+ipcMain.handle("query", async (_event, caseDir, sql) => {
+  const result = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]);
+  if (result.code !== 0 && /malwarebazaar\b(?!_full)/i.test(sql) && /column|Binder/i.test(result.err || result.out || "")) {
+    result.err = (result.err || result.out || "") + "\nmalwarebazaar has six columns: sha256, sha1, md5, signature, file_name, first_seen. Use malwarebazaar_full for more columns.";
+  }
+  return result;
+});
 ipcMain.handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
     title: "Export results",
