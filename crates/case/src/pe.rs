@@ -32,6 +32,12 @@ CREATE TABLE IF NOT EXISTS pe_resources (
 CREATE TABLE IF NOT EXISTS pe_indicators (sha256 VARCHAR, rule VARCHAR, severity VARCHAR, reason VARCHAR);
 CREATE TABLE IF NOT EXISTS pe_strings (sha256 VARCHAR, file_offset BIGINT, encoding VARCHAR, category VARCHAR, value VARCHAR);
 CREATE TABLE IF NOT EXISTS pe_rich (sha256 VARCHAR, product_id INTEGER, build INTEGER, count BIGINT);
+CREATE TABLE IF NOT EXISTS pe_certificates (
+    sha256 VARCHAR, signature_idx INTEGER, cert_idx INTEGER, is_signer BOOLEAN, subject VARCHAR, subject_cn VARCHAR,
+    subject_o VARCHAR, subject_ou VARCHAR, subject_c VARCHAR, issuer VARCHAR, issuer_cn VARCHAR, issuer_o VARCHAR,
+    issuer_c VARCHAR, serial_hex VARCHAR, serial_dec VARCHAR, version INTEGER, signature_algorithm VARCHAR,
+    digest_algorithm VARCHAR, not_before VARCHAR, not_after VARCHAR, self_signed BOOLEAN, verified BOOLEAN
+);
 CREATE TABLE IF NOT EXISTS pe_checks (sha256 VARCHAR, source VARCHAR, result VARCHAR, signature VARCHAR, file_name VARCHAR, checked_at VARCHAR);
 ";
 
@@ -117,6 +123,7 @@ pub fn store_report(
         "pe_indicators",
         "pe_strings",
         "pe_rich",
+        "pe_certificates",
     ] {
         conn.execute(&format!("DELETE FROM {t} WHERE sha256 = ?"), [sha])
             .map_err(err)?;
@@ -221,6 +228,38 @@ pub fn store_report(
             e.count as i64
         ])
         .map_err(err)?;
+    }
+    drop(a);
+    // verified is always false: the signature is parsed, never checked.
+    let mut a = conn.appender("pe_certificates").map_err(err)?;
+    for (si, sg) in r.signatures.iter().enumerate() {
+        for c in &sg.certificates {
+            a.append_row(duckdb::params![
+                sha,
+                si as i32,
+                c.index as i32,
+                c.is_signer,
+                c.subject.full,
+                c.subject.common_name,
+                c.subject.organization,
+                c.subject.org_unit,
+                c.subject.country,
+                c.issuer.full,
+                c.issuer.common_name,
+                c.issuer.organization,
+                c.issuer.country,
+                c.serial_hex,
+                c.serial_dec,
+                c.version as i32,
+                c.signature_algorithm,
+                sg.digest_algorithm,
+                pe_read::iso_time(c.not_before),
+                pe_read::iso_time(c.not_after),
+                c.self_signed,
+                false
+            ])
+            .map_err(err)?;
+        }
     }
     Ok(())
 }
@@ -490,6 +529,7 @@ pub fn report_json(
         "exports": r.exports.iter().map(|e| json!({"ordinal": e.ordinal, "name": e.name, "rva": e.rva, "forwarder": e.forwarder})).collect::<Vec<_>>(),
         "resources": r.resources.iter().map(|e| json!({"type": e.type_name, "name": e.name, "language": e.language, "rva": e.rva, "size": e.size, "sha256": e.sha256})).collect::<Vec<_>>(),
         "debug": r.debug.iter().map(|d| json!({"type": d.kind, "timestamp": iso_time(d.timestamp), "size": d.size, "pdb_path": d.pdb_path})).collect::<Vec<_>>(),
+        "signatures": r.signatures.iter().map(signature_json).collect::<Vec<_>>(),
         "tls": {"present": r.tls_present, "callbacks": r.tls_callbacks},
         "hex_base64": base64(&x.head),
         "tree": [
@@ -508,6 +548,30 @@ pub fn report_json(
             {"id": "cert", "label": "Certificate", "rows": [row("present", String::new(), hexv(r.certificate_size as u64), flag(r.certificate_present), "Authenticode blob present, signature not verified".into())]},
             {"id": "clr", "label": ".NET (CLR)", "rows": [row("present", String::new(), String::new(), flag(r.clr_present), String::new())]},
         ],
+    })
+}
+
+fn name_json(n: &pe_read::cert::NameParts) -> serde_json::Value {
+    serde_json::json!({"full": n.full, "cn": n.common_name, "o": n.organization, "ou": n.org_unit, "c": n.country})
+}
+
+/// One Authenticode entry for the UI. `status` is fixed text: the signature
+/// is parsed only and never verified.
+fn signature_json(s: &pe_read::cert::Signature) -> serde_json::Value {
+    use serde_json::json;
+    json!({
+        "status": "signature present, not verified",
+        "offset": s.offset, "length": s.length, "revision": format!("0x{:04X}", s.revision),
+        "cert_type": format!("0x{:04X}", s.cert_type), "version": s.signed_data_version,
+        "digest_algorithm": s.digest_algorithm, "signature_algorithm": s.signature_algorithm,
+        "signer_serial_hex": s.signer_serial_hex, "signer_serial_dec": s.signer_serial_dec,
+        "signer_issuer": name_json(&s.signer_issuer), "signer_index": s.signer_index, "error": s.error,
+        "certificates": s.certificates.iter().map(|c| json!({
+            "index": c.index, "is_signer": c.is_signer, "self_signed": c.self_signed, "version": c.version,
+            "subject": name_json(&c.subject), "issuer": name_json(&c.issuer),
+            "serial_hex": c.serial_hex, "serial_dec": c.serial_dec, "signature_algorithm": c.signature_algorithm,
+            "not_before": pe_read::iso_time(c.not_before), "not_after": pe_read::iso_time(c.not_after),
+        })).collect::<Vec<_>>(),
     })
 }
 

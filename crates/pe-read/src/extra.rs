@@ -379,6 +379,7 @@ pub fn indicators(r: &PeReport, now_secs: u64) -> Vec<Indicator> {
         }
         None => {}
     }
+    signature_hints(r, &mut add);
     for s in &r.sections {
         let (x, w) = (
             s.characteristics & 0x2000_0000 != 0,
@@ -497,4 +498,64 @@ pub fn indicators(r: &PeReport, now_secs: u64) -> Vec<Indicator> {
         );
     }
     out
+}
+
+/// Hints about the Authenticode data. Parsed only: nothing here says the
+/// signature is valid or trusted.
+fn signature_hints(r: &PeReport, add: &mut impl FnMut(&'static str, &'static str, String)) {
+    if r.certificate_present && r.signatures.iter().all(|s| s.certificates.is_empty()) {
+        add(
+            "signature_unparsed",
+            "low",
+            "a certificate table is present but no certificate could be decoded".into(),
+        );
+    }
+    for s in &r.signatures {
+        if crate::cert::is_weak_digest(&s.digest_algorithm) {
+            add(
+                "weak_signature_digest",
+                "low",
+                format!(
+                    "signature digest is {}, a weak algorithm",
+                    s.digest_algorithm
+                ),
+            );
+        }
+        let Some(c) = s.signer() else {
+            if !s.certificates.is_empty() {
+                add(
+                    "signer_not_in_chain",
+                    "medium",
+                    "the signer certificate named by SignerInfo is not in the embedded chain"
+                        .into(),
+                );
+            }
+            continue;
+        };
+        let name = if c.subject.common_name.is_empty() {
+            c.subject.full.clone()
+        } else {
+            c.subject.common_name.clone()
+        };
+        if c.self_signed {
+            add(
+                "self_signed_signer",
+                "medium",
+                format!("signer certificate '{name}' is self-signed (issuer equals subject)"),
+            );
+        }
+        let ts = r.timestamp as u64;
+        if ts != 0 && (ts < c.not_before || ts > c.not_after) {
+            add(
+                "signer_invalid_at_compile",
+                "medium",
+                format!(
+                    "compile time {} is outside the signer certificate validity {} to {}",
+                    crate::iso_time(ts),
+                    crate::iso_time(c.not_before),
+                    crate::iso_time(c.not_after)
+                ),
+            );
+        }
+    }
 }

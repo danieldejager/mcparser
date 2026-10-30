@@ -5,6 +5,7 @@
 //! instead of panics. Nothing here executes, loads or disassembles the file.
 #![forbid(unsafe_code)]
 
+pub mod cert;
 pub mod extra;
 
 use md5::Md5;
@@ -140,6 +141,9 @@ pub struct PeReport {
     pub debug: Vec<DebugEntry>,
     pub certificate_present: bool,
     pub certificate_size: u32,
+    /// Authenticode entries decoded from the certificate table. Parsed only,
+    /// never verified.
+    pub signatures: Vec<cert::Signature>,
     pub clr_present: bool,
     pub imphash: String,
     pub overlay_size: u64,
@@ -235,6 +239,28 @@ pub fn entropy(bytes: &[u8]) -> f64 {
             -p * p.log2()
         })
         .sum()
+}
+
+/// ISO 8601 UTC for Unix seconds. Years past 9999 are clamped.
+pub fn iso_time(secs: u64) -> String {
+    let secs = secs.min(253_402_300_799);
+    let days = (secs / 86_400) as i64;
+    let rem = secs % 86_400;
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + if m <= 2 { 1 } else { 0 };
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3600,
+        rem / 60 % 60,
+        rem % 60
+    )
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -614,6 +640,12 @@ pub fn analyze(b: &[u8]) -> PeReport {
         let end = d.rva as u64 + d.size as u64;
         if end <= b.len() as u64 && d.size >= 8 {
             r.certificate_present = true;
+            r.signatures = cert::authenticode(b, d.rva, d.size);
+            for sg in &r.signatures {
+                if !sg.error.is_empty() {
+                    ctx.warn(format!("certificate at 0x{:X}: {}", sg.offset, sg.error));
+                }
+            }
         } else {
             ctx.warn("certificate directory points outside the file");
         }
