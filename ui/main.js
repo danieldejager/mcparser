@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStora
 const { spawn } = require("child_process");
 const fs = require("fs");
 const peRange = require("./pe-range.js");
+const parserBin = require("./parser-binary.js");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
 const { runStartupUpdate } = require("./bazaar-autoupdate");
@@ -110,9 +111,8 @@ function activeKey() {
 }
 
 function parserBinary() {
-  const name = process.platform === "win32" ? "mcparser.exe" : "mcparser";
-  if (app.isPackaged) return path.join(process.resourcesPath, name);
-  return path.join(repo, "target", "debug", name);
+  if (app.isPackaged) return path.join(process.resourcesPath, parserBin.binaryName(process.platform));
+  return parserBin.devBinary(repo, process.platform);
 }
 
 function appIcon() {
@@ -427,20 +427,44 @@ async function showAbout() {
 
 let caseOpen = false;
 
-// Fixed IPC channel for the Preferences dialog. The renderer only listens on
-// this name; nothing is loaded from the network.
-const PREFS_CHANNEL = "open-preferences";
+// View > Mode. Fixed IPC channels, nothing loaded from the network:
+// main sends THEME_SET_CHANNEL with "light" or "dark" when a radio is picked;
+// the renderer reports the effective mode on THEME_STATE_CHANNEL at startup
+// and on every change so the radio checks stay in sync.
+const THEME_SET_CHANNEL = "set-theme-mode";
+const THEME_STATE_CHANNEL = "theme-mode";
+const THEME_MODES = ["light", "dark"];
+let themeMode = "light";
+
+function setThemeMode(mode) {
+  if (!THEME_MODES.includes(mode)) return;
+  themeMode = mode;
+  if (win) win.webContents.send(THEME_SET_CHANNEL, mode);
+  buildMenu();
+}
+
+function viewMenu() {
+  return {
+    label: "View",
+    submenu: [
+      {
+        label: "Mode",
+        submenu: [
+          { label: "Light", type: "radio", checked: themeMode === "light", click: () => setThemeMode("light") },
+          { label: "Dark", type: "radio", checked: themeMode === "dark", click: () => setThemeMode("dark") },
+        ],
+      },
+    ],
+  };
+}
 
 function buildMenu() {
   const connected = activeKey().length > 0;
-  const isMac = process.platform === "darwin";
-  const prefsItem = { label: "Preferences...", accelerator: "CmdOrCtrl+,", click: () => win && win.webContents.send(PREFS_CHANNEL) };
   const template = [
     {
       label: "McParser",
       submenu: [
         { label: "About McParser", click: showAbout },
-        ...(isMac ? [{ type: "separator" }, prefsItem] : []),
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },
@@ -477,7 +501,6 @@ function buildMenu() {
             { label: "Open...", click: () => win.webContents.send("open-handoff") },
           ],
         },
-        ...(isMac ? [] : [{ type: "separator" }, prefsItem]),
         { type: "separator" },
         { role: "close" },
       ],
@@ -494,6 +517,7 @@ function buildMenu() {
         { role: "selectAll" },
       ],
     },
+    viewMenu(),
     {
       label: "Audit",
       submenu: [
@@ -601,6 +625,11 @@ ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
   properties: ["openFile"],
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
+ipcMain.on(THEME_STATE_CHANNEL, (event, mode) => {
+  if (!win || event.sender !== win.webContents || !THEME_MODES.includes(mode) || mode === themeMode) return;
+  themeMode = mode;
+  buildMenu();
+});
 ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
 ipcMain.handle("ioc-upload", async () => {
   const picked = await dialog.showOpenDialog(win, {

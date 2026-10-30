@@ -97,6 +97,8 @@ npm install
 npm start
 ```
 
+In development (`npm start`) the app runs whichever of `target/release/mcparser` and `target/debug/mcparser` was built most recently, so `cargo build --release` and plain `cargo build` both work. Rebuild after pulling changes and restart the app, or it keeps running the older binary. Packaged installs use the binary shipped inside the package.
+
 The first build compiles DuckDB and can take several minutes. On Windows ARM, use the ARM64 developer shell so `link.exe` is the ARM64 linker.
 
 Do not commit a case, `node_modules`, or `ui/dist`.

@@ -4,26 +4,25 @@ const T = require("./theme.js");
 
 const mem = (init) => { const m = new Map(init ? [[T.KEY, init]] : []); return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, v), m }; };
 
-test("default is follow system", () => {
+test("no stored value or a stored system value follows the OS", () => {
   assert.strictEqual(T.load(mem()), "system");
+  assert.strictEqual(T.load(mem("system")), "system");
   assert.strictEqual(T.load(mem("purple")), "system");
   assert.strictEqual(T.load(null), "system");
-});
-
-test("system resolves from prefers-color-scheme, explicit choices win", () => {
   assert.strictEqual(T.resolve("system", true), "dark");
   assert.strictEqual(T.resolve("system", false), "light");
   assert.strictEqual(T.resolve("light", true), "light");
   assert.strictEqual(T.resolve("dark", false), "dark");
-  assert.strictEqual(T.resolve(undefined, true), "dark");
 });
 
-test("save persists normalized choice and round trips", () => {
+test("save stores only light or dark under mcparser-theme", () => {
+  assert.strictEqual(T.KEY, "mcparser-theme");
   const s = mem();
   assert.strictEqual(T.save(s, "dark"), "dark");
   assert.strictEqual(T.load(s), "dark");
-  T.save(s, "bogus");
-  assert.strictEqual(s.m.get(T.KEY), "system");
+  assert.strictEqual(T.save(s, "bogus"), null);
+  assert.strictEqual(T.save(s, "system"), null);
+  assert.strictEqual(s.m.get(T.KEY), "dark");
 });
 
 test("storage errors fall back quietly", () => {
@@ -32,74 +31,85 @@ test("storage errors fall back quietly", () => {
   assert.strictEqual(T.save(bad, "light"), "light");
 });
 
-test("arrow keys wrap through the radio group", () => {
-  assert.strictEqual(T.step("light", "ArrowRight"), "dark");
-  assert.strictEqual(T.step("system", "ArrowDown"), "light");
-  assert.strictEqual(T.step("light", "ArrowLeft"), "system");
-  assert.strictEqual(T.step("dark", "Home"), "light");
-  assert.strictEqual(T.step("light", "End"), "system");
-  assert.strictEqual(T.step("light", "a"), null);
-});
-
-test("init sets data-theme on <html> from storage before mounting", () => {
+test("init sets data-theme on <html> from storage before any UI (no flash)", () => {
   const html = { dataset: {} };
   const doc = { documentElement: html, defaultView: { matchMedia: () => ({ matches: true }) } };
   assert.strictEqual(T.init(doc, mem()), "system");
   assert.strictEqual(html.dataset.theme, "dark");
   T.init(doc, mem("light"));
   assert.strictEqual(html.dataset.theme, "light");
-  assert.strictEqual(html.dataset.themeChoice, "light");
-});
-
-test("app wiring: Appearance lives only in the Preferences dialog", () => {
   const fs = require("node:fs");
-  const html = fs.readFileSync(__dirname + "/index.html", "utf8");
-  const head = html.slice(0, html.indexOf("</head>"));
-  assert.ok(head.includes('src="theme.js"'), "theme.js loads in <head> so the first paint is themed");
-  const toolbar = html.slice(html.indexOf('id="toolbar"'), html.indexOf("</header>"));
-  assert.ok(!toolbar.includes("app-theme") && !toolbar.includes("tb-appearance"), "toolbar switch is gone");
-  assert.strictEqual(html.split('id="app-theme"').length, 2, "exactly one Appearance control");
-  assert.ok(/id="prefs-sheet" class="sheet" hidden>[\s\S]*id="app-theme"/.test(html));
-  assert.ok(!html.includes('id="pe-theme"'));
-  const r = fs.readFileSync(__dirname + "/renderer.js", "utf8");
-  assert.ok(r.includes('PeTheme.mount(document.getElementById("app-theme")'));
-  assert.ok(r.includes("window.mcparser.onOpenPreferences(openPreferences)"));
+  const page = fs.readFileSync(__dirname + "/index.html", "utf8");
+  assert.ok(page.slice(0, page.indexOf("</head>")).includes('src="theme.js"'), "theme.js loads in <head> so the first paint is themed");
 });
 
-test("menu: Preferences... with Cmd/Ctrl+, sends a fixed IPC channel", () => {
+function fakeRenderer(stored, osDark) {
+  const store = mem(stored);
+  const listeners = [];
+  const doc = { documentElement: { dataset: {} }, defaultView: { localStorage: store, matchMedia: () => ({ matches: osDark, addEventListener(_t, f) { listeners.push(f); } }) } };
+  const sent = [];
+  let handler = null;
+  const bridge = { themeModeChanged: (m) => sent.push(m), onSetThemeMode: (h) => { handler = h; } };
+  const ctl = T.connect(doc, bridge);
+  return { store, doc, sent, ctl, pick: (m) => handler(m), osChange: (dark) => { osDark = dark; doc.defaultView.matchMedia = () => ({ matches: dark }); listeners.forEach((f) => f()); } };
+}
+
+test("View > Mode: startup reports the effective mode so the menu can check it", () => {
+  const r = fakeRenderer(null, true);
+  assert.deepStrictEqual(r.sent, ["dark"], "follows the OS until the user picks");
+  assert.strictEqual(r.doc.documentElement.dataset.theme, "dark");
+  assert.deepStrictEqual(fakeRenderer("light", true).sent, ["light"]);
+  assert.deepStrictEqual(fakeRenderer("system", false).sent, ["light"]);
+});
+
+test("View > Mode: picking Light or Dark applies at once, persists, and reports back", () => {
+  const r = fakeRenderer(null, false);
+  r.pick("dark");
+  assert.strictEqual(r.doc.documentElement.dataset.theme, "dark");
+  assert.strictEqual(r.store.m.get(T.KEY), "dark");
+  assert.deepStrictEqual(r.sent, ["light", "dark"]);
+  r.osChange(false);
+  assert.strictEqual(r.doc.documentElement.dataset.theme, "dark", "an explicit pick ignores the OS");
+  r.pick("light");
+  assert.strictEqual(r.store.m.get(T.KEY), "light");
+  assert.strictEqual(r.doc.documentElement.dataset.theme, "light");
+  assert.deepStrictEqual(r.sent, ["light", "dark", "light"]);
+  assert.strictEqual(T.load(r.store), "light", "same storage key carries over a restart");
+});
+
+test("View > Mode: with no pick yet, an OS change is followed and reported", () => {
+  const r = fakeRenderer(null, false);
+  r.osChange(true);
+  assert.strictEqual(r.doc.documentElement.dataset.theme, "dark");
+  assert.deepStrictEqual(r.sent, ["light", "dark"]);
+  assert.strictEqual(r.store.m.has(T.KEY), false, "following the OS writes nothing");
+});
+
+test("menu: View follows Edit and holds Mode > Light / Dark radios on fixed IPC channels", () => {
   const fs = require("node:fs");
   const m = fs.readFileSync(__dirname + "/main.js", "utf8");
-  assert.ok(m.includes('const PREFS_CHANNEL = "open-preferences"'));
-  assert.ok(/label: "Preferences\.\.\.", accelerator: "CmdOrCtrl\+,", click: \(\) => win && win\.webContents\.send\(PREFS_CHANNEL\)/.test(m));
-  assert.ok(m.includes("...(isMac ? [{ type: \"separator\" }, prefsItem] : [])"), "macOS app menu");
-  assert.ok(m.includes("...(isMac ? [] : [{ type: \"separator\" }, prefsItem])"), "File menu elsewhere");
+  const edit = m.indexOf('label: "Edit"'), view = m.indexOf("    viewMenu(),\n"), audit = m.indexOf('label: "Audit"');
+  assert.ok(edit > 0 && view > edit && audit > view, "View sits right after Edit");
+  assert.ok(/label: "View",\s*submenu: \[\s*\{\s*label: "Mode",\s*submenu: \[/.test(m));
+  assert.ok(m.includes('{ label: "Light", type: "radio", checked: themeMode === "light", click: () => setThemeMode("light") }'));
+  assert.ok(m.includes('{ label: "Dark", type: "radio", checked: themeMode === "dark", click: () => setThemeMode("dark") }'));
+  assert.ok(m.includes('const THEME_SET_CHANNEL = "set-theme-mode"'));
+  assert.ok(m.includes('const THEME_STATE_CHANNEL = "theme-mode"'));
+  assert.ok(m.includes("win.webContents.send(THEME_SET_CHANNEL, mode)"));
+  assert.ok(/ipcMain\.on\(THEME_STATE_CHANNEL,[\s\S]{0,200}event\.sender !== win\.webContents[\s\S]{0,120}buildMenu\(\)/.test(m), "menu checks follow the renderer");
   const p = fs.readFileSync(__dirname + "/preload.js", "utf8");
-  assert.ok(p.includes('onOpenPreferences: (handler) => ipcRenderer.on("open-preferences", () => handler())'));
+  assert.ok(p.includes('ipcRenderer.send("theme-mode"'));
+  assert.ok(p.includes('ipcRenderer.on("set-theme-mode"'));
+  const r = fs.readFileSync(__dirname + "/renderer.js", "utf8");
+  assert.ok(r.includes("window.PeTheme.connect(document, window.mcparser)"));
 });
 
-test("Preferences dialog: choosing a radio applies and persists the theme", () => {
-  // Minimal DOM fake, enough for PeTheme.mount.
-  const el = (tag) => { const e = { tag, children: [], dataset: {}, attrs: {}, listeners: {}, tabIndex: 0, textContent: "",
-    setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, appendChild(c) { this.children.push(c); return c; },
-    addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); }, focus() { doc.active = this; } }; e.ownerDocument = doc; return e; };
-  const store = mem("system");
-  const doc = { documentElement: { dataset: {} }, createElement: el, defaultView: { localStorage: store, matchMedia: () => ({ matches: false, addEventListener() {} }) } };
-  const host = el("div");
-  const ctl = T.mount(host, { label: "Appearance" });
-  const group = host.children[0];
-  assert.strictEqual(group.attrs.role, "radiogroup");
-  const [light, dark, sys] = group.children;
-  assert.strictEqual(sys.attrs["aria-checked"], "true");
-  dark.listeners.click[0]();
-  assert.strictEqual(doc.documentElement.dataset.theme, "dark");
-  assert.strictEqual(store.m.get(T.KEY), "dark");
-  assert.strictEqual(dark.attrs["aria-checked"], "true");
-  assert.strictEqual(dark.tabIndex, 0);
-  dark.listeners.keydown[0]({ key: "ArrowLeft", preventDefault() {} });
-  assert.strictEqual(ctl.get(), "light");
-  assert.strictEqual(store.m.get(T.KEY), "light");
-  assert.strictEqual(doc.active, light);
-  assert.strictEqual(T.load(store), "light", "same storage key carries over");
+test("no Preferences dialog is left anywhere", () => {
+  const fs = require("node:fs");
+  for (const f of ["main.js", "preload.js", "renderer.js", "index.html", "studio.css"]) {
+    const t = fs.readFileSync(__dirname + "/" + f, "utf8").replace(/webPreferences/g, "");
+    assert.ok(!/preferences|prefs-|CmdOrCtrl\+,|app-theme/i.test(t), f + " still mentions the Preferences dialog");
+  }
 });
 
 test("studio.css: every app token has a dark value and no light-only literals remain on core surfaces", () => {

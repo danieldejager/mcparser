@@ -22,12 +22,9 @@ flowchart TD
 
 File, Analyze PE File... opens one Windows executable or DLL and shows what its headers say. McParser only parses the file. It never runs it and makes no network calls for it. The tabs cover General, PE Header, MZ Header, Sections / Overlay, Imports / Exports / TLS, Resources, Debug, Version Info / Signature, and Hex / Strings. The hints on the General tab are hints, not verdicts.
 
-Appearance is an app-wide setting, set in Preferences. Light, Dark, or Follow system applies to every screen: the editor, results grid, left pane, dialogs, AI pane, audit lists, and this PE view. Follow system is the default and tracks the OS light or dark setting. The choice applies immediately and is remembered between sessions.
+If the PE view says "This McParser build does not include the PE analyzer. Rebuild with cargo build and restart.", the mcparser binary the app started is older than the PE analyzer or is missing. Rebuild it and restart the app. In development the app runs whichever of target/release/mcparser and target/debug/mcparser was built most recently.
 
-**Preferences.** Open it with McParser > Preferences... (Cmd+,) on macOS, or File > Preferences... (Ctrl+,) on Windows and Linux. The Appearance section has the three options as a radio group: use Tab to reach it, the arrow keys to move between options, and Escape or Done to close the dialog.
-
-![Preferences, light](../screenshots/preferences-light.png)
-![Preferences, dark](../screenshots/preferences-dark.png)
+**View > Mode.** Light or dark mode is an app-wide setting, chosen from View > Mode > Light or Dark in the app menu. It applies to every screen: the editor, results grid, left pane, dialogs, AI pane, audit lists, and this PE view. The choice applies immediately and is remembered between sessions. Until you pick one, McParser follows the OS light or dark setting, and the menu shows the mode in use as checked.
 
 ![Main window, light](../screenshots/app-light.png)
 ![Main window, dark](../screenshots/app-dark.png)

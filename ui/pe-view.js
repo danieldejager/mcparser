@@ -32,6 +32,17 @@
     return items.map(([k, v]) => [k, v === undefined || v === null ? "" : String(v)]);
   }
 
+  const MISSING_PE = "This McParser build does not include the PE analyzer. Rebuild with cargo build and restart.";
+  // Text for a failed `mcparser pe` run. An older binary without the pe
+  // command, or no binary at all, gets one plain instruction instead of a raw
+  // error.
+  function failureMessage(result) {
+    const r = result || {};
+    const text = String(r.err || "") + "\n" + String(r.out || "");
+    if (/unknown command:\s*pe\b/i.test(text) || /\bENOENT\b/.test(text) || /spawn .*mcparser(\.exe)?\b.*(ENOENT|not found)/i.test(text)) return MISSING_PE;
+    return (r.err || r.out || "").trim() || "Analysis failed";
+  }
+
   const TABS = [
     { id: "general", label: "General" },
     { id: "pe", label: "PE Header", nodes: ["nt", "file", "optional", "dirs"] },
@@ -630,5 +641,5 @@
     return { open: (id) => open(Math.max(0, TABS.findIndex((t) => t.id === id))), goHex: (o) => goHex(o) };
   }
 
-  return { COLUMNS, TABS, PAGE_SIZES, MAX_RANGE, flattenTree, summaryItems, hexRows, decodeBase64, sectionFlags, parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX, safeIconUrl, render };
+  return { COLUMNS, TABS, PAGE_SIZES, MAX_RANGE, flattenTree, summaryItems, hexRows, decodeBase64, sectionFlags, parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX, safeIconUrl, MISSING_PE, failureMessage, render };
 });

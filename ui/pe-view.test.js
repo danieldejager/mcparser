@@ -105,3 +105,15 @@ test("resource hex preview is capped and MalwareBazaar state is explicit", () =>
   assert.strictEqual(previewLength("junk"), 0);
   assert.deepStrictEqual(["hit", "no hit", undefined, null, "weird"].map(bazaarState), ["hit", "no hit", "not checked", "not checked", "not checked"]);
 });
+
+test("an old or missing binary gets one plain rebuild message", () => {
+  const { failureMessage, MISSING_PE } = require("./pe-view.js");
+  assert.strictEqual(MISSING_PE, "This McParser build does not include the PE analyzer. Rebuild with cargo build and restart.");
+  assert.strictEqual(failureMessage({ code: 2, out: "", err: "unknown command: pe\n" }), MISSING_PE);
+  assert.strictEqual(failureMessage({ code: 1, out: "unknown command: pe", err: "" }), MISSING_PE);
+  assert.strictEqual(failureMessage({ code: 1, out: "", err: "spawn /repo/target/release/mcparser ENOENT" }), MISSING_PE);
+  assert.strictEqual(failureMessage({ code: 1, out: "", err: "/tmp/x.exe: not a regular file" }), "/tmp/x.exe: not a regular file");
+  assert.strictEqual(failureMessage({ code: 1 }), "Analysis failed");
+  const r = require("node:fs").readFileSync(__dirname + "/renderer.js", "utf8");
+  assert.ok(r.includes("window.PeView.failureMessage(result)"));
+});

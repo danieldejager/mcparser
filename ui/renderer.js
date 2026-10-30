@@ -1933,29 +1933,12 @@ window.mcparser.onAnalyzePe(async () => {
   if (!result || result.canceled) return;
   const sheet = document.getElementById("pe-sheet");
   const view = document.getElementById("pe-view");
-  if (result.code !== 0) { view.textContent = result.err || "Analysis failed"; sheet.hidden = false; return; }
+  if (result.code !== 0 || /unknown command:\s*pe\b/i.test(result.out || "")) { view.textContent = window.PeView.failureMessage(result); sheet.hidden = false; return; }
   try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop()), { readRange: window.mcparser.peReadRange }); }
   catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
   sheet.hidden = false;
 });
-// Appearance (Light, Dark, Follow system) applies to the whole app. It lives
-// in the Preferences dialog, opened from the app menu (Cmd+, or Ctrl+,).
-const appTheme = window.PeTheme.mount(document.getElementById("app-theme"), { label: "Appearance" });
-const prefsSheet = document.getElementById("prefs-sheet");
-let prefsReturnFocus = null;
-function openPreferences() {
-  prefsReturnFocus = document.activeElement;
-  prefsSheet.hidden = false;
-  const on = prefsSheet.querySelector('.pe-theme-opt[aria-checked="true"]');
-  if (on) on.focus();
-  return appTheme;
-}
-function closePreferences() {
-  prefsSheet.hidden = true;
-  if (prefsReturnFocus && prefsReturnFocus.focus) prefsReturnFocus.focus();
-}
-document.getElementById("prefs-form").addEventListener("submit", (e) => { e.preventDefault(); closePreferences(); });
-prefsSheet.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closePreferences(); } });
-prefsSheet.addEventListener("click", (e) => { if (e.target === prefsSheet) closePreferences(); });
-window.mcparser.onOpenPreferences(openPreferences);
+// Light or dark mode applies to the whole app. It is chosen from View > Mode
+// in the app menu; theme.js already set data-theme in <head>.
+window.PeTheme.connect(document, window.mcparser);
 document.getElementById("pe-close").addEventListener("click", () => { document.getElementById("pe-sheet").hidden = true; });

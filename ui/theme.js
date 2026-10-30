@@ -1,73 +1,63 @@
-// Appearance preference for the whole app: "light", "dark" or "system"
-// (default). theme.js sets data-theme on <html>; studio.css keys every view's
-// palette (app and PE view) off it. The choice is kept in localStorage like
-// other UI settings. Loaded in <head> so the first paint already has the
-// right palette.
+// Light or dark mode for the whole app, chosen from View > Mode in the app
+// menu. theme.js sets data-theme on <html>; studio.css keys every view's
+// palette (app and PE view) off it. The choice is kept in localStorage under
+// "mcparser-theme". A stored "system" (from an earlier build) or no value at
+// all follows the OS until the user picks Light or Dark. Loaded in <head> so
+// the first paint already has the right palette.
 (function (root) {
   const KEY = "mcparser-theme";
+  const MODES = ["light", "dark"];
   const CHOICES = ["light", "dark", "system"];
-  const LABELS = { light: "Light", dark: "Dark", system: "Follow system" };
 
   function normalize(v) { return CHOICES.includes(v) ? v : "system"; }
   function resolve(choice, prefersDark) { const c = normalize(choice); return c === "system" ? (prefersDark ? "dark" : "light") : c; }
   function load(storage) { try { return normalize(storage && storage.getItem(KEY)); } catch (_) { return "system"; } }
-  function save(storage, choice) { const c = normalize(choice); try { storage && storage.setItem(KEY, c); } catch (_) { /* ignore */ } return c; }
-  // Arrow keys move through the radio group, wrapping like native radios.
-  function step(choice, key) {
-    const i = CHOICES.indexOf(normalize(choice));
-    if (key === "ArrowRight" || key === "ArrowDown") return CHOICES[(i + 1) % CHOICES.length];
-    if (key === "ArrowLeft" || key === "ArrowUp") return CHOICES[(i + CHOICES.length - 1) % CHOICES.length];
-    if (key === "Home") return CHOICES[0];
-    if (key === "End") return CHOICES[CHOICES.length - 1];
-    return null;
+  function save(storage, mode) {
+    if (!MODES.includes(mode)) return null;
+    try { storage && storage.setItem(KEY, mode); } catch (_) { /* ignore */ }
+    return mode;
   }
+  function prefersDark(win) { try { return !!(win.matchMedia && win.matchMedia("(prefers-color-scheme: dark)").matches); } catch (_) { return false; } }
+  function storageOf(win, storage) { if (storage) return storage; try { return win.localStorage; } catch (_) { return null; } }
 
-  // Browser wiring: builds a radiogroup inside `host` and keeps <html data-theme> in sync.
-  function mount(host, opts) {
-    const o = opts || {};
-    const doc = host.ownerDocument;
-    const win = doc.defaultView;
-    const storage = o.storage || win.localStorage;
-    const mq = win.matchMedia ? win.matchMedia("(prefers-color-scheme: dark)") : null;
-    let choice = load(storage);
-    const group = doc.createElement("div");
-    group.className = "pe-theme";
-    group.setAttribute("role", "radiogroup");
-    group.setAttribute("aria-label", o.label || "Appearance");
-    const buttons = CHOICES.map((c) => {
-      const b = doc.createElement("button");
-      b.type = "button"; b.className = "pe-theme-opt"; b.dataset.choice = c;
-      b.setAttribute("role", "radio"); b.textContent = LABELS[c];
-      b.addEventListener("click", () => set(c));
-      b.addEventListener("keydown", (e) => { const n = step(choice, e.key); if (n) { e.preventDefault(); set(n); buttons[CHOICES.indexOf(n)].focus(); } });
-      group.appendChild(b);
-      return b;
-    });
-    function apply() {
-      doc.documentElement.dataset.theme = resolve(choice, !!(mq && mq.matches));
-      doc.documentElement.dataset.themeChoice = choice;
-      buttons.forEach((b) => { const on = b.dataset.choice === choice; b.setAttribute("aria-checked", String(on)); b.tabIndex = on ? 0 : -1; });
-    }
-    function set(c) { choice = save(storage, c); apply(); }
-    if (mq) { const f = () => { if (choice === "system") apply(); }; mq.addEventListener ? mq.addEventListener("change", f) : mq.addListener(f); }
-    host.appendChild(group);
-    apply();
-    return { set, get: () => choice };
+  function apply(doc, choice, dark) {
+    const mode = resolve(choice, dark);
+    doc.documentElement.dataset.theme = mode;
+    doc.documentElement.dataset.themeChoice = normalize(choice);
+    return mode;
   }
 
   // Set data-theme from the stored choice before any UI is mounted.
   function init(doc, storage) {
     const win = doc.defaultView;
-    let st = storage;
-    try { st = st || win.localStorage; } catch (_) { st = null; }
-    const choice = load(st);
-    const dark = !!(win.matchMedia && win.matchMedia("(prefers-color-scheme: dark)").matches);
-    doc.documentElement.dataset.theme = resolve(choice, dark);
-    doc.documentElement.dataset.themeChoice = choice;
+    const choice = load(storageOf(win, storage));
+    apply(doc, choice, prefersDark(win));
     return choice;
   }
 
-  const api = { KEY, CHOICES, LABELS, normalize, resolve, load, save, step, mount, init };
+  // Renderer wiring for the View > Mode menu. `bridge` is the preload API:
+  // onSetThemeMode(handler) receives "light" or "dark" from the menu, and
+  // themeModeChanged(mode) tells main the effective mode so it can check the
+  // right radio. Returns { set, get, mode }.
+  function connect(doc, bridge, storage) {
+    const win = doc.defaultView;
+    const st = storageOf(win, storage);
+    let choice = load(st);
+    let last = null;
+    function refresh() {
+      const mode = apply(doc, choice, prefersDark(win));
+      if (mode !== last) { last = mode; if (bridge && bridge.themeModeChanged) bridge.themeModeChanged(mode); }
+      return mode;
+    }
+    function set(mode) { if (save(st, mode)) choice = mode; return refresh(); }
+    if (bridge && bridge.onSetThemeMode) bridge.onSetThemeMode(set);
+    const mq = win.matchMedia ? win.matchMedia("(prefers-color-scheme: dark)") : null;
+    if (mq) { const f = () => { if (choice === "system") refresh(); }; mq.addEventListener ? mq.addEventListener("change", f) : mq.addListener && mq.addListener(f); }
+    refresh();
+    return { set, get: () => choice, mode: () => last };
+  }
+
+  const api = { KEY, MODES, CHOICES, normalize, resolve, load, save, apply, init, connect };
   if (typeof module === "object" && module.exports) module.exports = api;
   else { root.PeTheme = api; if (root.document && root.document.documentElement) init(root.document); }
 })(typeof window !== "undefined" ? window : globalThis);

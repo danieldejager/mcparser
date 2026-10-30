@@ -204,14 +204,6 @@ a { color: var(--app-link); }
 :root[data-theme="dark"] #toolbar svg [fill="#1f6b4a"] { fill: #4fbf8a; }
 :root[data-theme="dark"] #toolbar svg [stroke="#555"] { stroke: #c8c8c8; }
 
-/* Appearance control (toolbar). Reuses the segmented look of the PE view. */
-.prefs h2 { margin: 12px 0 4px; font-size: 13px; color: var(--app-strong); }
-.prefs .pe-theme { border-color: var(--app-control-border); }
-.prefs .pe-theme-opt { background: var(--app-bg); color: var(--app-fg); height: 28px; padding: 0 12px; }
-.prefs .pe-theme-opt + .pe-theme-opt { border-left-color: var(--app-control-border); }
-.prefs .pe-theme-opt[aria-checked="true"] { background: var(--app-select); color: var(--app-strong); }
-.prefs .pe-theme-opt:focus-visible { outline: 2px solid var(--app-link); outline-offset: 1px; }
-
 /* PE view. Own tokens with the same light and dark values as the app
    palette; the dark set applies when theme.js sets data-theme="dark" on
    <html> (Dark, or Follow system with the OS preferring dark). */

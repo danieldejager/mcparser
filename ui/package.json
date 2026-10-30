@@ -33,6 +33,7 @@
       "pe-view.js",
       "theme.js",
       "pe-range.js",
+      "parser-binary.js",
       "bazaar-fetch.js",
       "icon.png"
     ],
