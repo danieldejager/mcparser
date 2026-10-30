@@ -70,6 +70,14 @@ Hits are also saved as hunt matches with their own run, the same way the Hunt bu
 
 The online lookup is off by default. When it is on, each hash the dump did not know is sent to the abuse.ch get_info API, up to the limit you set (25 by default). On HTTP 429 the lookup waits once, as asked by abuse.ch, and stops if it is limited again. Online hits are added to the report with the source online lookup. Local hits show the source local dump.
 
+### Update on start
+
+When the MalwareBazaar card is installed and a key is stored, the app fetches the recent export once each time it starts, after the main window has loaded. It uses the same path as Fetch recent, so the temporary download is always deleted and the key never appears in a message. Reloading the window does not run it again. If the card is not installed, or no key is stored, nothing happens and no message is shown.
+
+While it runs, the Results area shows Updating MalwareBazaar..... and then a line with the added, updated, and unchanged counts and the newest sample date, or a clear error (key rejected with 401 or 403, rate limited with 429, offline). The message goes in the Results area only when it is empty. If your own query results are showing, they are left alone and the message appears in the Results header status line instead. Your queries are not blocked while it runs. A failed update leaves the existing dump untouched. The start-up update does not retry on 429; it reports it and waits for the next start.
+
+Set "autoUpdate": false in the settings below to turn it off.
+
 ### Settings
 
 The settings live in the config JSON of the malwarebazaar row in marketplace.sqlite:
@@ -79,7 +87,8 @@ The settings live in the config JSON of the malwarebazaar row in marketplace.sql
   "lookupEndpoint": "https://mb-api.abuse.ch/api/v1/",
   "exportUrl": "https://mb-api.abuse.ch/v2/files/exports/{key}/recent.csv",
   "onlineLookup": false,
-  "onlineMax": 25
+  "onlineMax": 25,
+  "autoUpdate": true
 }
 ```
 

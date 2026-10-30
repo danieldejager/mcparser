@@ -18,6 +18,7 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 - The old import-hashes and match-hashes path is removed. No source used it any more
 - Uninstall deletes the dump database
 - Endpoints and the online lookup are settings in the source config JSON
+- When the card is installed and a key is stored, the dump updates itself once per app start, with Updating MalwareBazaar..... and a result line in the Results area (or its status line when your results are showing). Turn it off with "autoUpdate": false. A failed update keeps the existing dump
 
 ### Why the lookup view is narrow
 
