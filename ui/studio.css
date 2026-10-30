@@ -123,6 +123,7 @@ th { position: relative; }
 #toolbar { height: 40px; }
 
 #results th { position: sticky; top: 0; background: #f7f7f7; z-index: 1; cursor: pointer; }
+#results td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #results tr.selected { background: #e8f2ff; }
 #results tr.selected td { background: #e8f2ff; }
 

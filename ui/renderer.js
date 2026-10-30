@@ -206,6 +206,7 @@ let importedIn = "";
 function makeResizable(table) {
   table.style.tableLayout = "fixed";
   table.style.width = "100%";
+  table.querySelectorAll("td").forEach((td) => { if (!td.title && td.textContent) td.title = td.textContent; });
   table.querySelectorAll("th").forEach((th, index) => {
     th.onclick = (event) => {
       if (event.target.classList.contains("col-grip")) return;
