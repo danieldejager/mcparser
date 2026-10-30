@@ -1,0 +1,12 @@
+[package]
+name = "pe-read"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+# Parse only. This crate reads bytes and decodes PE headers and tables.
+# It never executes, loads, maps or disassembles the input.
+[dependencies]
+md-5 = "=0.10.6"
+sha1 = "=0.10.6"
+sha2 = "=0.10.9"
