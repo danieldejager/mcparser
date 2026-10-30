@@ -340,6 +340,9 @@ fn gather(conn: &duckdb::Connection) -> Result<(), String> {
             parts.push(format!("SELECT host_id, '{table}', {col}, unnest(regexp_extract_all(lower({col}), {HEX})) FROM {table} WHERE regexp_matches(lower({col}), {HEX})"));
         }
     }
+    if table_exists(&conn, "pe_files") {
+        parts.push("SELECT host_id, 'pe_files', path, lower(sha256) FROM pe_files WHERE sha256 IS NOT NULL AND sha256 <> ''".into());
+    }
     for part in &parts {
         conn.execute(&format!("INSERT INTO case_hashes {part}"), []).map_err(|e| e.to_string())?;
     }

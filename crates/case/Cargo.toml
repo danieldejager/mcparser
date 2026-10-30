@@ -15,4 +15,5 @@ prefetch-core = "0.1"
 notatin = "1"
 srum-parser = "0.4"
 tempfile = "3"
+pe-read = { path = "../pe-read" }
 
