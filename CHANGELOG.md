@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.4 (unreleased)
+## 0.3.4 — 2026-10-30
 
 MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a background match with a report.
 
@@ -20,6 +20,7 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 - Endpoints and the online lookup are settings in the source config JSON
 - lookupEndpoint and exportUrl are https only: http and other schemes are refused and not saved, requests and redirects that are not https are refused, and a host outside abuse.ch shows a warning
 - When the card is installed and a key is stored, the dump updates itself once per app start, with Updating MalwareBazaar..... and a result line in the Results area (or its status line when your results are showing). Turn it off with "autoUpdate": false. A failed update keeps the existing dump
+- The app connects to abuse.ch at start-up only when the card is installed and a key is stored. Otherwise nothing goes out at start-up
 
 ### Why the lookup view is narrow
 
@@ -46,6 +47,10 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 - New commands: bazaar-import, bazaar-info, bazaar-match, bazaar-online-hits, and source-config
 - Removed: import-hashes and match-hashes
 - query no longer requires --case
+
+### Dependencies
+
+- ctutils is updated to 0.4.7 for RUSTSEC-2026-0385
 
 ## 0.3.3 — 2026-10-21
 
