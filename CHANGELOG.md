@@ -19,6 +19,14 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 - Uninstall deletes the dump database
 - Endpoints and the online lookup are settings in the source config JSON
 
+### Why the lookup view is narrow
+
+- `SELECT * FROM malwarebazaar` stays readable. It returns sha256, sha1, md5, signature (the malware family, for example AgentTesla), file_name, and first_seen. Nothing is dropped: `malwarebazaar_full` keeps every column
+- md5 is included because analysts often receive an md5 from other tools. first_seen shows how fresh a sample is
+- file_name is included because the signature is often blank, as with many RFQ and invoice lure files
+- Long hash values no longer overlap the next column in the results grid
+- The matcher, the report, and the chat keep reading the full data, so nothing else changes
+
 ### Matching
 
 - Match case gathers hashes from Amcache, event data, Prefetch, and Shimcache and joins them against the dump in the background with progress
