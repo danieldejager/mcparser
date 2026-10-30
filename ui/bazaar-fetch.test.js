@@ -36,7 +36,7 @@ test("fetchExport streams to a temp file and reports the date", async () => {
   });
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bzf-"));
   try {
-    const got = await bz.fetchExport({ template: `${base}/v2/files/exports/{key}/recent.csv`, key: KEY, dir });
+    const got = await bz.fetchExport({ template: `${base}/v2/files/exports/{key}/recent.csv`, key: KEY, dir, requireHttps: false });
     assert.strictEqual(seen, `/v2/files/exports/${KEY}/recent.csv`);
     assert.strictEqual(fs.readFileSync(got.file, "utf8"), csv);
     assert.strictEqual(got.bytes, Buffer.byteLength(csv));
@@ -49,7 +49,7 @@ for (const status of [401, 403, 429, 500]) {
     const { s, base } = await server((_req, res) => { res.writeHead(status); res.end("nope"); });
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bzf-"));
     try {
-      await assert.rejects(bz.fetchExport({ template: `${base}/v2/files/exports/{key}/recent.csv`, key: KEY, dir }), (err) => {
+      await assert.rejects(bz.fetchExport({ template: `${base}/v2/files/exports/{key}/recent.csv`, key: KEY, dir, requireHttps: false }), (err) => {
         assert.ok(err.message.includes(String(status)), err.message);
         assert.ok(!err.message.includes(KEY));
         if (status === 429) assert.match(err.message, /rate limit/);
@@ -64,7 +64,7 @@ for (const status of [401, 403, 429, 500]) {
 test("fetchExport network errors are redacted and clean up", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "bzf-"));
   const fetchImpl = async (url) => { throw new Error("connect failed for " + url); };
-  await assert.rejects(bz.fetchExport({ template: "http://127.0.0.1:9/v2/files/exports/{key}/recent.csv", key: KEY, dir, fetchImpl }), (err) => {
+  await assert.rejects(bz.fetchExport({ template: "http://127.0.0.1:9/v2/files/exports/{key}/recent.csv", key: KEY, dir, fetchImpl, requireHttps: false }), (err) => {
     assert.ok(!err.message.includes(KEY), err.message);
     assert.match(err.message, /exports\/\*\*\*/);
     return true;
@@ -91,7 +91,7 @@ test("lookupHashes respects max, waits once on 429 and records finds", async () 
   });
   const waits = [];
   try {
-    const out = await bz.lookupHashes({ endpoint: `${base}/api/v1/`, key: KEY, hashes: ["a".repeat(64), "b".repeat(64), "c".repeat(64)], max: 2, sleep: async (ms) => { waits.push(ms); } });
+    const out = await bz.lookupHashes({ endpoint: `${base}/api/v1/`, key: KEY, hashes: ["a".repeat(64), "b".repeat(64), "c".repeat(64)], max: 2, sleep: async (ms) => { waits.push(ms); }, requireHttps: false });
     assert.strictEqual(out.looked, 2);
     assert.deepStrictEqual(out.found, [["b".repeat(64), "b".repeat(64), "RedLine", "x.exe"]]);
     assert.deepStrictEqual(waits, [1000]);
@@ -104,7 +104,7 @@ test("lookupHashes stops on repeated 429 and on a rejected key", async () => {
   for (const status of [429, 401]) {
     const { s, base } = await server((_req, res) => { res.writeHead(status); res.end("{}"); });
     try {
-      const out = await bz.lookupHashes({ endpoint: `${base}/api/v1/`, key: KEY, hashes: ["a".repeat(64), "c".repeat(64)], max: 5, sleep: async () => {} });
+      const out = await bz.lookupHashes({ endpoint: `${base}/api/v1/`, key: KEY, hashes: ["a".repeat(64), "c".repeat(64)], max: 5, sleep: async () => {}, requireHttps: false });
       assert.strictEqual(out.looked, 0);
       assert.ok(out.note.includes(String(status)));
       assert.ok(!out.note.includes(KEY));
