@@ -179,8 +179,9 @@ fn csv_source(file: &Path) -> Result<(PathBuf, bool), String> {
         .find(|&i| archive.name_for_index(i).and_then(|m| m.ok()).map(|m| { let n = m.to_ascii_lowercase(); n.ends_with(".csv") || n.ends_with(".txt") }).unwrap_or(false))
         .ok_or("the zip holds no .csv file")?;
     let mut member = archive.by_index(index).map_err(|e| e.to_string())?;
-    let tmp = std::env::temp_dir().join(format!("mcparser-bazaar-{}-{}.csv", std::process::id(), super::sha256_bytes(file.display().to_string().as_bytes())[..8].to_string()));
-    let mut out = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+    // Unpredictable name, created exclusively (O_EXCL) with owner-only permissions.
+    let named = tempfile::Builder::new().prefix("mcparser-bazaar-").suffix(".csv").tempfile().map_err(|e| e.to_string())?;
+    let (mut out, tmp) = named.keep().map_err(|e| e.to_string())?;
     if let Err(e) = std::io::copy(&mut member, &mut out) { let _ = std::fs::remove_file(&tmp); return Err(e.to_string()); }
     Ok((tmp, true))
 }
@@ -489,10 +490,7 @@ mod tests {
     use super::*;
 
     fn tmp(name: &str) -> PathBuf {
-        let d = std::env::temp_dir().join(format!("mcparser-bz-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
-        d
+        tempfile::Builder::new().prefix(&format!("mcparser-bz-{name}-")).tempdir().unwrap().keep()
     }
 
     fn hex(seed: u64, len: usize) -> String {

@@ -2178,9 +2178,7 @@ mod orphan_source_tests {
 
     #[test]
     fn hash_sources_drops_orphan_rows_and_keeps_installed_card() {
-        let d = std::env::temp_dir().join(format!("mcparser-orphan-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&d);
-        std::fs::create_dir_all(&d).unwrap();
+        let d = tempfile::Builder::new().prefix("mcparser-orphan-").tempdir().unwrap().keep();
         let store = d.join("marketplace.sqlite");
         seed_hash_sources(&store).unwrap();
         install_hash_source(&store, "malwarebazaar", "{\"a\":1}").unwrap();
