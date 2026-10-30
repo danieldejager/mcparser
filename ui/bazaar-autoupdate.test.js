@@ -29,7 +29,7 @@ function setup(base, over) {
     loadConfig: async () => ({ exportUrl: `${base}/v2/files/exports/{key}/recent.csv` }),
     fetchAndImport: async (key, config) => {
       fetches += 1;
-      const got = await bz.fetchExport({ template: config.exportUrl, key, dir });
+      const got = await bz.fetchExport({ template: config.exportUrl, key, dir, requireHttps: false });
       try {
         fs.copyFileSync(got.file, dump);
         return { code: 0, counts: { added: 2, updated: 1, unchanged: 0 }, info: { newest_first_seen: "2026-10-29 10:00:00" } };

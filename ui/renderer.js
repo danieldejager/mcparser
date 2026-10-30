@@ -1854,6 +1854,7 @@ function bazaarPanel() {
     info.textContent = rows
       ? `Dump: ${rows.toLocaleString()} rows, newest sample ${i.newest_first_seen || "unknown"}, loaded ${when}${fileDate ? ", file date " + fileDate : ""}. This is the recent export, not every sample ever seen.`
       : "Dump: not loaded. Fetch the recent export or upload a zip or csv.";
+    if (result && result.warning) bazaarSay("Warning: " + result.warning);
     if (result && result.config) {
       online.checked = !!result.config.onlineLookup;
       onlineMax.value = String(result.config.onlineMax || 25);
@@ -1869,7 +1870,11 @@ function bazaarPanel() {
   fetchLink.onclick = async () => { bazaarSay("Fetching the recent export..."); loaded(await window.mcparser.bazaarFetch()); };
   upload.onclick = async () => loaded(await window.mcparser.bazaarUpload());
   match.onclick = () => runBazaarMatch();
-  const save = () => window.mcparser.bazaarSettings({ onlineLookup: online.checked, onlineMax: Number(onlineMax.value) });
+  const save = async () => {
+    const saved = await window.mcparser.bazaarSettings({ onlineLookup: online.checked, onlineMax: Number(onlineMax.value) });
+    if (saved && saved.code !== 0) bazaarSay(saved.err || "Saving the settings failed");
+    else if (saved && saved.warning) bazaarSay("Warning: " + saved.warning);
+  };
   online.onchange = save;
   onlineMax.onchange = save;
   refresh();

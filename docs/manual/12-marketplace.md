@@ -94,6 +94,8 @@ The settings live in the config JSON of the malwarebazaar row in marketplace.sql
 
 The exportUrl holds the placeholder {key}. The key is put in at the moment of the request and is never saved there. Read the settings with mcparser source-config --source malwarebazaar.
 
+lookupEndpoint and exportUrl accept https:// only. A value with http:// or any other scheme is refused with a message and nothing is saved. Requests also check the address before the key is sent, and a redirect to an address that is not https is refused. A host outside abuse.ch is allowed, but the card shows a warning that the API key will be sent to that host.
+
 ### Command line
 
 ```

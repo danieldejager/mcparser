@@ -747,14 +747,14 @@ ipcMain.handle("test-source", async (_event, id) => {
     if (id === "malwarebazaar") {
       const body = new URLSearchParams({ query: "get_info", hash: "094fd325049b8a9cf6d3e5ef2a6d4cc6a567d7d49c35f8bb8dd9e3c6acf3d78d" });
       const config = await bazaarConfig();
-      const response = await fetch(config.lookupEndpoint, { method: "POST", headers: { "Auth-Key": key }, body });
+      const response = await bazaar.safeFetch(config.lookupEndpoint, { method: "POST", headers: { "Auth-Key": key }, body });
       const json = await response.json().catch(() => ({}));
       const state = json.query_status || (response.status === 401 || response.status === 403 || response.status === 429 ? bazaar.statusMessage(response.status) : response.status);
       return { code: response.ok ? 0 : 1, out: "MalwareBazaar: " + state };
     }
     return { code: 1, err: "No test for " + id };
   } catch (err) {
-    return { code: 1, err: err.message };
+    return { code: 1, err: bazaar.redact(err.message) };
   }
 });
 ipcMain.handle("lookup-hash", async (_event, hash) => {
@@ -762,7 +762,7 @@ ipcMain.handle("lookup-hash", async (_event, hash) => {
     const key = loadSourceKey("malwarebazaar");
     const body = new URLSearchParams({ query: "get_info", hash });
     const config = await bazaarConfig();
-    const response = await fetch(config.lookupEndpoint, { method: "POST", headers: { "Auth-Key": key }, body });
+    const response = await bazaar.safeFetch(config.lookupEndpoint, { method: "POST", headers: { "Auth-Key": key }, body });
     const json = await response.json().catch(() => ({}));
     const state = json.query_status || (response.status === 429 ? bazaar.statusMessage(429) : response.status);
     const name = (json.data && json.data[0] && (json.data[0].signature || json.data[0].file_name)) || "";
@@ -821,7 +821,7 @@ async function bazaarImportFile(file, label) {
 ipcMain.handle("bazaar-info", async () => {
   const result = await run(["bazaar-info", "--store", marketStore()]);
   const config = await bazaarConfig();
-  return { code: result.code, info: parseTsv(result.out), config: { onlineLookup: config.onlineLookup, onlineMax: config.onlineMax, lookupEndpoint: config.lookupEndpoint, exportUrl: config.exportUrl }, err: result.err };
+  return { code: result.code, info: parseTsv(result.out), config: { onlineLookup: config.onlineLookup, onlineMax: config.onlineMax, lookupEndpoint: config.lookupEndpoint, exportUrl: bazaar.redact(config.exportUrl) }, warning: bazaar.endpointWarning(config), err: result.err };
 });
 
 ipcMain.handle("bazaar-settings", async (_event, changes) => {
@@ -829,9 +829,11 @@ ipcMain.handle("bazaar-settings", async (_event, changes) => {
   const next = { ...current };
   if (changes && typeof changes.onlineLookup === "boolean") next.onlineLookup = changes.onlineLookup;
   if (changes && Number(changes.onlineMax) > 0) next.onlineMax = Math.min(1000, Math.floor(Number(changes.onlineMax)));
-  if (changes && typeof changes.lookupEndpoint === "string" && /^https?:\/\//.test(changes.lookupEndpoint)) next.lookupEndpoint = changes.lookupEndpoint;
-  if (changes && typeof changes.exportUrl === "string" && changes.exportUrl.includes("{key}") && /^https?:\/\//.test(changes.exportUrl)) next.exportUrl = changes.exportUrl;
-  return run(["install-source", "--source", "malwarebazaar", "--config", JSON.stringify(next), "--store", marketStore()]);
+  // Endpoints are https only. On a refused value nothing is saved.
+  const checked = bazaar.applyEndpointSettings(next, changes);
+  if (checked.error) return { code: 1, err: checked.error };
+  const result = await run(["install-source", "--source", "malwarebazaar", "--config", JSON.stringify(checked.next), "--store", marketStore()]);
+  return { ...result, warning: bazaar.endpointWarning(checked.next) };
 });
 
 ipcMain.handle("bazaar-upload", async () => {
