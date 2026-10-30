@@ -40,6 +40,17 @@ The Resources tab has a tree on the left. Top-level folders are resource types (
 
 The Tree / Icons switch above the tree swaps in the icon gallery.
 
+### Reopen from a pe_files result
+
+When a query result comes from the pe_files table (it has a sha256 column and a path, file_size, or is_pe column), right-click a row and choose Open PE analysis. With the keyboard, select a row, then press Shift+F10 or the Menu key; move with the arrow keys, press Enter to choose, and Escape to close. The PE view opens for that row's file, using the host_id and path in the row when the same SHA256 was saved for several hosts or paths.
+
+The view is rebuilt from what the case already holds (pe_files, pe_sections, pe_imports, pe_exports, pe_resources, pe_indicators, pe_strings, pe_rich, pe_certificates, pe_version_info, pe_manifest, pe_icons, pe_checks). Nothing is picked, run, or loaded. Header field tables, mitigations, resource bytes, and icon images are not stored, so those parts are empty.
+
+The case does not keep the file bytes. If the saved path still exists and its SHA256 matches, the Hex tab reads it. Otherwise the Hex tab says the file is not available and offers Locate file..., which opens a file picker. The picked file is used only if its SHA256 matches the row; otherwise the Hex tab stays off and says so.
+
+![pe_files row menu, light](../screenshots/pe/row-menu-light.png)
+![pe_files row menu, dark](../screenshots/pe/row-menu-dark.png)
+
 The screenshots below use a synthetic sample, not a real file.
 
 ![General](../screenshots/pe/general.png)

@@ -290,8 +290,8 @@
         if ((s.warnings || []).length) d.append(card("Parser warnings", ...(s.warnings || []).map((w) => el("div", "pe-warn", w))));
         return d;
       },
-      pe: () => treeView(["nt", "file", "optional", "dirs"]),
-      mz: () => treeView(["dos"]),
+      pe: () => (byId.nt ? treeView(["nt", "file", "optional", "dirs"]) : treeView(["saved"])),
+      mz: () => (byId.dos ? treeView(["dos"]) : empty("Not saved in the case", "MZ header fields are read from the file. Use File > Analyze PE File to see them.")),
       sections: () => {
         const d = el("div", "pe-stack");
         const bar = (e) => { const lvl = entropyLevel(e); const w = el("div", "pe-ebar pe-e-" + lvl); const f = el("div", "pe-efill"); f.style.width = Math.max(0, Math.min(100, (e || 0) / 8 * 100)) + "%"; w.append(f, el("span", "pe-mono", typeof e === "number" ? e.toFixed(3) : "")); w.title = lvl === "high" ? "High entropy: packed or encrypted data is likely" : ""; return w; };
@@ -519,6 +519,22 @@
     function hexCard() {
       const c = card("Hex");
       const total = Number(s.file_size) || 0;
+      if (typeof opts.readRange !== "function" && typeof opts.locateFile === "function") {
+        // Opened from the case: bytes are not stored. The analyst can pick
+        // the file; main checks its sha256 before any byte is read.
+        const msg = el("div", "pe-warn");
+        msg.hidden = true;
+        const btn = el("button", "pe-locate", "Locate file...");
+        btn.type = "button";
+        btn.addEventListener("click", async () => {
+          msg.hidden = true;
+          const res = await opts.locateFile();
+          if (res && res.ok && typeof res.readRange === "function") { opts.readRange = res.readRange; c.replaceWith(hexCard()); return; }
+          if (res && res.error) { msg.hidden = false; msg.textContent = res.error; }
+        });
+        c.append(empty("File not available", "This view was rebuilt from the case. The file bytes are not stored, so the hex view needs the original file. Its SHA256 is checked before any byte is shown."), btn, msg);
+        return c;
+      }
       if (typeof opts.readRange !== "function") { c.append(empty("Hex view unavailable", "Byte ranges are read on demand from the file on disk; no reader is attached.")); return c; }
       const tools = el("div", "pe-hextools");
       const input = el("input", "pe-mono");

@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStora
 const { spawn } = require("child_process");
 const fs = require("fs");
 const peRange = require("./pe-range.js");
+const peCase = require("./pe-case.js");
 const parserBin = require("./parser-binary.js");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
@@ -982,15 +983,43 @@ ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessa
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 // Paged hex view: bounded reads from the last picked PE file only.
 let peFile = "";
+let peCaseSha = "";
 ipcMain.handle("pe-read-range", (_event, offset, length) => peRange.readRange(peFile, offset, length));
 // Parse-only PE analysis. The file is read by the parser, never run or loaded.
 ipcMain.handle("pe-analyze", async (_event, caseDir) => {
   const picked = await dialog.showOpenDialog(win, { title: "Analyze PE file", properties: ["openFile"] });
   if (picked.canceled || !picked.filePaths.length) return { code: 0, out: "", canceled: true };
   peFile = picked.filePaths[0];
+  peCaseSha = "";
   const args = ["pe", "--file", picked.filePaths[0], "--json", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")];
   if (caseDir) args.push("--case", casePath(caseDir));
   return run(args);
+});
+// Reopen a saved PE analysis from the case tables (read-only SELECTs). The
+// file is only made readable for hex after its sha256 matches the row.
+ipcMain.handle("pe-case-report", async (_event, caseDir, target) => {
+  let qs;
+  try { qs = peCase.queries(target); } catch { return { code: 1, err: "Not a valid sha256" }; }
+  const rows = {};
+  for (const [k, q] of Object.entries(qs)) {
+    const res = await run(["query", "--case", casePath(caseDir), "--format", "jsonl", q]);
+    if (res.code !== 0 && k === "files") return { code: 1, err: res.err || res.out || "Query failed" };
+    rows[k] = res.code === 0 ? peCase.parseJsonl(res.out) : [];
+  }
+  const report = peCase.buildReport(rows);
+  if (!report) return { code: 1, err: "No saved PE analysis for this row in the case" };
+  peFile = "";
+  peCaseSha = target.sha256.toLowerCase();
+  if (report.path && await peRange.fileMatches(report.path, peCaseSha)) peFile = report.path;
+  return { code: 0, report, hexReady: Boolean(peFile) };
+});
+ipcMain.handle("pe-locate", async () => {
+  if (!peCaseSha) return { ok: false, error: "No saved PE analysis is open" };
+  const picked = await dialog.showOpenDialog(win, { title: "Locate the analysed file", properties: ["openFile"] });
+  if (picked.canceled || !picked.filePaths.length) return { ok: false };
+  if (!(await peRange.fileMatches(picked.filePaths[0], peCaseSha))) return { ok: false, error: "That file's SHA256 does not match this analysis." };
+  peFile = picked.filePaths[0];
+  return { ok: true };
 });
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));

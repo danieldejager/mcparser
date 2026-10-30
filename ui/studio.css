@@ -186,7 +186,9 @@ aside summary { user-select: none; }
 
 .row-menu { position: fixed; z-index: 60; background: var(--app-bg); border: 1px solid var(--app-control-border); border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.15); padding: 4px 0; min-width: 180px; }
 .row-menu a { display: block; padding: 6px 14px; color: var(--app-link); cursor: pointer; font-size: 13px; }
-.row-menu a:hover { background: var(--app-hover); }
+.row-menu a:hover, .row-menu a:focus { background: var(--app-hover); outline: none; }
+.row-menu a:focus-visible { outline: 2px solid var(--app-link); outline-offset: -2px; }
+#results tr:focus-visible { outline: 2px solid var(--app-link); outline-offset: -2px; }
 
 
 /* Inputs, selects and textareas take the palette too. */
@@ -369,3 +371,4 @@ a { color: var(--app-link); }
 .pe-reshex .pe-hexline { grid-template-columns: 84px 370px 1fr; }
 .pe-reshex .pe-hexbytes { white-space: pre; }
 .pe-restext { margin: 0; max-height: 46vh; white-space: pre-wrap; }
+.pe-locate { display: block; margin: 0 auto 12px; }

@@ -23,3 +23,17 @@ test("readRange reads only the window asked for", () => {
   assert.ok(readRange("", 0, 4).error);
   assert.match(readRange(f + ".missing", 0, 4).error, /read failed/);
 });
+
+test("fileMatches checks sha256 before a file can be used", async () => {
+  const { fileMatches, sha256File } = require("./pe-range.js");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pe-range-"));
+  const f = path.join(dir, "x.bin");
+  fs.writeFileSync(f, Buffer.from("MZ0123456789"));
+  const sha = require("crypto").createHash("sha256").update("MZ0123456789").digest("hex");
+  assert.strictEqual(await sha256File(f), sha);
+  assert.ok(await fileMatches(f, sha.toUpperCase()));
+  assert.ok(!(await fileMatches(f, "0".repeat(64))));
+  assert.ok(!(await fileMatches(f + ".missing", sha)));
+  assert.ok(!(await fileMatches(dir, sha)));
+  assert.ok(!(await fileMatches("", sha)));
+});

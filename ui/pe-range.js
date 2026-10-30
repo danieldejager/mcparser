@@ -1,6 +1,7 @@
 // Bounded read of a byte range from the PE file being viewed. Used by the
 // main process for the paged hex view so the whole file is never loaded.
-// Only the file picked in the last "Analyze PE file" dialog can be read.
+// Only the file picked in the last "Analyze PE file" dialog, or a file
+// whose sha256 matched the case row being viewed, can be read.
 const fs = require("fs");
 
 const MAX_RANGE = 1024 * 1024;
@@ -34,4 +35,24 @@ function readRange(filePath, offset, length) {
   }
 }
 
-module.exports = { MAX_RANGE, PAGE_SIZES, validateRange, readRange };
+// SHA256 of a file, streamed so a large file is never held in memory.
+// Resolves "" when the file cannot be read.
+function sha256File(filePath) {
+  const crypto = require("crypto");
+  return new Promise((resolve) => {
+    if (!filePath) { resolve(""); return; }
+    const h = crypto.createHash("sha256");
+    const stream = fs.createReadStream(filePath);
+    stream.on("data", (chunk) => h.update(chunk));
+    stream.on("end", () => resolve(h.digest("hex")));
+    stream.on("error", () => resolve(""));
+  });
+}
+
+// True when the file at filePath is a regular file whose sha256 matches.
+async function fileMatches(filePath, sha256) {
+  try { if (!filePath || !fs.statSync(filePath).isFile()) return false; } catch { return false; }
+  return (await sha256File(filePath)) === String(sha256 || "").toLowerCase();
+}
+
+module.exports = { MAX_RANGE, PAGE_SIZES, validateRange, readRange, sha256File, fileMatches };
