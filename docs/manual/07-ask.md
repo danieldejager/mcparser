@@ -2,7 +2,7 @@
 
 The pane on the right can ask Grok, Claude, or OpenAI about the open case. Choose the vendor under AI Model. AI Integration, then Connect, saves that vendor's key. The key is encrypted with the macOS keychain or with Windows DPAPI, in its own file. It is not written into the case. A vendor with no key says to configure the integration, and no request is sent.
 
-Ask in ordinary language. The vendor writes one SELECT. McParser runs that statement on the open case, keeps at most 50 rows, and shows the answer beside the SQL. The reply is prefixed with the vendor, so you can see who answered.
+Ask in ordinary language. The vendor writes one read-only SELECT (joins, WITH and UNION ALL are allowed; anything that writes, attaches or reads files is refused). If it fails, the vendor gets the error and one retry. McParser runs that statement on the open case, keeps at most 50 rows, and shows the answer beside the SQL. The reply is prefixed with the vendor, so you can see who answered.
 
 The first ask in a session asks you to confirm that row text will leave the machine. That confirmation is the point. The `.evtx` file and the DuckDB file stay here. The question, the column names, and up to 50 rows go out. If that is more than you want to send, do not confirm.
 
@@ -17,5 +17,7 @@ flowchart TD
   local --> answer["Answer beside the SQL"]
   answer --> catalog["Turn stored in the case"]
 ```
+
+The vendor is told only about tables that exist in the case. When PE files were analyzed it also gets every pe_* table and a one-line summary per file (architecture, compile time, imphash, runtime DLLs such as MSVCP or mscoree, Rich header, PDB path, signature present, high-entropy sections, indicators, notable imports, and the local MalwareBazaar check), plus the malwarebazaar and malwarebazaar_full columns when the dump is loaded. Answers about PE files are hints, not verdicts; a signature is never reported as verified. The file is not run or loaded, and the MalwareBazaar key is not sent.
 
 The other analyst can read that transcript from the case folder. They need their own key to ask a new question.

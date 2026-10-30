@@ -1,5 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage, Notification } = require("electron");
 const { spawn } = require("child_process");
+const ask = require("./ask-context");
 const fs = require("fs");
 const peRange = require("./pe-range.js");
 const peCase = require("./pe-case.js");
@@ -259,84 +260,43 @@ async function askModel(input) {
   return grok(input);
 }
 
-function oneSelect(text) {
-  const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
-  let sql = (fenced ? fenced[1] : text).trim().replace(/;+\s*$/, "");
-  if (sql.includes(";")) throw new Error("The model returned more than one statement");
-  if (!/^select\b/i.test(sql)) throw new Error("The model did not return a SELECT");
-  if (/\b(attach|copy|pragma|insert|update|delete|drop|create|alter)\b/i.test(sql)) {
-    throw new Error("The model returned a statement that is not a read");
-  }
-  if (!/\blimit\b/i.test(sql)) sql += " LIMIT 50";
-  return sql;
-}
-
 function clip(text) {
   return text.length > 4000 ? text.slice(0, 4000) : text;
 }
 
-const schema = [
-  "Table events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name).",
-  "Columns, never read these from event_data: computer, channel, provider, host_id, log_name, event_id, time_created, record_id, source_sha256.",
-  "host_id is a UUID from the host list. A hostname is not a host_id.",
-  "log_name is a path. Match a file with LIKE '%Security.evtx'. Use a log_name value from the case context.",
-  "event_data is JSON. Read TargetUserName, LogonType and IpAddress with json_extract_string(event_data, '$.TargetUserName').",
-  "A successful logon is event_id 4624.",
-  "Table prefetch(host_id, pf_name, executable, run_count, last_run, version, path). It is not inside events. Use it for what ran on the machine and how often.",
-  "Table userassist(host_id, guid, name, run_count, last_run). It is not inside events. Use it for programs Explorer launched for one user. Ignore names starting with UEME_CTL.",
-  "Table amcache(host_id, kind, name, path, sha1, size, modified, publisher, version, key_path). It is not inside events. kind is file or program. A file row means the executable was inventoried, not that it ran. modified on a file row is the compile time, not a run time. A program row is an installed product and its modified value is the install date.",
-  "Table shimcache(host_id, path, modified, position, executed, control_set). It is not inside events. A row means Windows recorded the path. modified is the file time, not a run time. position 0 is the newest entry.\n" +
-  "Table srum(host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles). It is not inside events. kind is network or app. A network row is hourly bytes for an application. timestamp is when the record was written, not a start time.\n" +
-  "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
-  "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
-  "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path, shimcache.path, services.path and tasks.command. The case context shows non-Windows services, tasks and shimcache rows, the busiest SRUM network rows, and the top event ids. Query the table for the rest.",
-  "Table malwarebazaar(sha256, sha1, md5, signature, file_name, first_seen) is the narrow lookup view of the machine-local MalwareBazaar full dump. It has only those six columns. Use it to match a hash with malwarebazaar.sha256, malwarebazaar.sha1 or malwarebazaar.md5. Table malwarebazaar_full(sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence, note) has every column; use it for file_type, tags, reporter, clamav, imphash and other fields. Neither is inside events. Every column is a plain VARCHAR column. note is NULL unless the export had columns not listed here. The case context shows a sample of rows.",
-  "Return one DuckDB SELECT and no other text."
-].join(" ");
+async function caseTables(caseDir) {
+  const listed = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", bazaarStore(), ask.TABLES_SQL]);
+  return listed.code === 0 ? ask.parseTables(listed.out) : new Set();
+}
 
-async function caseContext(caseDir) {
+function bazaarStore() {
+  return path.join(app.getPath("userData"), "marketplace.sqlite");
+}
+
+async function caseContext(caseDir, tables) {
+  const q = async (table, sql, label) => {
+    if (table && !tables.has(table)) return "";
+    const args = ["query", "--case", casePath(caseDir), "--format", "csv"];
+    if (table && table.startsWith("malwarebazaar")) args.push("--store", bazaarStore());
+    args.push(sql);
+    const out = await run(args);
+    return "\n" + label + ":\n" + clip(out.code === 0 ? out.out || "no rows" : "query failed");
+  };
   const hosts = await run(["hosts", "--case", casePath(caseDir)]);
-  const logs = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, log_name, computer, count(*) AS events FROM events GROUP BY host_id, log_name, computer ORDER BY events DESC LIMIT 30"]);
-  const prefetch = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30"]);
-  const prefetchText = prefetch.code === 0 ? prefetch.out || "" : "prefetch table is not loaded";
-  const userassist = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, run_count, last_run, \"name\" FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30"]);
-  const userassistText = userassist.code === 0 ? userassist.out || "" : "userassist table is not loaded";
-  const amcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT kind, \"name\", sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30"]);
-  const amcacheText = amcache.code === 0 ? amcache.out || "" : "amcache table is not loaded";
-  const events = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT event_id, channel, count(*) AS events FROM events GROUP BY event_id, channel ORDER BY events DESC LIMIT 20"]);
-  const eventsText = events.code === 0 ? events.out || "" : "events table is not loaded";
-  const shimcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT position, executed, modified, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 30"]);
-  const shimcacheText = shimcache.code === 0 ? shimcache.out || "" : "shimcache table is not loaded";
-  const srum = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 30"]);
-  const srumText = srum.code === 0 ? srum.out || "" : "srum table is not loaded";
-  const services = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT name, state, start_mode, user_id, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(path) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY name LIMIT 40"]);
-  const servicesText = services.code === 0 ? services.out || "" : "services table is not loaded";
-  const tasks = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40"]);
-  const tasksText = tasks.code === 0 ? tasks.out || "" : "tasks table is not loaded";
-  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
-  const bazaar = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", store,
-    "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20"]);
-  const bazaarText = bazaar.code === 0 ? bazaar.out || "" : "malwarebazaar is not loaded";
-  return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
-    "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
-    "\nEvent ids in this case, csv event_id, channel, events:\n" + clip(eventsText) +
-    "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText) +
-    "\nUserAssist in this case, csv host_id, run_count, last_run, name:\n" + clip(userassistText) +
-    "\nAmcache file rows in this case, csv kind, name, sha1, modified, path:\n" + clip(amcacheText) +
-    "\nShimcache outside Windows, newest 30, csv position, executed, modified, path:\n" + clip(shimcacheText) +
-    "\nSRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles:\n" + clip(srumText) +
-    "\nServices outside System32, csv name, state, start_mode, user_id, path:\n" + clip(servicesText) +
-    "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText) +
-    "\nMalwareBazaar sample, csv sha256, md5, sha1, file_name, signature, file_type:\n" + clip(bazaarText);
+  let text = "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "");
+  text += await q("events", "SELECT host_id, log_name, computer, count(*) AS events FROM events GROUP BY host_id, log_name, computer ORDER BY events DESC LIMIT 30", "Logs in this case, csv host_id, log_name, computer, events");
+  text += await q("prefetch", "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30", "Prefetch in this case, csv host_id, executable, run_count, last_run, path");
+  text += await q("userassist", "SELECT host_id, run_count, last_run, \"name\" FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30", "UserAssist in this case, csv host_id, run_count, last_run, name");
+  text += await q("amcache", "SELECT kind, \"name\", sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30", "Amcache file rows in this case, csv kind, name, sha1, modified, path");
+  text += await q("events", "SELECT event_id, channel, count(*) AS events FROM events GROUP BY event_id, channel ORDER BY events DESC LIMIT 20", "Event ids in this case, csv event_id, channel, events");
+  text += await q("shimcache", "SELECT position, executed, modified, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 30", "Shimcache outside Windows, newest 30, csv position, executed, modified, path");
+  text += await q("srum", "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 30", "SRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles");
+  text += await q("services", "SELECT name, state, start_mode, user_id, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(path) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY name LIMIT 40", "Services outside System32, csv name, state, start_mode, user_id, path");
+  text += await q("tasks", "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40", "Scheduled tasks outside System32, csv enabled, user_id, command, arguments, path");
+  text += await q("malwarebazaar", "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20", "MalwareBazaar sample, csv sha256, sha1, md5, signature, file_name, first_seen");
+  const peSql = ask.peSummarySql(tables);
+  if (peSql) text += await q("pe_files", peSql, "Analyzed PE files, one row each, most indicators first (hints, not verdicts; signature_present is not validation)");
+  return text;
 }
 
 function vendorLabel() {
@@ -349,27 +309,15 @@ function askProgress(label) {
   if (win) win.webContents.send("ask-progress", label);
 }
 
-async function coverage(caseDir) {
-  const samples = [
-    ["events", "SELECT event_id, count(*) AS events FROM events GROUP BY event_id ORDER BY events DESC LIMIT 3"],
-    ["prefetch", "SELECT executable, run_count, last_run FROM prefetch ORDER BY run_count DESC LIMIT 3"],
-    ["userassist", "SELECT \"name\", run_count FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 3"],
-    ["amcache", "SELECT \"name\", sha1, path FROM amcache WHERE kind = 'file' LIMIT 3"],
-    ["shimcache", "SELECT position, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 3"],
-    ["srum", "SELECT app, bytes_sent FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 3"],
-    ["services", "SELECT name, start_mode, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
-    ["tasks", "SELECT command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
-    ["malwarebazaar", "SELECT sha256, file_name, signature FROM malwarebazaar LIMIT 3"],
-  ];
+async function coverage(caseDir, tables) {
   const parts = [];
-  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
-  for (const [name, sql] of samples) {
+  for (const [name, sql] of ask.coverageQueries(tables)) {
     askProgress("Querying " + name);
     const args = ["query", "--case", casePath(caseDir), "--format", "csv"];
-    if (name === "malwarebazaar") args.push("--store", store);
+    if (name === "malwarebazaar") args.push("--store", bazaarStore());
     args.push(sql);
     const queried = await run(args);
-    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + (queried.err || queried.out || "unknown")));
+    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + clip(queried.err || queried.out || "unknown")));
   }
   return parts.join("\n");
 }
@@ -377,24 +325,32 @@ async function coverage(caseDir) {
 async function grokAsk(caseDir, question) {
   if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
-    const context = await caseContext(caseDir);
-    const covered = await coverage(caseDir);
+    const tables = await caseTables(caseDir);
+    const schema = ask.buildSchema(tables);
+    const context = await caseContext(caseDir, tables);
+    const covered = await coverage(caseDir, tables);
     askProgress("Asking " + vendorLabel() + " for a query");
-    const rules = "\nWrite one SELECT only. Do not use UNION. A question about more than one table is already answered by the coverage rows; pick the single most relevant table for the SELECT.\n";
+    const prompt = schema + "\n" + context + "\nCoverage already queried:\n" + covered + ask.RULES + "Question: " + question;
     let sql = "";
-    let rows = covered;
-    try {
-      sql = oneSelect(await askModel(schema + "\n" + context + "\nCoverage already queried:\n" + covered + rules + "Question: " + question));
-      const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-      if (queried.code === 0) rows = queried.out || covered;
-      else sql = sql + "\n-- failed, answered from coverage";
-    } catch (error) {
-      sql = "-- answered from coverage\n" + error.message;
+    let rows = "";
+    let failure = "";
+    for (let attempt = 0; attempt < 2 && !rows; attempt++) {
+      try {
+        sql = ask.readOnlySql(await askModel(prompt + failure));
+        const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", bazaarStore(), sql]);
+        if (queried.code === 0) rows = queried.out || "no rows";
+        else failure = "\nYour last statement failed: " + clip(queried.err || queried.out || "unknown") + "\nFix it.\n";
+      } catch (error) {
+        failure = "\nYour last answer was rejected: " + error.message + "\n";
+      }
     }
+    if (!rows) sql = (sql ? sql + "\n" : "") + "-- failed, answered from coverage";
     askProgress("Asking " + vendorLabel() + " to answer");
     const answer = await askModel(
-      "Answer from these rows only. Be brief. Do not invent rows. If a source says not loaded or query failed, say so.\n" +
+      ask.ANSWER_RULES +
       "Question: " + question +
+      (rows ? "\nQuery:\n" + sql + "\nRows:\n" + clip(rows) : "") +
+      "\nCase context:\n" + context +
       "\nCoverage:\n" + covered
     );
     return { sql, answer, provider };

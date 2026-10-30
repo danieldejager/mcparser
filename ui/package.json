@@ -32,6 +32,7 @@
       "hunts.js",
       "pe-view.js",
       "pe-case.js",
+      "ask-context.js",
       "theme.js",
       "pe-range.js",
       "parser-binary.js",
