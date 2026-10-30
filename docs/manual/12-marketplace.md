@@ -43,10 +43,16 @@ Uninstall deletes the dump database and the stored key.
 The SQL editor can read the dump as a table, with or without an open case:
 
 ```
-SELECT sha256, md5, sha1, file_name, file_type, first_seen FROM malwarebazaar WHERE signature = 'AgentTesla' LIMIT 100
+SELECT * FROM malwarebazaar WHERE signature = 'AgentTesla' LIMIT 100
 ```
 
-Every field is a plain column, so filter on signature, file_name, imphash, tags, or any other column directly. A result larger than 50 MB is not drawn. The editor says so and asks for a LIMIT or a WHERE clause.
+malwarebazaar is a narrow view for lookups with six columns: sha256, sha1, md5, signature, file_name, first_seen. For every other field, such as file_type, tags, reporter, clamav, or imphash, query malwarebazaar_full, which has all columns:
+
+```
+SELECT sha256, file_type, tags, reporter, clamav FROM malwarebazaar_full WHERE signature = 'AgentTesla' LIMIT 100
+```
+
+A query that names another column on malwarebazaar fails with a hint to use malwarebazaar_full. Long values in the result grid are cut with an ellipsis; hover a cell to see the full value. A result larger than 50 MB is not drawn. The editor says so and asks for a LIMIT or a WHERE clause.
 
 ### Matching a case
 

@@ -6,6 +6,7 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 
 ### Marketplace
 
+- SQL: malwarebazaar is a six column lookup view (sha256, sha1, md5, signature, file_name, first_seen). malwarebazaar_full has every column. Long result cells are cut with an ellipsis and show the full value on hover
 - MalwareBazaar full by abuse.ch replaces the MalwareBazaar card. The id stays malwarebazaar, so the right-click hash lookup keeps working
 - Fetch recent downloads the abuse.ch recent export with the stored key. The key never appears in logs, messages, settings, or reports, and any address shown has it replaced with ***
 - 401, 403, and 429 answers get clear messages. The temporary download is deleted on success and on failure
