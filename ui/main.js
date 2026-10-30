@@ -427,13 +427,20 @@ async function showAbout() {
 
 let caseOpen = false;
 
+// Fixed IPC channel for the Preferences dialog. The renderer only listens on
+// this name; nothing is loaded from the network.
+const PREFS_CHANNEL = "open-preferences";
+
 function buildMenu() {
   const connected = activeKey().length > 0;
+  const isMac = process.platform === "darwin";
+  const prefsItem = { label: "Preferences...", accelerator: "CmdOrCtrl+,", click: () => win && win.webContents.send(PREFS_CHANNEL) };
   const template = [
     {
       label: "McParser",
       submenu: [
         { label: "About McParser", click: showAbout },
+        ...(isMac ? [{ type: "separator" }, prefsItem] : []),
         { type: "separator" },
         { role: "hide" },
         { role: "hideOthers" },
@@ -470,6 +477,7 @@ function buildMenu() {
             { label: "Open...", click: () => win.webContents.send("open-handoff") },
           ],
         },
+        ...(isMac ? [] : [{ type: "separator" }, prefsItem]),
         { type: "separator" },
         { role: "close" },
       ],

@@ -64,7 +64,6 @@
     </div>
     <span class="tb-sep"></span>
     <span id="tb-case">No case</span>
-    <span class="tb-appearance" title="Appearance: Light, Dark or Follow system"><span id="tb-appearance-label">Appearance</span><span id="app-theme"></span></span>
   </header>
   <div id="workspace">
   <aside id="case-pane">
@@ -211,6 +210,19 @@ LIMIT 20</textarea>
       <div class="sheet-actions">
         <button type="button" id="key-cancel">Cancel</button>
         <button type="submit" id="key-save">Save</button>
+      </div>
+    </form>
+  </div>
+  <div id="prefs-sheet" class="sheet" hidden>
+    <form id="prefs-form" class="prefs" aria-labelledby="prefs-title">
+      <h1 id="prefs-title">Preferences</h1>
+      <section class="prefs-section">
+        <h2 id="prefs-appearance-label">Appearance</h2>
+        <p>Applies to every screen. Follow system tracks the OS setting.</p>
+        <div id="app-theme"></div>
+      </section>
+      <div class="sheet-actions">
+        <button type="submit" id="prefs-done">Done</button>
       </div>
     </form>
   </div>

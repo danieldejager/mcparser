@@ -51,15 +51,55 @@ test("init sets data-theme on <html> from storage before mounting", () => {
   assert.strictEqual(html.dataset.themeChoice, "light");
 });
 
-test("app wiring: one Appearance control in the toolbar, none in the PE view", () => {
+test("app wiring: Appearance lives only in the Preferences dialog", () => {
   const fs = require("node:fs");
   const html = fs.readFileSync(__dirname + "/index.html", "utf8");
   const head = html.slice(0, html.indexOf("</head>"));
   assert.ok(head.includes('src="theme.js"'), "theme.js loads in <head> so the first paint is themed");
-  assert.ok(/id="toolbar"[\s\S]*id="app-theme"[\s\S]*<\/header>/.test(html));
+  const toolbar = html.slice(html.indexOf('id="toolbar"'), html.indexOf("</header>"));
+  assert.ok(!toolbar.includes("app-theme") && !toolbar.includes("tb-appearance"), "toolbar switch is gone");
+  assert.strictEqual(html.split('id="app-theme"').length, 2, "exactly one Appearance control");
+  assert.ok(/id="prefs-sheet" class="sheet" hidden>[\s\S]*id="app-theme"/.test(html));
   assert.ok(!html.includes('id="pe-theme"'));
   const r = fs.readFileSync(__dirname + "/renderer.js", "utf8");
   assert.ok(r.includes('PeTheme.mount(document.getElementById("app-theme")'));
+  assert.ok(r.includes("window.mcparser.onOpenPreferences(openPreferences)"));
+});
+
+test("menu: Preferences... with Cmd/Ctrl+, sends a fixed IPC channel", () => {
+  const fs = require("node:fs");
+  const m = fs.readFileSync(__dirname + "/main.js", "utf8");
+  assert.ok(m.includes('const PREFS_CHANNEL = "open-preferences"'));
+  assert.ok(/label: "Preferences\.\.\.", accelerator: "CmdOrCtrl\+,", click: \(\) => win && win\.webContents\.send\(PREFS_CHANNEL\)/.test(m));
+  assert.ok(m.includes("...(isMac ? [{ type: \"separator\" }, prefsItem] : [])"), "macOS app menu");
+  assert.ok(m.includes("...(isMac ? [] : [{ type: \"separator\" }, prefsItem])"), "File menu elsewhere");
+  const p = fs.readFileSync(__dirname + "/preload.js", "utf8");
+  assert.ok(p.includes('onOpenPreferences: (handler) => ipcRenderer.on("open-preferences", () => handler())'));
+});
+
+test("Preferences dialog: choosing a radio applies and persists the theme", () => {
+  // Minimal DOM fake, enough for PeTheme.mount.
+  const el = (tag) => { const e = { tag, children: [], dataset: {}, attrs: {}, listeners: {}, tabIndex: 0, textContent: "",
+    setAttribute(k, v) { this.attrs[k] = v; }, getAttribute(k) { return this.attrs[k]; }, appendChild(c) { this.children.push(c); return c; },
+    addEventListener(t, f) { (this.listeners[t] = this.listeners[t] || []).push(f); }, focus() { doc.active = this; } }; e.ownerDocument = doc; return e; };
+  const store = mem("system");
+  const doc = { documentElement: { dataset: {} }, createElement: el, defaultView: { localStorage: store, matchMedia: () => ({ matches: false, addEventListener() {} }) } };
+  const host = el("div");
+  const ctl = T.mount(host, { label: "Appearance" });
+  const group = host.children[0];
+  assert.strictEqual(group.attrs.role, "radiogroup");
+  const [light, dark, sys] = group.children;
+  assert.strictEqual(sys.attrs["aria-checked"], "true");
+  dark.listeners.click[0]();
+  assert.strictEqual(doc.documentElement.dataset.theme, "dark");
+  assert.strictEqual(store.m.get(T.KEY), "dark");
+  assert.strictEqual(dark.attrs["aria-checked"], "true");
+  assert.strictEqual(dark.tabIndex, 0);
+  dark.listeners.keydown[0]({ key: "ArrowLeft", preventDefault() {} });
+  assert.strictEqual(ctl.get(), "light");
+  assert.strictEqual(store.m.get(T.KEY), "light");
+  assert.strictEqual(doc.active, light);
+  assert.strictEqual(T.load(store), "light", "same storage key carries over");
 });
 
 test("studio.css: every app token has a dark value and no light-only literals remain on core surfaces", () => {

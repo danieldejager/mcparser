@@ -22,7 +22,12 @@ flowchart TD
 
 File, Analyze PE File... opens one Windows executable or DLL and shows what its headers say. McParser only parses the file. It never runs it and makes no network calls for it. The tabs cover General, PE Header, MZ Header, Sections / Overlay, Imports / Exports / TLS, Resources, Debug, Version Info / Signature, and Hex / Strings. The hints on the General tab are hints, not verdicts.
 
-Appearance is an app-wide setting. The Appearance switch at the right of the main toolbar picks Light, Dark, or Follow system for every screen: the editor, results grid, left pane, dialogs, AI pane, audit lists, and this PE view. Follow system is the default and tracks the OS light or dark setting. The choice is remembered between sessions. Use the arrow keys to move between the three options.
+Appearance is an app-wide setting, set in Preferences. Light, Dark, or Follow system applies to every screen: the editor, results grid, left pane, dialogs, AI pane, audit lists, and this PE view. Follow system is the default and tracks the OS light or dark setting. The choice applies immediately and is remembered between sessions.
+
+**Preferences.** Open it with McParser > Preferences... (Cmd+,) on macOS, or File > Preferences... (Ctrl+,) on Windows and Linux. The Appearance section has the three options as a radio group: use Tab to reach it, the arrow keys to move between options, and Escape or Done to close the dialog.
+
+![Preferences, light](../screenshots/preferences-light.png)
+![Preferences, dark](../screenshots/preferences-dark.png)
 
 ![Main window, light](../screenshots/app-light.png)
 ![Main window, dark](../screenshots/app-dark.png)

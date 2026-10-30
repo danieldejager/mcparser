@@ -1938,6 +1938,24 @@ window.mcparser.onAnalyzePe(async () => {
   catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
   sheet.hidden = false;
 });
-// Appearance (Light, Dark, Follow system) applies to the whole app.
-window.PeTheme.mount(document.getElementById("app-theme"), { label: "Appearance" });
+// Appearance (Light, Dark, Follow system) applies to the whole app. It lives
+// in the Preferences dialog, opened from the app menu (Cmd+, or Ctrl+,).
+const appTheme = window.PeTheme.mount(document.getElementById("app-theme"), { label: "Appearance" });
+const prefsSheet = document.getElementById("prefs-sheet");
+let prefsReturnFocus = null;
+function openPreferences() {
+  prefsReturnFocus = document.activeElement;
+  prefsSheet.hidden = false;
+  const on = prefsSheet.querySelector('.pe-theme-opt[aria-checked="true"]');
+  if (on) on.focus();
+  return appTheme;
+}
+function closePreferences() {
+  prefsSheet.hidden = true;
+  if (prefsReturnFocus && prefsReturnFocus.focus) prefsReturnFocus.focus();
+}
+document.getElementById("prefs-form").addEventListener("submit", (e) => { e.preventDefault(); closePreferences(); });
+prefsSheet.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); closePreferences(); } });
+prefsSheet.addEventListener("click", (e) => { if (e.target === prefsSheet) closePreferences(); });
+window.mcparser.onOpenPreferences(openPreferences);
 document.getElementById("pe-close").addEventListener("click", () => { document.getElementById("pe-sheet").hidden = true; });
