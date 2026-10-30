@@ -1895,3 +1895,29 @@ window.mcparser.onBazaarProgress((payload) => {
   status.textContent = text;
   if (bazaarLine) bazaarLine.textContent = text;
 });
+
+// Start-up MalwareBazaar update. The message goes in the Results pane only
+// while the pane is empty; if the user's own results are showing, it goes in
+// the Results header status line instead so their results are never replaced.
+let bazaarAutoNode = null;
+window.mcparser.onBazaarAuto(({ phase, text }) => {
+  const paneFree = results.childNodes.length === 0 || (bazaarAutoNode && results.contains(bazaarAutoNode));
+  if (phase === "start") {
+    if (paneFree) {
+      bazaarAutoNode = document.createElement("div");
+      bazaarAutoNode.className = "bazaar-auto";
+      bazaarAutoNode.textContent = text;
+      results.replaceChildren(bazaarAutoNode);
+    } else {
+      status.textContent = text;
+    }
+    return;
+  }
+  if (bazaarAutoNode && results.contains(bazaarAutoNode)) {
+    const line = document.createElement("div");
+    line.textContent = text;
+    bazaarAutoNode.appendChild(line);
+  } else {
+    status.textContent = text;
+  }
+});
