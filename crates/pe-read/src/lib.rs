@@ -5,6 +5,8 @@
 //! instead of panics. Nothing here executes, loads or disassembles the file.
 #![forbid(unsafe_code)]
 
+pub mod extra;
+
 use md5::Md5;
 use sha1::Sha1;
 use sha2::{Digest, Sha256};

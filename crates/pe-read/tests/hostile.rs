@@ -263,3 +263,44 @@ fn entropy_bounds() {
     let all: Vec<u8> = (0..=255).collect();
     assert!((entropy(&all) - 8.0).abs() < 1e-9);
 }
+
+#[test]
+fn indicators_and_strings() {
+    use pe_read::extra::*;
+    let mut b = build(false);
+    b.extend_from_slice(b"http://example.test/a.exe\0HKEY_LOCAL_MACHINE\\Software\\X\0 10.1.2.3\0");
+    let r = analyze(&b);
+    let ind = indicators(&r, 2_000_000_000);
+    assert!(ind.iter().any(|i| i.rule == "overlay"), "{ind:?}");
+    assert!(ind.iter().any(|i| i.rule == "rwx_section") == false);
+    assert_eq!(entry_section(&r), Some(0));
+    let s = strings(&b, 5);
+    assert!(s.iter().any(|x| x.category == "url"));
+    assert!(s.iter().any(|x| x.category == "registry"));
+    assert!(rich_header(&b).is_empty());
+    for n in 0..b.len() {
+        let _ = strings(&b[..n], 4);
+        let _ = rich_header(&b[..n]);
+    }
+}
+
+#[test]
+fn rich_header_decodes() {
+    let mut b = build(false);
+    let key = 0x1122_3344u32;
+    let words = [0x536e_6144u32, 0, 0, 0, (0x0102 << 16) | 0x7809, 3];
+    for (i, w) in words.iter().enumerate() {
+        put32(&mut b, 0x40 + i * 4, w ^ key);
+    }
+    b[0x58..0x5c].copy_from_slice(b"Rich");
+    put32(&mut b, 0x5c, key);
+    let e = pe_read::extra::rich_header(&b);
+    assert_eq!(
+        e,
+        vec![pe_read::extra::RichEntry {
+            product_id: 0x0102,
+            build: 0x7809,
+            count: 3
+        }]
+    );
+}

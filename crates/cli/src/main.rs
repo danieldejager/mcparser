@@ -1479,7 +1479,7 @@ fn pe(args: &mut impl Iterator<Item = String>) -> ExitCode {
         match case::pe::analyze_file(&db, &store, host, path, &now) {
             Ok(a) => {
                 if json {
-                    println!("{}", case::pe::report_json(&path.to_string_lossy(), &a.report, a.check.as_ref()));
+                    println!("{}", case::pe::report_json(&path.to_string_lossy(), &a.report, &a.extras, a.check.as_ref()));
                 } else {
                     let r = &a.report;
                     println!("path\t{}", path.display());
@@ -1487,6 +1487,7 @@ fn pe(args: &mut impl Iterator<Item = String>) -> ExitCode {
                     println!("pe\t{}\narchitecture\t{}\nsubsystem\t{}\ncompile_time\t{}", r.is_pe, r.architecture(), r.subsystem_name(), case::pe::iso_time(r.timestamp));
                     println!("signed\t{}\ndotnet\t{}\nsections\t{}\nimports\t{}\nexports\t{}", r.signed(), r.is_dotnet(), r.sections.len(), r.imports.len(), r.exports.len());
                     if let Some(c) = &a.check { println!("malwarebazaar\t{}\t{}", c.result, c.signature); }
+                    for i in &a.extras.indicators { println!("indicator\t{}\t{}\t{}", i.severity, i.rule, i.reason); }
                     for w in &r.warnings { println!("warning\t{w}"); }
                     println!();
                 }
