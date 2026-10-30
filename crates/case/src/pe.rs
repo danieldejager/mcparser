@@ -38,6 +38,14 @@ CREATE TABLE IF NOT EXISTS pe_certificates (
     issuer_c VARCHAR, serial_hex VARCHAR, serial_dec VARCHAR, version INTEGER, signature_algorithm VARCHAR,
     digest_algorithm VARCHAR, not_before VARCHAR, not_after VARCHAR, self_signed BOOLEAN, verified BOOLEAN
 );
+CREATE TABLE IF NOT EXISTS pe_version_info (sha256 VARCHAR, kind VARCHAR, lang_codepage VARCHAR, key VARCHAR, value VARCHAR);
+CREATE TABLE IF NOT EXISTS pe_manifest (
+    sha256 VARCHAR, size BIGINT, truncated BOOLEAN, execution_level VARCHAR, ui_access VARCHAR, text VARCHAR
+);
+CREATE TABLE IF NOT EXISTS pe_icons (
+    sha256 VARCHAR, group_name VARCHAR, icon_id INTEGER, width INTEGER, height INTEGER, bit_count INTEGER,
+    format VARCHAR, size BIGINT, icon_sha256 VARCHAR
+);
 CREATE TABLE IF NOT EXISTS pe_checks (sha256 VARCHAR, source VARCHAR, result VARCHAR, signature VARCHAR, file_name VARCHAR, checked_at VARCHAR);
 ";
 
@@ -124,6 +132,9 @@ pub fn store_report(
         "pe_strings",
         "pe_rich",
         "pe_certificates",
+        "pe_version_info",
+        "pe_manifest",
+        "pe_icons",
     ] {
         conn.execute(&format!("DELETE FROM {t} WHERE sha256 = ?"), [sha])
             .map_err(err)?;
@@ -261,7 +272,102 @@ pub fn store_report(
             .map_err(err)?;
         }
     }
+    drop(a);
+    let mut a = conn.appender("pe_version_info").map_err(err)?;
+    if let Some(v) = &r.version_info {
+        let mut put = |kind: &str, lc: &str, k: &str, val: &str| {
+            a.append_row(duckdb::params![sha, kind, lc, k, val])
+        };
+        for (k, val) in version_fixed(v) {
+            put("fixed", "", &k, &val).map_err(err)?;
+        }
+        for t in &v.strings {
+            put("string", &t.table, &t.key, &t.value).map_err(err)?;
+        }
+        for (l, cp) in &v.translations {
+            put(
+                "translation",
+                &format!("{l:04X}{cp:04X}"),
+                "Translation",
+                "",
+            )
+            .map_err(err)?;
+        }
+    }
+    drop(a);
+    if let Some(m) = &r.manifest {
+        conn.execute(
+            "INSERT INTO pe_manifest VALUES (?, ?, ?, ?, ?, ?)",
+            duckdb::params![
+                sha,
+                m.size as i64,
+                m.truncated,
+                m.execution_level,
+                m.ui_access,
+                m.text
+            ],
+        )
+        .map_err(err)?;
+    }
+    let mut a = conn.appender("pe_icons").map_err(err)?;
+    for i in &r.icons {
+        a.append_row(duckdb::params![
+            sha,
+            i.group,
+            i.icon_id as i32,
+            i.width as i32,
+            i.height as i32,
+            i.bit_count as i32,
+            i.format,
+            i.bytes.len() as i64,
+            hex_digest(&i.bytes)
+        ])
+        .map_err(err)?;
+    }
     Ok(())
+}
+
+fn hex_digest(b: &[u8]) -> String {
+    use sha2::Digest;
+    sha2::Sha256::digest(b)
+        .iter()
+        .map(|x| format!("{x:02x}"))
+        .collect()
+}
+
+/// VS_FIXEDFILEINFO as key/value pairs.
+fn version_fixed(v: &pe_read::rsrc::VersionInfo) -> Vec<(String, String)> {
+    if !v.fixed_present {
+        return Vec::new();
+    }
+    vec![
+        ("FileVersion".into(), v.file_version.clone()),
+        ("ProductVersion".into(), v.product_version.clone()),
+        (
+            "FileFlags".into(),
+            format!(
+                "0x{:X} {}",
+                v.flags,
+                pe_read::rsrc::version_flag_names(v.flags & v.flags_mask).join(" ")
+            )
+            .trim()
+            .to_string(),
+        ),
+        (
+            "FileOS".into(),
+            format!("0x{:X} {}", v.os, pe_read::rsrc::version_os_name(v.os)),
+        ),
+        (
+            "FileType".into(),
+            format!(
+                "0x{:X} {}",
+                v.file_type,
+                pe_read::rsrc::version_type_name(v.file_type)
+            ),
+        ),
+        ("FileSubtype".into(), format!("0x{:X}", v.file_subtype)),
+        ("FileDate".into(), format!("0x{:016X}", v.file_date)),
+    ]
 }
 
 /// Everything derived from the bytes besides the structural report.
@@ -269,7 +375,6 @@ pub struct Extras {
     pub indicators: Vec<pe_read::extra::Indicator>,
     pub strings: Vec<pe_read::extra::PeString>,
     pub rich: Vec<pe_read::extra::RichEntry>,
-    pub head: Vec<u8>,
 }
 
 pub fn extras(bytes: &[u8], r: &PeReport) -> Extras {
@@ -281,12 +386,8 @@ pub fn extras(bytes: &[u8], r: &PeReport) -> Extras {
         indicators: pe_read::extra::indicators(r, now),
         strings: pe_read::extra::strings(bytes, 5),
         rich: pe_read::extra::rich_header(bytes),
-        head: bytes[..bytes.len().min(HEX_PREVIEW)].to_vec(),
     }
 }
-
-/// Bytes shown in the hex view.
-pub const HEX_PREVIEW: usize = 64 * 1024;
 
 pub struct Analyzed {
     pub path: PathBuf,
@@ -527,11 +628,19 @@ pub fn report_json(
             "ratio": if r.file_size > 0 { (s.raw_size as f64 / r.file_size as f64 * 100.0).round() } else { 0.0 }})).collect::<Vec<_>>(),
         "imports": r.imports.iter().map(|i| json!({"dll": i.dll, "name": i.name, "ordinal": i.ordinal, "delayed": i.delayed})).collect::<Vec<_>>(),
         "exports": r.exports.iter().map(|e| json!({"ordinal": e.ordinal, "name": e.name, "rva": e.rva, "forwarder": e.forwarder})).collect::<Vec<_>>(),
-        "resources": r.resources.iter().map(|e| json!({"type": e.type_name, "name": e.name, "language": e.language, "rva": e.rva, "size": e.size, "sha256": e.sha256})).collect::<Vec<_>>(),
-        "debug": r.debug.iter().map(|d| json!({"type": d.kind, "timestamp": iso_time(d.timestamp), "size": d.size, "pdb_path": d.pdb_path})).collect::<Vec<_>>(),
+        "resources": r.resources.iter().map(|e| json!({"type": e.type_name, "name": e.name, "language": e.language, "rva": e.rva, "size": e.size, "sha256": e.sha256, "offset": e.offset})).collect::<Vec<_>>(),
+        "debug": r.debug.iter().map(|d| json!({"type": d.kind, "timestamp": iso_time(d.timestamp), "size": d.size, "pdb_path": d.pdb_path, "raw_offset": d.raw_offset})).collect::<Vec<_>>(),
         "signatures": r.signatures.iter().map(signature_json).collect::<Vec<_>>(),
         "tls": {"present": r.tls_present, "callbacks": r.tls_callbacks},
-        "hex_base64": base64(&x.head),
+        "version_info": r.version_info.as_ref().map(|v| json!({
+            "fixed": version_fixed(v).into_iter().map(|(k, val)| json!({"key": k, "value": val})).collect::<Vec<_>>(),
+            "strings": v.strings.iter().map(|t| json!({"table": t.table, "key": t.key, "value": t.value})).collect::<Vec<_>>(),
+            "translations": v.translations.iter().map(|(l, cp)| format!("{l:04X}{cp:04X}")).collect::<Vec<_>>(),
+            "warnings": v.warnings,
+        })),
+        "manifest": r.manifest.as_ref().map(|m| json!({"size": m.size, "truncated": m.truncated, "execution_level": m.execution_level, "ui_access": m.ui_access, "text": m.text})),
+        "icons": r.icons.iter().map(|i| json!({"group": i.group, "icon_id": i.icon_id, "width": i.width, "height": i.height, "bit_count": i.bit_count,
+            "data_url": format!("data:{};base64,{}", if i.format == "png" { "image/png" } else { "image/x-icon" }, base64(&i.bytes))})).collect::<Vec<_>>(),
         "tree": [
             {"id": "dos", "label": "DOS header", "rows": fields(&r.dos_header)},
             {"id": "nt", "label": "NT headers", "children": [

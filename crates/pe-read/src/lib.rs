@@ -7,6 +7,7 @@
 
 pub mod cert;
 pub mod extra;
+pub mod rsrc;
 
 use md5::Md5;
 use sha1::Sha1;
@@ -97,6 +98,8 @@ pub struct Resource {
     pub rva: u32,
     pub size: u32,
     pub sha256: String,
+    /// File offset of the data when the whole payload is in the file.
+    pub offset: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -105,6 +108,8 @@ pub struct DebugEntry {
     pub timestamp: u32,
     pub size: u32,
     pub pdb_path: String,
+    /// PointerToRawData, a file offset (0 when the data is not in the file).
+    pub raw_offset: u32,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -144,6 +149,12 @@ pub struct PeReport {
     /// Authenticode entries decoded from the certificate table. Parsed only,
     /// never verified.
     pub signatures: Vec<cert::Signature>,
+    /// First RT_VERSION resource that decodes as VS_VERSIONINFO.
+    pub version_info: Option<rsrc::VersionInfo>,
+    /// First RT_MANIFEST resource as text (escape on display).
+    pub manifest: Option<rsrc::Manifest>,
+    /// Validated icon images from RT_GROUP_ICON / RT_ICON, capped.
+    pub icons: Vec<rsrc::Icon>,
     pub clr_present: bool,
     pub imphash: String,
     pub overlay_size: u64,
@@ -656,6 +667,7 @@ pub fn analyze(b: &[u8]) -> PeReport {
     if let Some(d) = dir(14) {
         r.clr_present = ctx.rva(d.rva).and_then(|o| u32_at(b, o)).is_some();
     }
+    resource_payloads(&mut r, b);
     r.imphash = imphash(&r.imports);
     r.sections = std::mem::take(&mut ctx.sections);
     r.warnings = ctx.warnings;
@@ -918,8 +930,10 @@ fn resources(ctx: &mut Ctx, rva: u32) -> Vec<Resource> {
                 else {
                     continue;
                 };
-                let sha256 = ctx
+                let data_off = ctx
                     .rva(drva)
+                    .filter(|o| slice(ctx.b, *o, size as usize).is_some());
+                let sha256 = data_off
                     .and_then(|o| slice(ctx.b, o, size as usize))
                     .map(|d| hex(&Sha256::digest(d)))
                     .unwrap_or_default();
@@ -930,11 +944,73 @@ fn resources(ctx: &mut Ctx, rva: u32) -> Vec<Resource> {
                     rva: drva,
                     size,
                     sha256,
+                    offset: data_off.map(|o| o as u64),
                 });
             }
         }
     }
     out
+}
+
+/// Bytes of one resource, if its offset was validated during the walk.
+fn resource_bytes<'a>(b: &'a [u8], res: &Resource) -> Option<&'a [u8]> {
+    slice(b, usize::try_from(res.offset?).ok()?, res.size as usize)
+}
+
+fn resource_payloads(r: &mut PeReport, b: &[u8]) {
+    r.version_info = r
+        .resources
+        .iter()
+        .filter(|x| x.type_name == "VERSION")
+        .take(4)
+        .find_map(|x| resource_bytes(b, x).and_then(rsrc::version_info));
+    r.manifest = r
+        .resources
+        .iter()
+        .find(|x| x.type_name == "MANIFEST")
+        .and_then(|x| resource_bytes(b, x))
+        .map(rsrc::manifest);
+    let mut total = 0usize;
+    'groups: for g in r
+        .resources
+        .iter()
+        .filter(|x| x.type_name == "GROUP_ICON")
+        .take(8)
+    {
+        let Some(gd) = resource_bytes(b, g) else {
+            continue;
+        };
+        for (_w, _h, _bits, id) in rsrc::group_icon_entries(gd) {
+            if r.icons.len() >= rsrc::MAX_ICONS {
+                break 'groups;
+            }
+            let Some(icon) = r
+                .resources
+                .iter()
+                .find(|x| x.type_name == "ICON" && x.name == id.to_string())
+            else {
+                continue;
+            };
+            let Some((format, width, height, bit_count, bytes)) =
+                resource_bytes(b, icon).and_then(rsrc::icon_payload)
+            else {
+                continue;
+            };
+            if total + bytes.len() > rsrc::MAX_ICON_TOTAL {
+                break 'groups;
+            }
+            total += bytes.len();
+            r.icons.push(rsrc::Icon {
+                group: g.name.clone(),
+                icon_id: id,
+                width,
+                height,
+                bit_count,
+                format,
+                bytes,
+            });
+        }
+    }
 }
 
 fn tls_callbacks(ctx: &mut Ctx, rva: u32, is_64: bool, image_base: u64) -> u32 {
@@ -1004,6 +1080,7 @@ fn debug(ctx: &mut Ctx, d: &DataDirectory) -> Vec<DebugEntry> {
             timestamp: ts,
             size,
             pdb_path: pdb,
+            raw_offset: ptr,
         });
     }
     out
