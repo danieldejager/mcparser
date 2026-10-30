@@ -81,3 +81,58 @@ test("renderer offers Open PE analysis with keyboard access", () => {
   const main = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
   assert.match(main, /fileMatches\(picked\.filePaths\[0\], peCaseSha\)/);
 });
+
+test("buildReport fills headers, mitigations, debug, signer and icons from newer cases", () => {
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47]).toString("base64");
+  const rows = {
+    files: [[SHA, "m", "s1", "imp", "h1", "C:\\x.exe", "2048", "true", "true", "false", "false", "x64", "Windows GUI", "EXECUTABLE_IMAGE", "2024", "true", "0", "", "false", "0", "100", "x.pdb", "4096"]],
+    files_ext: [[".text", "true", "false"]],
+    resources: [["ICON", "1", "1033", "8192", "300", "cd"]],
+    resources_ext: [["ICON", "1", "1033", "8192", "300", "cd", "1536", "md", "no hit"]],
+    certificates: [["0", "0", "true", "CN=A", "A", "", "", "", "CN=B", "B", "", "", "01", "1", "3", "sha256RSA", "sha256", "2020", "2030", "false"]],
+    certificates_ext: [["0", "0", "Unit"]],
+    icons_ext: [["1", "2", "16", "16", "32", "png", png], ["1", "3", "256", "256", "32", "png", null]],
+    headers: [["dos", "e_magic", "0x0", "2", "0x5A4D", "MZ"], ["file", "Machine", "0x84", "2", "0x8664", "AMD64"], ["optional", "Magic", "0x98", "2", "0x20B", "PE32+"], ["dirs", "IMPORT", "", "0x28", "0x2000", "present"]],
+    mitigations: [["ASLR (DYNAMIC_BASE)", "true"], ["DEP (NX_COMPAT)", "false"]],
+    debug: [["2", "2024-01-01T00:00:00Z", "40", "x.pdb", "1200"]],
+    signatures: [["0", "4096", "900", "0x0200", "0x0002", "1", "sha256", "sha256RSA", "0A", "10", "CN=B", "B", "BO", "", "US", "0", ""]],
+  };
+  const r = buildReport(rows);
+  assert.strictEqual(r.case_extended, true);
+  assert.strictEqual(r.entry_section, ".text");
+  assert.deepStrictEqual(r.mitigations, [{ name: "ASLR (DYNAMIC_BASE)", enabled: true }, { name: "DEP (NX_COMPAT)", enabled: false }]);
+  assert.deepStrictEqual(r.debug, [{ type: 2, timestamp: "2024-01-01T00:00:00Z", size: 40, pdb_path: "x.pdb", raw_offset: 1200 }]);
+  assert.strictEqual(r.resources[0].offset, 1536);
+  assert.strictEqual(r.resources[0].md5, "md");
+  assert.strictEqual(r.resources[0].malwarebazaar, "no hit");
+  assert.strictEqual(r.signatures[0].offset, 4096);
+  assert.strictEqual(r.signatures[0].signer_issuer.o, "BO");
+  assert.strictEqual(r.signatures[0].certificates[0].issuer.ou, "Unit");
+  assert.strictEqual(r.signatures[0].status, "signature present, not verified");
+  assert.strictEqual(r.icons.length, 1);
+  assert.ok(PeView.safeIconUrl(r.icons[0].data_url));
+  const flat = PeView.flattenTree(r.tree);
+  for (const id of ["dos", "nt", "file", "optional", "dirs", "debug", "clr"]) assert.ok(flat.some((n) => n.id === id), id);
+  assert.ok(!flat.some((n) => n.id === "saved"));
+  assert.strictEqual(flat.find((n) => n.id === "dos").rows[0].meaning, "MZ");
+});
+
+test("buildReport keeps the old behaviour for cases from earlier builds", () => {
+  const rows = { files: [[SHA, "m", "s1", "imp", "h1", "C:\\x.exe", "2048", "true", "true", "false", "false", "x64", "GUI", "", "2024", "false", "0", "", "false", "0", "0", "x.pdb", "4096"]],
+    files_ext: [], headers: [], mitigations: [], resources: [["VERSION", "1", "1033", "8192", "300", "cd"]] };
+  const r = buildReport(rows);
+  assert.strictEqual(r.case_extended, false);
+  assert.strictEqual(r.entry_section, undefined);
+  assert.deepStrictEqual(r.mitigations, []);
+  assert.strictEqual(r.resources[0].offset, null);
+  assert.strictEqual(r.debug[0].pdb_path, "x.pdb");
+  assert.ok(PeView.flattenTree(r.tree).some((n) => n.id === "saved"));
+  // A row saved before the new columns existed reads NULL.
+  assert.strictEqual(buildReport({ ...rows, files_ext: [[null, null, null]] }).case_extended, false);
+});
+
+test("newer case queries are read-only and scoped to the file", () => {
+  const q = queries({ sha256: SHA, host_id: "h", path: "p" });
+  assert.match(q.files_ext, /AND host_id = 'h' AND path = 'p' LIMIT 1$/);
+  for (const k of ["headers", "mitigations", "debug", "signatures", "resources_ext", "icons_ext", "certificates_ext"]) assert.match(q[k], new RegExp("^SELECT .* WHERE sha256 = 'a{64}'"), k);
+});

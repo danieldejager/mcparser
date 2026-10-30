@@ -47,7 +47,72 @@ CREATE TABLE IF NOT EXISTS pe_icons (
     format VARCHAR, size BIGINT, icon_sha256 VARCHAR
 );
 CREATE TABLE IF NOT EXISTS pe_checks (sha256 VARCHAR, source VARCHAR, result VARCHAR, signature VARCHAR, file_name VARCHAR, checked_at VARCHAR);
+CREATE TABLE IF NOT EXISTS pe_header_fields (
+    sha256 VARCHAR, node VARCHAR, idx INTEGER, field VARCHAR, file_offset VARCHAR, size VARCHAR, value VARCHAR, meaning VARCHAR
+);
+CREATE TABLE IF NOT EXISTS pe_mitigations (sha256 VARCHAR, idx INTEGER, name VARCHAR, enabled BOOLEAN);
+CREATE TABLE IF NOT EXISTS pe_debug (
+    sha256 VARCHAR, idx INTEGER, type BIGINT, timestamp VARCHAR, size BIGINT, pdb_path VARCHAR, raw_offset BIGINT
+);
+CREATE TABLE IF NOT EXISTS pe_signatures (
+    sha256 VARCHAR, signature_idx INTEGER, file_offset BIGINT, length BIGINT, revision VARCHAR, cert_type VARCHAR,
+    signed_data_version INTEGER, digest_algorithm VARCHAR, signature_algorithm VARCHAR, signer_serial_hex VARCHAR,
+    signer_serial_dec VARCHAR, signer_issuer VARCHAR, signer_issuer_cn VARCHAR, signer_issuer_o VARCHAR,
+    signer_issuer_ou VARCHAR, signer_issuer_c VARCHAR, signer_index INTEGER, error VARCHAR
+);
+ALTER TABLE pe_files ADD COLUMN IF NOT EXISTS entry_section VARCHAR;
+ALTER TABLE pe_files ADD COLUMN IF NOT EXISTS certificate_present BOOLEAN;
+ALTER TABLE pe_files ADD COLUMN IF NOT EXISTS clr_present BOOLEAN;
+ALTER TABLE pe_resources ADD COLUMN IF NOT EXISTS file_offset BIGINT;
+ALTER TABLE pe_resources ADD COLUMN IF NOT EXISTS resource_md5 VARCHAR;
+ALTER TABLE pe_resources ADD COLUMN IF NOT EXISTS malwarebazaar VARCHAR;
+ALTER TABLE pe_certificates ADD COLUMN IF NOT EXISTS issuer_ou VARCHAR;
+ALTER TABLE pe_icons ADD COLUMN IF NOT EXISTS data_base64 VARCHAR;
 ";
+
+/// Largest icon image kept in the case (bytes before base64). Larger icons
+/// keep only their size and sha256.
+pub const MAX_CASE_ICON_BYTES: usize = 64 * 1024;
+/// Most icon images kept per file.
+pub const MAX_CASE_ICONS: usize = 64;
+
+/// Header field rows as shown in the view: (node, field, offset, size, value,
+/// meaning). Nodes: dos, file, optional, dirs.
+pub fn header_rows(r: &PeReport) -> Vec<(&'static str, String, String, String, String, String)> {
+    let hexv = |v: u64| format!("0x{v:X}");
+    let mut out = Vec::new();
+    for (node, fs) in [
+        ("dos", &r.dos_header),
+        ("file", &r.file_header),
+        ("optional", &r.optional_header),
+    ] {
+        for f in fs.iter() {
+            out.push((
+                node,
+                f.name.to_string(),
+                hexv(f.offset),
+                f.size.to_string(),
+                hexv(f.value),
+                meaning(f.name, f.value),
+            ));
+        }
+    }
+    for d in &r.data_directories {
+        out.push((
+            "dirs",
+            d.name.to_string(),
+            String::new(),
+            hexv(d.size as u64),
+            hexv(d.rva as u64),
+            if d.rva != 0 {
+                "present".into()
+            } else {
+                String::new()
+            },
+        ));
+    }
+    out
+}
 
 fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
@@ -135,6 +200,10 @@ pub fn store_report(
         "pe_version_info",
         "pe_manifest",
         "pe_icons",
+        "pe_header_fields",
+        "pe_mitigations",
+        "pe_debug",
+        "pe_signatures",
     ] {
         conn.execute(&format!("DELETE FROM {t} WHERE sha256 = ?"), [sha])
             .map_err(err)?;
@@ -145,8 +214,16 @@ pub fn store_report(
         .find(|d| !d.pdb_path.is_empty())
         .map(|d| d.pdb_path.clone())
         .unwrap_or_default();
+    let entry_section = pe_read::extra::entry_section(r)
+        .and_then(|i| r.sections.get(i))
+        .map(|s| s.name.clone())
+        .unwrap_or_default();
     conn.execute(
-        "INSERT INTO pe_files VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "INSERT INTO pe_files (sha256, md5, sha1, imphash, host_id, path, file_size, is_pe, is_64, is_dll, is_dotnet, \
+         architecture, machine, subsystem, characteristics, dll_characteristics, compile_time, timestamp, entry_point, \
+         image_base, section_count, import_count, export_count, resource_count, tls_present, tls_callbacks, signed, \
+         certificate_size, overlay_size, pdb_path, warnings, analyzed_at, entry_section, certificate_present, clr_present) \
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         duckdb::params![
             sha, r.hashes.md5, r.hashes.sha1, r.imphash, host_id, path, r.file_size as i64,
             r.is_pe, r.is_64, r.is_dll(), r.is_dotnet(), r.architecture(), r.machine as i32,
@@ -155,6 +232,7 @@ pub fn store_report(
             r.entry_point as i64, r.image_base, r.sections.len() as i32, r.imports.len() as i32, r.exports.len() as i32,
             r.resources.len() as i32, r.tls_present, r.tls_callbacks as i32, r.signed(), r.certificate_size as i64,
             r.overlay_size as i64, pdb, r.warnings.join("; "), analyzed_at,
+            entry_section, r.certificate_present, r.clr_present,
         ],
     ).map_err(err)?;
     let mut a = conn.appender("pe_sections").map_err(err)?;
@@ -207,7 +285,10 @@ pub fn store_report(
             x.language as i64,
             x.rva as i64,
             x.size as i64,
-            x.sha256
+            x.sha256,
+            x.offset.map(|o| o as i64),
+            x.md5,
+            Option::<String>::None
         ])
         .map_err(err)?;
     }
@@ -267,7 +348,8 @@ pub fn store_report(
                 pe_read::iso_time(c.not_before),
                 pe_read::iso_time(c.not_after),
                 c.self_signed,
-                false
+                false,
+                c.issuer.org_unit
             ])
             .map_err(err)?;
         }
@@ -310,7 +392,9 @@ pub fn store_report(
         .map_err(err)?;
     }
     let mut a = conn.appender("pe_icons").map_err(err)?;
-    for i in &r.icons {
+    for (n, i) in r.icons.iter().enumerate() {
+        let data =
+            (n < MAX_CASE_ICONS && i.bytes.len() <= MAX_CASE_ICON_BYTES).then(|| base64(&i.bytes));
         a.append_row(duckdb::params![
             sha,
             i.group,
@@ -320,10 +404,67 @@ pub fn store_report(
             i.bit_count as i32,
             i.format,
             i.bytes.len() as i64,
-            hex_digest(&i.bytes)
+            hex_digest(&i.bytes),
+            data
         ])
         .map_err(err)?;
     }
+    drop(a);
+    let mut a = conn.appender("pe_header_fields").map_err(err)?;
+    for (idx, (node, field, off, size, value, meaning)) in header_rows(r).into_iter().enumerate() {
+        a.append_row(duckdb::params![
+            sha, node, idx as i32, field, off, size, value, meaning
+        ])
+        .map_err(err)?;
+    }
+    drop(a);
+    let mut a = conn.appender("pe_mitigations").map_err(err)?;
+    if r.is_pe {
+        for (idx, (name, on)) in pe_read::extra::mitigations(r).into_iter().enumerate() {
+            a.append_row(duckdb::params![sha, idx as i32, name, on])
+                .map_err(err)?;
+        }
+    }
+    drop(a);
+    let mut a = conn.appender("pe_debug").map_err(err)?;
+    for (idx, d) in r.debug.iter().enumerate() {
+        a.append_row(duckdb::params![
+            sha,
+            idx as i32,
+            d.kind as i64,
+            iso_time(d.timestamp),
+            d.size as i64,
+            d.pdb_path,
+            d.raw_offset as i64
+        ])
+        .map_err(err)?;
+    }
+    drop(a);
+    let mut a = conn.appender("pe_signatures").map_err(err)?;
+    for (si, sg) in r.signatures.iter().enumerate() {
+        a.append_row(duckdb::params![
+            sha,
+            si as i32,
+            sg.offset as i64,
+            sg.length as i64,
+            format!("0x{:04X}", sg.revision),
+            format!("0x{:04X}", sg.cert_type),
+            sg.signed_data_version as i32,
+            sg.digest_algorithm,
+            sg.signature_algorithm,
+            sg.signer_serial_hex,
+            sg.signer_serial_dec,
+            sg.signer_issuer.full,
+            sg.signer_issuer.common_name,
+            sg.signer_issuer.organization,
+            sg.signer_issuer.org_unit,
+            sg.signer_issuer.country,
+            sg.signer_index.map(|i| i as i32),
+            sg.error
+        ])
+        .map_err(err)?;
+    }
+    drop(a);
     Ok(())
 }
 
@@ -459,6 +600,13 @@ pub fn analyze_file(
                 if hit { "hit" } else { "no hit" }.into(),
             );
         }
+        for (rsha, result) in &extras.resource_bazaar {
+            conn.execute(
+                "UPDATE pe_resources SET malwarebazaar = ? WHERE sha256 = ? AND resource_sha256 = ?",
+                duckdb::params![result, report.hashes.sha256, rsha],
+            )
+            .map_err(err)?;
+        }
         let _ = conn.execute_batch("DETACH mbz;");
     }
     Ok(Analyzed {
@@ -511,6 +659,135 @@ pub fn case_candidates(case_dir: &Path) -> Vec<(String, PathBuf)> {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    /// Tables and columns as created by builds before the extra PE storage.
+    const OLD_SCHEMA: &str = "
+CREATE TABLE pe_files (
+    sha256 VARCHAR, md5 VARCHAR, sha1 VARCHAR, imphash VARCHAR, host_id VARCHAR, path VARCHAR, file_size BIGINT,
+    is_pe BOOLEAN, is_64 BOOLEAN, is_dll BOOLEAN, is_dotnet BOOLEAN, architecture VARCHAR, machine INTEGER,
+    subsystem VARCHAR, characteristics VARCHAR, dll_characteristics INTEGER, compile_time VARCHAR, timestamp BIGINT,
+    entry_point BIGINT, image_base UBIGINT, section_count INTEGER, import_count INTEGER, export_count INTEGER,
+    resource_count INTEGER, tls_present BOOLEAN, tls_callbacks INTEGER, signed BOOLEAN, certificate_size BIGINT,
+    overlay_size BIGINT, pdb_path VARCHAR, warnings VARCHAR, analyzed_at VARCHAR
+);
+CREATE TABLE pe_resources (
+    sha256 VARCHAR, type VARCHAR, name VARCHAR, language BIGINT, rva BIGINT, size BIGINT, resource_sha256 VARCHAR
+);
+CREATE TABLE pe_certificates (
+    sha256 VARCHAR, signature_idx INTEGER, cert_idx INTEGER, is_signer BOOLEAN, subject VARCHAR, subject_cn VARCHAR,
+    subject_o VARCHAR, subject_ou VARCHAR, subject_c VARCHAR, issuer VARCHAR, issuer_cn VARCHAR, issuer_o VARCHAR,
+    issuer_c VARCHAR, serial_hex VARCHAR, serial_dec VARCHAR, version INTEGER, signature_algorithm VARCHAR,
+    digest_algorithm VARCHAR, not_before VARCHAR, not_after VARCHAR, self_signed BOOLEAN, verified BOOLEAN
+);
+CREATE TABLE pe_icons (
+    sha256 VARCHAR, group_name VARCHAR, icon_id INTEGER, width INTEGER, height INTEGER, bit_count INTEGER,
+    format VARCHAR, size BIGINT, icon_sha256 VARCHAR
+);
+INSERT INTO pe_files (sha256, path) VALUES ('old', 'C:/old.exe');
+";
+
+    /// Smallest PE32 the parser accepts: MZ, e_lfanew, PE header, one section.
+    fn tiny_pe() -> Vec<u8> {
+        let mut b = vec![0u8; 0x400];
+        b[0] = b'M';
+        b[1] = b'Z';
+        b[0x3c] = 0x80;
+        b[0x80..0x84].copy_from_slice(b"PE\0\0");
+        b[0x84..0x86].copy_from_slice(&0x14cu16.to_le_bytes());
+        b[0x86..0x88].copy_from_slice(&1u16.to_le_bytes());
+        b[0x94..0x96].copy_from_slice(&0xe0u16.to_le_bytes());
+        b[0x96..0x98].copy_from_slice(&0x0102u16.to_le_bytes());
+        let o = 0x98;
+        b[o..o + 2].copy_from_slice(&0x10bu16.to_le_bytes());
+        b[o + 16..o + 20].copy_from_slice(&0x1000u32.to_le_bytes());
+        b[o + 28..o + 32].copy_from_slice(&0x400000u32.to_le_bytes());
+        b[o + 32..o + 36].copy_from_slice(&0x1000u32.to_le_bytes());
+        b[o + 36..o + 40].copy_from_slice(&0x200u32.to_le_bytes());
+        b[o + 56..o + 60].copy_from_slice(&0x2000u32.to_le_bytes());
+        b[o + 60..o + 64].copy_from_slice(&0x200u32.to_le_bytes());
+        b[o + 68..o + 70].copy_from_slice(&2u16.to_le_bytes());
+        b[o + 70..o + 72].copy_from_slice(&0x0140u16.to_le_bytes());
+        b[o + 92..o + 96].copy_from_slice(&16u32.to_le_bytes());
+        let s = o + 0xe0;
+        b[s..s + 5].copy_from_slice(b".text");
+        b[s + 8..s + 12].copy_from_slice(&0x100u32.to_le_bytes());
+        b[s + 12..s + 16].copy_from_slice(&0x1000u32.to_le_bytes());
+        b[s + 16..s + 20].copy_from_slice(&0x200u32.to_le_bytes());
+        b[s + 20..s + 24].copy_from_slice(&0x200u32.to_le_bytes());
+        b[s + 36..s + 40].copy_from_slice(&0x6000_0020u32.to_le_bytes());
+        b
+    }
+
+    fn count(conn: &duckdb::Connection, sql: &str) -> i64 {
+        conn.query_row(sql, [], |r| r.get(0)).unwrap()
+    }
+
+    #[test]
+    fn stores_headers_mitigations_debug_and_entry_section() {
+        let bytes = tiny_pe();
+        let r = pe_read::analyze(&bytes);
+        assert!(r.is_pe);
+        let x = extras(&bytes, &r);
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        store_report(&conn, "h", "p", &r, &x, "now").unwrap();
+        let rows = header_rows(&r);
+        assert!(rows.iter().any(|h| h.0 == "dos" && h.1 == "e_magic"));
+        assert_eq!(
+            count(&conn, "SELECT count(*) FROM pe_header_fields"),
+            rows.len() as i64
+        );
+        assert_eq!(
+            count(&conn, "SELECT count(*) FROM pe_header_fields WHERE node = 'dos' AND field = 'e_magic' AND meaning = 'MZ'"),
+            1
+        );
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_mitigations"), 7);
+        assert_eq!(
+            count(&conn, "SELECT count(*) FROM pe_mitigations WHERE name = 'ASLR (DYNAMIC_BASE)' AND enabled"),
+            1
+        );
+        let es: String = conn
+            .query_row("SELECT entry_section FROM pe_files", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(es, ".text");
+        // Storing again replaces, never duplicates.
+        store_report(&conn, "h", "p", &r, &x, "now").unwrap();
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_mitigations"), 7);
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_files"), 1);
+    }
+
+    #[test]
+    fn old_case_schema_is_migrated_in_place() {
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        conn.execute_batch(OLD_SCHEMA).unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        conn.execute_batch(SCHEMA).unwrap();
+        // Old rows stay; new columns read as NULL.
+        let (p, es): (String, Option<String>) = conn
+            .query_row(
+                "SELECT path, entry_section FROM pe_files WHERE sha256 = 'old'",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(p, "C:/old.exe");
+        assert!(es.is_none());
+        for q in [
+            "SELECT file_offset, resource_md5, malwarebazaar FROM pe_resources",
+            "SELECT issuer_ou FROM pe_certificates",
+            "SELECT data_base64 FROM pe_icons",
+            "SELECT * FROM pe_header_fields",
+            "SELECT * FROM pe_signatures",
+            "SELECT * FROM pe_debug",
+        ] {
+            conn.prepare(q).unwrap();
+        }
+        let bytes = tiny_pe();
+        let r = pe_read::analyze(&bytes);
+        store_report(&conn, "h", "p", &r, &extras(&bytes, &r), "now").unwrap();
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_files"), 2);
+    }
+
     #[test]
     fn iso_time_known_values() {
         assert_eq!(super::iso_time(0), "1970-01-01T00:00:00Z");

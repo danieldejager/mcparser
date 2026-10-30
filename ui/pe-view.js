@@ -284,7 +284,7 @@
         const grid = el("div", "pe-grid2");
         grid.append(card("File", kv(facts)));
         const mit = (report.mitigations || []).map((m) => [m.name, !!m.enabled]);
-        grid.append(card("Mitigations", mit.length ? checks(mit) : empty("No data", "Not a PE image.")));
+        grid.append(card("Mitigations", mit.length ? checks(mit) : report.from_case && !report.case_extended ? empty("Not saved in the case", "This case was saved by an earlier build. Analyze the file again to save mitigations.") : empty("No data", "Not a PE image.")));
         d.append(grid);
         d.append(card("Characteristics", checks(["EXECUTABLE_IMAGE", "DLL", "LARGE_ADDRESS_AWARE", "32BIT_MACHINE", "RELOCS_STRIPPED", "DEBUG_STRIPPED", "SYSTEM"].map((n) => [n, (s.characteristics || []).includes(n)]))));
         if ((s.warnings || []).length) d.append(card("Parser warnings", ...(s.warnings || []).map((w) => el("div", "pe-warn", w))));
@@ -343,7 +343,7 @@
           const c = card(`Digital signature ${sigs.length > 1 ? i + 1 : ""}`.trim());
           c.append(el("div", "pe-notice", "Signature present, not verified. Fields are parsed from the certificate table; trust, chain building and the file hash are not checked."));
           if (sg.error) c.append(el("div", "pe-warn", sg.error));
-          c.append(kv([["Digest", sg.digest_algorithm], ["Signature algorithm", sg.signature_algorithm], ["SignedData version", sg.version], ["Offset", offsetCell(sg.offset)], ["Length", sg.length + " bytes"]]));
+          c.append(kv([["Digest", sg.digest_algorithm], ["Signature algorithm", sg.signature_algorithm], ["SignedData version", sg.version], ["Offset", typeof sg.offset === "number" ? offsetCell(sg.offset) : "not saved in the case"], ["Length", typeof sg.length === "number" ? sg.length + " bytes" : "not saved in the case"]]));
           const chain = el("div", "pe-certs");
           for (const ct of sg.certificates || []) {
             const cc = el("div", "pe-cert" + (ct.is_signer ? " pe-cert-signer" : ""));

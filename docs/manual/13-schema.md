@@ -115,6 +115,12 @@ FROM tasks
 WHERE command ILIKE '%powershell%'
 ```
 
+### PE tables
+
+File > Analyze PE File writes `pe_*` tables. Every one joins on `sha256`. The file is parsed only, never run or loaded, and its bytes are not stored. `pe_files` has one row per file; `pe_sections`, `pe_imports`, `pe_exports`, `pe_resources`, `pe_indicators`, `pe_strings`, `pe_rich`, `pe_certificates`, `pe_version_info`, `pe_manifest`, `pe_icons` and `pe_checks` hold the parts. Indicators are hints, not verdicts. `pe_certificates.verified` is always false: signatures are parsed, not checked.
+
+Newer builds also write `pe_header_fields` (node `dos`, `file`, `optional` or `dirs`, with field, file_offset, size, value and meaning as text), `pe_mitigations` (name, enabled), `pe_debug` (type, timestamp, size, pdb_path, raw_offset) and `pe_signatures` (one row per Authenticode blob: offset, length, digest and signature algorithms, signer serial and issuer, error). They add `entry_section`, `certificate_present` and `clr_present` to `pe_files`, `file_offset`, `resource_md5` and `malwarebazaar` to `pe_resources`, `issuer_ou` to `pe_certificates`, and `data_base64` to `pe_icons` (only icons up to 64 KiB, at most 64 per file). Resource payloads are never stored, only offsets, sizes and hashes. A case from an earlier build gains these tables and columns the next time a file is analyzed into it; until then they are absent or NULL.
+
 ## catalog.sqlite
 
 This is the case, not the timeline. The SQL editor does not open against it. The tables here hold the work you do on the case, and they travel in the `.mcpz`.

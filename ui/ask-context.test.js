@@ -21,7 +21,7 @@ test("schema without PE tables names no pe_* table", () => {
 test("schema with PE and MalwareBazaar tables describes them as hints", () => {
   const t = new Set(Object.keys(ask.TABLES));
   const s = ask.buildSchema(t);
-  for (const name of ["pe_files", "pe_sections", "pe_imports", "pe_exports", "pe_resources", "pe_indicators", "pe_strings", "pe_rich", "pe_certificates", "pe_version_info", "pe_manifest", "pe_icons", "pe_checks", "malwarebazaar", "malwarebazaar_full"]) {
+  for (const name of ["pe_files", "pe_sections", "pe_imports", "pe_exports", "pe_resources", "pe_indicators", "pe_strings", "pe_rich", "pe_certificates", "pe_version_info", "pe_manifest", "pe_icons", "pe_checks", "pe_header_fields", "pe_mitigations", "pe_debug", "pe_signatures", "malwarebazaar", "malwarebazaar_full"]) {
     assert.match(s, new RegExp("Table " + name + "\\("), name);
   }
   assert.match(s, /hints, not verdicts/);
@@ -55,4 +55,16 @@ test("readOnlySql allows joins, CTEs and UNION but not writes", () => {
     "SELECT getenv('HOME')"]) {
     assert.throws(() => ask.readOnlySql(bad), bad);
   }
+});
+
+test("newer PE tables and columns are described only when the table exists", () => {
+  const old = ask.buildSchema(ask.parseTables(csv(["pe_files", "pe_certificates"])));
+  for (const t of ["pe_header_fields", "pe_mitigations", "pe_debug", "pe_signatures"]) assert.doesNotMatch(old, new RegExp("Table " + t + "\\("), t);
+  assert.match(old, /entry_section/);
+  assert.match(old, /earlier builds/);
+  assert.match(old, /hints, not verdicts/);
+  const full = ask.buildSchema(ask.parseTables(csv(["pe_files", "pe_resources", "pe_icons", "pe_header_fields", "pe_mitigations", "pe_debug", "pe_signatures"])));
+  for (const c of ["file_offset, resource_md5, malwarebazaar", "data_base64", "Table pe_header_fields(", "Table pe_mitigations(", "Table pe_debug(", "Table pe_signatures("]) assert.ok(full.includes(c), c);
+  assert.match(full, /never verified/);
+  assert.match(full, /not a verdict/);
 });
