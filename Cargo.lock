@@ -501,6 +501,7 @@ dependencies = [
  "duckdb",
  "model",
  "notatin",
+ "pe-read",
  "prefetch-core",
  "rusqlite",
  "serde_json",
