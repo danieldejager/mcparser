@@ -52,6 +52,10 @@ MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a
 
 - ctutils is updated to 0.4.7 for RUSTSEC-2026-0385
 
+### Security
+
+- The zip import for the MalwareBazaar dump now writes its temporary csv with a random name, owner-only permissions and exclusive creation, instead of a predictable file in the shared temp folder
+
 ## 0.3.3 — 2026-10-21
 
 MalwareBazaar full dump. The machine holds the hashes. The case holds the hits.
