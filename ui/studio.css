@@ -171,3 +171,25 @@ aside summary { user-select: none; }
 .row-menu { position: fixed; z-index: 60; background: #fff; border: 1px solid #c6c6c6; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,.15); padding: 4px 0; min-width: 180px; }
 .row-menu a { display: block; padding: 6px 14px; color: #1f4e79; cursor: pointer; font-size: 13px; }
 .row-menu a:hover { background: #f0f4f8; }
+
+/* PE view: summary on top, structure tree left, detail table right */
+.pe-window { width: min(1100px, 94vw); height: 86vh; background: #fff; border: 1px solid #e1e1e1; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; }
+.pe-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; border-bottom: 1px solid #e1e1e1; font-weight: 600; }
+#pe-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.pe-summary { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 2px 16px; padding: 8px 12px; border-bottom: 1px solid #e1e1e1; font-size: 12px; }
+.pe-path { grid-column: 1 / -1; font-weight: 600; word-break: break-all; }
+.pe-fact { display: flex; gap: 6px; min-width: 0; }
+.pe-key { color: #666; flex: none; }
+.pe-val { font-family: ui-monospace, monospace; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pe-hit .pe-val { color: #b00020; font-weight: 700; }
+.pe-warn { grid-column: 1 / -1; color: #8a5a00; }
+.pe-body { flex: 1; display: flex; min-height: 0; }
+.pe-tree { list-style: none; margin: 0; padding: 4px 0; width: 230px; flex: none; overflow: auto; border-right: 1px solid #e1e1e1; font-size: 13px; }
+.pe-node { padding: 3px 8px; cursor: pointer; white-space: nowrap; }
+.pe-node:hover { background: #f2f2f2; }
+.pe-selected { background: #dce8fb; }
+.pe-detail { flex: 1; overflow: auto; padding: 8px 12px; }
+.pe-detail h2 { font-size: 14px; margin: 0 0 6px; }
+.pe-table { border-collapse: collapse; width: 100%; font-size: 12px; }
+.pe-table th, .pe-table td { border-bottom: 1px solid #eee; padding: 3px 8px; text-align: left; }
+.pe-table td.pe-offset, .pe-table td.pe-size, .pe-table td.pe-value { font-family: ui-monospace, monospace; }

@@ -1926,3 +1926,16 @@ window.mcparser.onBazaarAuto(({ phase, text }) => {
     status.textContent = text;
   }
 });
+
+// PE analysis view (layout lives in pe-view.js).
+window.mcparser.onAnalyzePe(async () => {
+  const result = await window.mcparser.peAnalyze(caseDir());
+  if (!result || result.canceled) return;
+  const sheet = document.getElementById("pe-sheet");
+  const view = document.getElementById("pe-view");
+  if (result.code !== 0) { view.textContent = result.err || "Analysis failed"; sheet.hidden = false; return; }
+  try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop())); }
+  catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
+  sheet.hidden = false;
+});
+document.getElementById("pe-close").addEventListener("click", () => { document.getElementById("pe-sheet").hidden = true; });

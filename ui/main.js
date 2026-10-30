@@ -461,6 +461,7 @@ function buildMenu() {
         { type: "separator" },
         { label: "Import EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
+        { label: "Analyze PE File...", click: () => win.webContents.send("analyze-pe") },
         {
           label: "HandOff",
           submenu: [
@@ -941,6 +942,14 @@ ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", 
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
 ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
+// Parse-only PE analysis. The file is read by the parser, never run or loaded.
+ipcMain.handle("pe-analyze", async (_event, caseDir) => {
+  const picked = await dialog.showOpenDialog(win, { title: "Analyze PE file", properties: ["openFile"] });
+  if (picked.canceled || !picked.filePaths.length) return { code: 0, out: "", canceled: true };
+  const args = ["pe", "--file", picked.filePaths[0], "--json", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")];
+  if (caseDir) args.push("--case", casePath(caseDir));
+  return run(args);
+});
 ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
 ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
 ipcMain.handle("query", async (_event, caseDir, sql) => {
