@@ -325,6 +325,10 @@ fn version_manifest_and_icons_decode() {
     assert_eq!(r.icons[1].format, "png");
     assert_eq!(r.icons[1].width, 32);
     assert!(r.resources.iter().all(|x| x.offset.is_some()));
+    // Each resource carries MD5 and SHA256 of its own bytes.
+    assert!(r.resources.iter().all(|x| x.md5.len() == 32 && x.sha256.len() == 64));
+    let m = r.resources.iter().find(|x| x.type_name == "MANIFEST").unwrap();
+    assert_eq!(m.size as usize, SAMPLE_MANIFEST.len());
 }
 
 #[test]

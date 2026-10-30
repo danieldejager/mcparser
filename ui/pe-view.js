@@ -116,6 +116,33 @@
     return [...map.entries()];
   }
 
+  // Resource tree for the Resources tab: type folders, then names or ids,
+  // then languages. Order is first seen in the file.
+  function resourceNodes(resources) {
+    const types = new Map();
+    for (const r of Array.isArray(resources) ? resources : []) {
+      const t = String(r.type || "?");
+      if (!types.has(t)) types.set(t, new Map());
+      const names = types.get(t);
+      const n = String(r.name === undefined || r.name === null ? "" : r.name);
+      if (!names.has(n)) names.set(n, []);
+      names.get(n).push(r);
+    }
+    return [...types.entries()].map(([type, names]) => ({ type, label: rtLabel(type), names: [...names.entries()].map(([name, langs]) => ({ name, langs })) }));
+  }
+  // "ICON" -> "RT_ICON"; numeric or custom types are shown as they are.
+  const rtLabel = (t) => (/^[A-Z_]+$/.test(String(t)) ? "RT_" + t : String(t));
+  const LANGS = { 0: "Neutral", 1024: "Process default", 1025: "Arabic - Saudi Arabia", 1028: "Chinese - Taiwan", 1031: "German - Germany", 1033: "English - United States", 1036: "French - France", 1040: "Italian - Italy", 1041: "Japanese", 1042: "Korean", 1046: "Portuguese - Brazil", 1049: "Russian", 2052: "Chinese - PRC", 2057: "English - United Kingdom", 3082: "Spanish - Spain", 3081: "English - Australia" };
+  function langLabel(id) {
+    const n = Number(id);
+    if (!Number.isInteger(n) || n < 0) return String(id === undefined || id === null ? "" : id);
+    return `${n} (0x${n.toString(16).toUpperCase()})` + (LANGS[n] ? " " + LANGS[n] : "");
+  }
+  // Hex preview of a resource reads at most this many bytes.
+  const RES_PREVIEW_MAX = 4096;
+  const previewLength = (size) => Math.max(0, Math.min(Number(size) || 0, RES_PREVIEW_MAX));
+  const bazaarState = (v) => (v === "hit" ? "hit" : v === "no hit" ? "no hit" : "not checked");
+
   // Only data URLs the parser built from validated PNG/ICO bytes are shown.
   const safeIconUrl = (u) => typeof u === "string" && /^data:image\/(png|x-icon);base64,[A-Za-z0-9+/=]+$/.test(u) && u.length < 2 * 1024 * 1024;
 
@@ -276,21 +303,7 @@
         d.append(card("TLS", tls.present ? kv([["Directory", "present"], ["Callbacks", tls.callbacks]]) : empty("No TLS directory", "No thread-local storage callbacks run before the entry point.")));
         return d;
       },
-      resources: () => {
-        const d = el("div", "pe-stack");
-        const icons = (report.icons || []).filter((i) => safeIconUrl(i.data_url));
-        if (icons.length) {
-          const g = el("div", "pe-icons");
-          for (const i of icons) { const f = el("figure", "pe-icon"); const img = el("img"); img.src = i.data_url; img.alt = `icon ${i.icon_id}`; img.width = Math.min(64, i.width); img.height = Math.min(64, i.height); f.append(img, el("figcaption", "", `${i.width}\u00d7${i.height} ${i.bit_count}bpp`)); g.append(f); }
-          d.append(card("Icons", g));
-        }
-        d.append(card(`Resources (${(report.resources || []).length})`, collapsible(resourceTree(report.resources), (r) => {
-          const row = el("span", "pe-leaf");
-          row.append(el("span", "pe-mono", `${r.name} / lang ${r.language}`), el("span", "pe-dim", `${r.size} bytes`), offsetCell(typeof r.offset === "number" ? r.offset : null), el("span", "pe-mono pe-hash pe-dim", (r.sha256 || "").slice(0, 16)));
-          return row;
-        })));
-        return d;
-      },
+      resources: () => resourcesView(),
       debug: () => {
         const d = el("div", "pe-stack");
         d.append(card("Debug directory", table([{ label: "Type", cls: "pe-num" }, { label: "Timestamp", cls: "pe-mono" }, { label: "Size", cls: "pe-num" }, { label: "Raw offset", cls: "pe-mono pe-num" }, { label: "PDB path", cls: "pe-mono" }], (report.debug || []).map((x) => [x.type, x.timestamp, x.size, x.raw_offset ? offsetCell(x.raw_offset) : "", x.pdb_path]))));
@@ -342,6 +355,153 @@
         return d;
       },
     };
+
+    // Resources: tree on the left, details, hex preview and parsed text on
+    // the right. Bytes come from opts.readRange, capped at RES_PREVIEW_MAX.
+    function resourcesView() {
+      const nodes = resourceNodes(report.resources);
+      const icons = (report.icons || []).filter((i) => safeIconUrl(i.data_url));
+      const wrap = el("div", "pe-stack");
+      if (!nodes.length) { wrap.append(card("Resources", empty("No resources", "This file has no resource directory entries."))); return wrap; }
+      const body = el("div", "pe-split pe-res");
+      const tree = el("ul", "pe-rtree");
+      tree.setAttribute("role", "tree");
+      tree.setAttribute("aria-label", "Resources");
+      const detail = el("div", "pe-detail");
+      const leaves = [];
+      let first = null;
+      const folder = (label, count, depth, kids) => {
+        const li = el("li");
+        li.setAttribute("role", "treeitem");
+        li.setAttribute("aria-expanded", "true");
+        const row = el("div", "pe-rnode pe-rfolder");
+        row.style.paddingLeft = 6 + depth * 14 + "px";
+        row.tabIndex = -1;
+        row.append(el("span", "pe-twisty", "\u25BE"), el("span", "pe-folder-icon", "\u25A0"), el("span", depth ? "pe-mono" : "pe-mono pe-rtype", label));
+        if (count !== null) row.append(el("span", "pe-count", String(count)));
+        const ul = el("ul");
+        ul.setAttribute("role", "group");
+        const toggle = () => { const open = li.getAttribute("aria-expanded") !== "true"; li.setAttribute("aria-expanded", String(open)); ul.hidden = !open; row.firstChild.textContent = open ? "\u25BE" : "\u25B8"; };
+        row.addEventListener("click", toggle);
+        row.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); } });
+        kids.forEach((k) => ul.append(k));
+        li.append(row, ul);
+        return li;
+      };
+      for (const t of nodes) {
+        const names = t.names.map((n) => {
+          const langs = n.langs.map((r) => {
+            const li = el("li");
+            li.setAttribute("role", "treeitem");
+            const row = el("div", "pe-rnode pe-rleaf");
+            row.style.paddingLeft = 6 + 2 * 14 + "px";
+            row.tabIndex = -1;
+            row.append(el("span", "pe-leaf-icon", "\u25A1"), el("span", "pe-mono", String(r.language)));
+            const pick = () => {
+              for (const x of tree.querySelectorAll(".pe-selected")) x.classList.remove("pe-selected");
+              for (const x of tree.querySelectorAll("[aria-selected]")) x.setAttribute("aria-selected", "false");
+              row.classList.add("pe-selected");
+              li.setAttribute("aria-selected", "true");
+              leaves.forEach((l) => { l.tabIndex = l === row ? 0 : -1; });
+              detail.replaceChildren(resourceDetail(t, n, r));
+            };
+            row.addEventListener("click", pick);
+            row.addEventListener("keydown", (e) => {
+              if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(); return; }
+              const i = leaves.indexOf(row);
+              const to = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? leaves.length - 1 : null;
+              if (to !== null && leaves[to]) { e.preventDefault(); leaves[to].focus(); leaves[to].click(); }
+            });
+            leaves.push(row);
+            if (!first) first = pick;
+            li.append(row);
+            return li;
+          });
+          return folder(n.name || "(unnamed)", null, 1, langs);
+        });
+        tree.append(folder(t.label, t.names.reduce((a, n) => a + n.langs.length, 0), 0, names));
+      }
+      body.append(tree, detail);
+      if (icons.length) {
+        const sw = el("div", "pe-theme pe-resview");
+        sw.setAttribute("role", "radiogroup");
+        sw.setAttribute("aria-label", "Resources view");
+        const g = el("div", "pe-icons");
+        for (const i of icons) { const f = el("figure", "pe-icon"); const img = el("img"); img.src = i.data_url; img.alt = `icon ${i.icon_id}`; img.width = Math.min(64, i.width); img.height = Math.min(64, i.height); f.append(img, el("figcaption", "", `${i.width}\u00d7${i.height} ${i.bit_count}bpp`)); g.append(f); }
+        const gallery = card(`Icons (${icons.length})`, g);
+        gallery.hidden = true;
+        const opts2 = [["tree", "Tree"], ["icons", "Icons"]].map(([id, label]) => {
+          const b = el("button", "pe-theme-opt", label); b.type = "button"; b.setAttribute("role", "radio"); b.dataset.view = id;
+          b.addEventListener("click", () => { body.hidden = id !== "tree"; gallery.hidden = id !== "icons"; opts2.forEach((o) => { const on = o === b; o.setAttribute("aria-checked", String(on)); o.tabIndex = on ? 0 : -1; }); });
+          sw.append(b); return b;
+        });
+        opts2[0].setAttribute("aria-checked", "true"); opts2[1].setAttribute("aria-checked", "false"); opts2[1].tabIndex = -1;
+        wrap.append(sw, body, gallery);
+      } else wrap.append(body);
+      if (leaves[0]) leaves[0].tabIndex = 0;
+      if (first) first();
+      return wrap;
+    }
+
+    function resourceDetail(t, n, r) {
+      const d = el("div", "pe-stack");
+      const mb = bazaarState(r.malwarebazaar);
+      const mbNode = badge(mb === "hit" ? "high" : mb === "no hit" ? "ok" : "none", mb === "hit" ? "MalwareBazaar HIT" : mb === "no hit" ? "No hit" : "Not checked (dump not installed)");
+      const hashRow = (v) => { if (!v) return "\u2014"; const sp = el("span", "pe-hashline"); sp.append(el("span", "pe-mono pe-hashval", v), copyBtn(v)); return sp; };
+      d.append(card("Resource", kv([
+        ["Name", el("span", "pe-mono", n.name || "(unnamed)")],
+        ["Type", t.label],
+        ["Language", langLabel(r.language)],
+        ["MD5", hashRow(r.md5)],
+        ["SHA256", hashRow(r.sha256)],
+        ["Size", `${hex(r.size)} (${Number(r.size) || 0} bytes)`],
+        ["Offset", typeof r.offset === "number" ? offsetCell(r.offset) : "not in file"],
+        ["MalwareBazaar", mbNode],
+      ])));
+      const parsed = parsedText(t.type);
+      const grid = el("div", parsed ? "pe-resgrid" : "pe-resgrid pe-resgrid-one");
+      grid.append(resourceHex(r));
+      if (parsed) grid.append(card(parsed[0], el("pre", "pe-code pe-restext", parsed[1])));
+      d.append(grid);
+      return d;
+    }
+
+    // Parsed text beside the hex preview for VERSION and MANIFEST.
+    function parsedText(type) {
+      if (type === "VERSION" && report.version_info) {
+        const v = report.version_info;
+        const lines = [];
+        if ((v.translations || []).length) lines.push("VarFileInfo", "  Translation: " + v.translations.join(", "), "");
+        const tables = new Map();
+        for (const x of v.strings || []) { if (!tables.has(x.table)) tables.set(x.table, []); tables.get(x.table).push(x); }
+        if (tables.size) lines.push("StringFileInfo");
+        for (const [tb, rows] of tables) { lines.push("  " + tb); for (const x of rows) lines.push(`    ${x.key}: ${x.value}`); }
+        if ((v.fixed || []).length) { lines.push("", "VS_FIXEDFILEINFO"); for (const f of v.fixed) lines.push(`  ${f.key}: ${f.value}`); }
+        return ["Version info (parsed)", lines.join("\n")];
+      }
+      if (type === "MANIFEST" && report.manifest) return ["Manifest (parsed)", String(report.manifest.text || "") + (report.manifest.truncated ? "\n\n(truncated for display)" : "")];
+      return null;
+    }
+
+    function resourceHex(r) {
+      const c = card("Bytes");
+      const len = previewLength(r.size);
+      if (typeof opts.readRange !== "function") { c.append(empty("Preview unavailable", "Byte ranges are read on demand from the file on disk; no reader is attached.")); return c; }
+      if (typeof r.offset !== "number" || !len) { c.append(empty("No bytes", "The resource data is not inside the file.")); return c; }
+      const note = el("div", "pe-dim pe-resnote", `${hex(r.offset)}, first ${len} of ${Number(r.size) || 0} bytes` + (len < (Number(r.size) || 0) ? " (preview capped; open the Hex tab for the rest)" : ""));
+      const dump = el("div", "pe-hex pe-reshex");
+      c.append(note, dump);
+      Promise.resolve(opts.readRange(r.offset, len)).then((res) => {
+        if (!res || res.error) { dump.replaceChildren(el("div", "pe-warn", (res && res.error) || "Read failed")); return; }
+        const bytes = decodeBase64(res.base64).subarray(0, len);
+        for (const [off, hx, asc] of hexRows(bytes, Math.ceil(RES_PREVIEW_MAX / 16), r.offset)) {
+          const line = el("div", "pe-hexline");
+          line.append(el("span", "pe-gutter", off), el("span", "pe-hexbytes", hx), el("span", "pe-ascii", asc));
+          dump.append(line);
+        }
+      }, () => dump.replaceChildren(el("div", "pe-warn", "Read failed")));
+      return c;
+    }
 
     // Paged hex view. Reads one page at a time through opts.readRange.
     const hexState = { offset: 0, size: PAGE_SIZES[0] };
@@ -470,5 +630,5 @@
     return { open: (id) => open(Math.max(0, TABS.findIndex((t) => t.id === id))), goHex: (o) => goHex(o) };
   }
 
-  return { COLUMNS, TABS, PAGE_SIZES, MAX_RANGE, flattenTree, summaryItems, hexRows, decodeBase64, sectionFlags, parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, safeIconUrl, render };
+  return { COLUMNS, TABS, PAGE_SIZES, MAX_RANGE, flattenTree, summaryItems, hexRows, decodeBase64, sectionFlags, parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX, safeIconUrl, render };
 });

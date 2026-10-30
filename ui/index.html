@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <title>McParser</title>
   <link rel="stylesheet" href="studio.css">
+  <script src="theme.js"></script>
 </head>
 <body>
   <header id="toolbar">
@@ -63,6 +64,7 @@
     </div>
     <span class="tb-sep"></span>
     <span id="tb-case">No case</span>
+    <span class="tb-appearance" title="Appearance: Light, Dark or Follow system"><span id="tb-appearance-label">Appearance</span><span id="app-theme"></span></span>
   </header>
   <div id="workspace">
   <aside id="case-pane">
@@ -254,11 +256,10 @@ LIMIT 20</textarea>
   </div>
   <div id="pe-sheet" class="sheet" hidden>
     <div class="pe-window">
-      <div class="pe-bar"><span>PE file analysis (parse only)</span><span class="pe-bar-tools"><span id="pe-theme"></span><button type="button" id="pe-close">Close</button></span></div>
+      <div class="pe-bar"><span>PE file analysis (parse only)</span><span class="pe-bar-tools"><button type="button" id="pe-close">Close</button></span></div>
       <div id="pe-view"></div>
     </div>
   </div>
-  <script src="theme.js"></script>
   <script src="pe-view.js"></script>
   <script src="hunts.js"></script>
   <script src="renderer.js"></script>

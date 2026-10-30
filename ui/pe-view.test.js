@@ -76,3 +76,32 @@ test("only parser-built image data URLs are shown", () => {
   assert.ok(safeIconUrl("data:image/x-icon;base64,AAABAA=="));
   for (const bad of ["data:image/svg+xml;base64,PHN2Zz4=", "javascript:alert(1)", "data:image/png;base64,abc\"onerror=1", "https://x/y.png", null]) assert.ok(!safeIconUrl(bad), String(bad));
 });
+
+const { resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX } = require("./pe-view.js");
+
+test("resource tree nests type, then name or id, then language", () => {
+  const t = resourceNodes([
+    { type: "ICON", name: "1", language: 1033 }, { type: "ICON", name: "2", language: 1033 },
+    { type: "VERSION", name: "1", language: 1033 }, { type: "ICON", name: "1", language: 1031 }, { type: "#300", name: "CONFIG", language: 0 },
+  ]);
+  assert.deepStrictEqual(t.map((x) => x.label), ["RT_ICON", "RT_VERSION", "#300"]);
+  assert.deepStrictEqual(t[0].names.map((n) => [n.name, n.langs.map((r) => r.language)]), [["1", [1033, 1031]], ["2", [1033]]]);
+  assert.deepStrictEqual(resourceNodes(null), []);
+  assert.strictEqual(rtLabel("GROUP_ICON"), "RT_GROUP_ICON");
+});
+
+test("language label shows decimal, hex and a name when known", () => {
+  assert.strictEqual(langLabel(1033), "1033 (0x409) English - United States");
+  assert.strictEqual(langLabel(0), "0 (0x0) Neutral");
+  assert.strictEqual(langLabel(4242), "4242 (0x1092)");
+  assert.strictEqual(langLabel("x"), "x");
+});
+
+test("resource hex preview is capped and MalwareBazaar state is explicit", () => {
+  assert.strictEqual(RES_PREVIEW_MAX, 4096);
+  assert.strictEqual(previewLength(956), 956);
+  assert.strictEqual(previewLength(10 * 1024 * 1024), 4096);
+  assert.strictEqual(previewLength(-1), 0);
+  assert.strictEqual(previewLength("junk"), 0);
+  assert.deepStrictEqual(["hit", "no hit", undefined, null, "weird"].map(bazaarState), ["hit", "no hit", "not checked", "not checked", "not checked"]);
+});

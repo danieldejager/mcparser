@@ -98,6 +98,7 @@ pub struct Resource {
     pub rva: u32,
     pub size: u32,
     pub sha256: String,
+    pub md5: String,
     /// File offset of the data when the whole payload is in the file.
     pub offset: Option<u64>,
 }
@@ -933,10 +934,9 @@ fn resources(ctx: &mut Ctx, rva: u32) -> Vec<Resource> {
                 let data_off = ctx
                     .rva(drva)
                     .filter(|o| slice(ctx.b, *o, size as usize).is_some());
-                let sha256 = data_off
-                    .and_then(|o| slice(ctx.b, o, size as usize))
-                    .map(|d| hex(&Sha256::digest(d)))
-                    .unwrap_or_default();
+                let data = data_off.and_then(|o| slice(ctx.b, o, size as usize));
+                let sha256 = data.map(|d| hex(&Sha256::digest(d))).unwrap_or_default();
+                let md5 = data.map(|d| hex(&Md5::digest(d))).unwrap_or_default();
                 out.push(Resource {
                     type_name: p.first().cloned().unwrap_or_default(),
                     name: p.get(1).cloned().unwrap_or_default(),
@@ -944,6 +944,7 @@ fn resources(ctx: &mut Ctx, rva: u32) -> Vec<Resource> {
                     rva: drva,
                     size,
                     sha256,
+                    md5,
                     offset: data_off.map(|o| o as u64),
                 });
             }

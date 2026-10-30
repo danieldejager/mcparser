@@ -22,7 +22,21 @@ flowchart TD
 
 File, Analyze PE File... opens one Windows executable or DLL and shows what its headers say. McParser only parses the file. It never runs it and makes no network calls for it. The tabs cover General, PE Header, MZ Header, Sections / Overlay, Imports / Exports / TLS, Resources, Debug, Version Info / Signature, and Hex / Strings. The hints on the General tab are hints, not verdicts.
 
-The bar at the top has a theme switch: Light, Dark, or Follow system. Follow system is the default and tracks the OS light or dark setting. The choice is remembered. Use the arrow keys to move between the three options.
+Appearance is an app-wide setting. The Appearance switch at the right of the main toolbar picks Light, Dark, or Follow system for every screen: the editor, results grid, left pane, dialogs, AI pane, audit lists, and this PE view. Follow system is the default and tracks the OS light or dark setting. The choice is remembered between sessions. Use the arrow keys to move between the three options.
+
+![Main window, light](../screenshots/app-light.png)
+![Main window, dark](../screenshots/app-dark.png)
+
+### Resources tab
+
+The Resources tab has a tree on the left. Top-level folders are resource types (RT_ICON, RT_VERSION, RT_MANIFEST, and so on, or the numeric id for custom types). Under each type are the resource names or ids, and under those the languages. Click a language leaf, or move with the arrow keys, Home, and End, to show that resource on the right:
+
+- Name, Type, Language (decimal, hex, and the language name when known), MD5, SHA256, Size, and Offset. The hashes have Copy buttons and the offset opens the Hex tab there.
+- MalwareBazaar: hit or no hit against the local MalwareBazaar dump, looked up by the resource SHA256. It shows not checked when no dump is loaded. No network call is made.
+- A hex preview of the resource bytes, read through the same paged reader as the Hex tab and capped at the first 4 KB.
+- For RT_VERSION and RT_MANIFEST, the parsed text beside the hex: version strings and fixed fields, or the manifest XML shown as text.
+
+The Tree / Icons switch above the tree swaps in the icon gallery.
 
 The screenshots below use a synthetic sample, not a real file.
 

@@ -375,6 +375,9 @@ pub struct Extras {
     pub indicators: Vec<pe_read::extra::Indicator>,
     pub strings: Vec<pe_read::extra::PeString>,
     pub rich: Vec<pe_read::extra::RichEntry>,
+    /// Local MalwareBazaar dump result per resource sha256 ("hit" or
+    /// "no hit"). Empty when the dump is not installed.
+    pub resource_bazaar: std::collections::HashMap<String, String>,
 }
 
 pub fn extras(bytes: &[u8], r: &PeReport) -> Extras {
@@ -386,6 +389,7 @@ pub fn extras(bytes: &[u8], r: &PeReport) -> Extras {
         indicators: pe_read::extra::indicators(r, now),
         strings: pe_read::extra::strings(bytes, 5),
         rich: pe_read::extra::rich_header(bytes),
+        resource_bazaar: Default::default(),
     }
 }
 
@@ -414,7 +418,7 @@ pub fn analyze_file(
     }
     let bytes = std::fs::read(file).map_err(err)?;
     let report = pe_read::analyze(&bytes);
-    let extras = extras(&bytes, &report);
+    let mut extras = extras(&bytes, &report);
     drop(bytes);
     let conn = duckdb::Connection::open(db_path).map_err(err)?;
     let shown = file.to_string_lossy().to_string();
@@ -437,6 +441,24 @@ pub fn analyze_file(
             ],
         )
         .map_err(err)?;
+        // Same local dump, same connection: one lookup per distinct resource
+        // hash. No network.
+        for res in &report.resources {
+            if res.sha256.is_empty() || extras.resource_bazaar.contains_key(&res.sha256) {
+                continue;
+            }
+            let hit = conn
+                .query_row(
+                    "SELECT 1 FROM mbz.malwarebazaar WHERE sha256 = ? LIMIT 1",
+                    [&res.sha256],
+                    |_| Ok(()),
+                )
+                .is_ok();
+            extras.resource_bazaar.insert(
+                res.sha256.clone(),
+                if hit { "hit" } else { "no hit" }.into(),
+            );
+        }
         let _ = conn.execute_batch("DETACH mbz;");
     }
     Ok(Analyzed {
@@ -628,7 +650,7 @@ pub fn report_json(
             "ratio": if r.file_size > 0 { (s.raw_size as f64 / r.file_size as f64 * 100.0).round() } else { 0.0 }})).collect::<Vec<_>>(),
         "imports": r.imports.iter().map(|i| json!({"dll": i.dll, "name": i.name, "ordinal": i.ordinal, "delayed": i.delayed})).collect::<Vec<_>>(),
         "exports": r.exports.iter().map(|e| json!({"ordinal": e.ordinal, "name": e.name, "rva": e.rva, "forwarder": e.forwarder})).collect::<Vec<_>>(),
-        "resources": r.resources.iter().map(|e| json!({"type": e.type_name, "name": e.name, "language": e.language, "rva": e.rva, "size": e.size, "sha256": e.sha256, "offset": e.offset})).collect::<Vec<_>>(),
+        "resources": r.resources.iter().map(|e| json!({"type": e.type_name, "name": e.name, "language": e.language, "rva": e.rva, "size": e.size, "sha256": e.sha256, "md5": e.md5, "offset": e.offset, "malwarebazaar": x.resource_bazaar.get(&e.sha256)})).collect::<Vec<_>>(),
         "debug": r.debug.iter().map(|d| json!({"type": d.kind, "timestamp": iso_time(d.timestamp), "size": d.size, "pdb_path": d.pdb_path, "raw_offset": d.raw_offset})).collect::<Vec<_>>(),
         "signatures": r.signatures.iter().map(signature_json).collect::<Vec<_>>(),
         "tls": {"present": r.tls_present, "callbacks": r.tls_callbacks},

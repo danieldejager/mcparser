@@ -1,7 +1,8 @@
-// Theme preference for the PE view: "light", "dark" or "system" (default).
-// The app has no shared theme mechanism yet, so the dark tokens in studio.css
-// only cover the PE view; data-theme is still set on <html> so other views can
-// opt in later. The choice is kept in localStorage like other UI settings.
+// Appearance preference for the whole app: "light", "dark" or "system"
+// (default). theme.js sets data-theme on <html>; studio.css keys every view's
+// palette (app and PE view) off it. The choice is kept in localStorage like
+// other UI settings. Loaded in <head> so the first paint already has the
+// right palette.
 (function (root) {
   const KEY = "mcparser-theme";
   const CHOICES = ["light", "dark", "system"];
@@ -32,7 +33,7 @@
     const group = doc.createElement("div");
     group.className = "pe-theme";
     group.setAttribute("role", "radiogroup");
-    group.setAttribute("aria-label", "Theme");
+    group.setAttribute("aria-label", o.label || "Appearance");
     const buttons = CHOICES.map((c) => {
       const b = doc.createElement("button");
       b.type = "button"; b.className = "pe-theme-opt"; b.dataset.choice = c;
@@ -54,7 +55,19 @@
     return { set, get: () => choice };
   }
 
-  const api = { KEY, CHOICES, LABELS, normalize, resolve, load, save, step, mount };
+  // Set data-theme from the stored choice before any UI is mounted.
+  function init(doc, storage) {
+    const win = doc.defaultView;
+    let st = storage;
+    try { st = st || win.localStorage; } catch (_) { st = null; }
+    const choice = load(st);
+    const dark = !!(win.matchMedia && win.matchMedia("(prefers-color-scheme: dark)").matches);
+    doc.documentElement.dataset.theme = resolve(choice, dark);
+    doc.documentElement.dataset.themeChoice = choice;
+    return choice;
+  }
+
+  const api = { KEY, CHOICES, LABELS, normalize, resolve, load, save, step, mount, init };
   if (typeof module === "object" && module.exports) module.exports = api;
-  else root.PeTheme = api;
+  else { root.PeTheme = api; if (root.document && root.document.documentElement) init(root.document); }
 })(typeof window !== "undefined" ? window : globalThis);

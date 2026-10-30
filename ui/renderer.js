@@ -1938,5 +1938,6 @@ window.mcparser.onAnalyzePe(async () => {
   catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
   sheet.hidden = false;
 });
-window.PeTheme.mount(document.getElementById("pe-theme"));
+// Appearance (Light, Dark, Follow system) applies to the whole app.
+window.PeTheme.mount(document.getElementById("app-theme"), { label: "Appearance" });
 document.getElementById("pe-close").addEventListener("click", () => { document.getElementById("pe-sheet").hidden = true; });
