@@ -3,6 +3,7 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
+const { runStartupUpdate } = require("./bazaar-autoupdate");
 
 app.setName("McParser");
 app.setAboutPanelOptions({
@@ -578,6 +579,7 @@ function createWindow() {
   win.loadFile("index.html");
   win.webContents.once("did-finish-load", () => {
     if (chatShown) win.webContents.send("grok-chat", true);
+    startupBazaarUpdate();
   });
   win.on("focus", () => buildMenu());
 }
@@ -785,6 +787,7 @@ async function bazaarConfig() {
     exportUrl: typeof parsed.exportUrl === "string" && parsed.exportUrl.includes("{key}") ? parsed.exportUrl : bazaar.DEFAULT_EXPORT_TEMPLATE,
     onlineLookup: parsed.onlineLookup === true,
     onlineMax: Math.max(0, Math.min(1000, Number(parsed.onlineMax) || 25)),
+    autoUpdate: parsed.autoUpdate !== false,
   };
 }
 
@@ -842,7 +845,13 @@ ipcMain.handle("bazaar-upload", async () => {
 ipcMain.handle("bazaar-fetch", async () => {
   let key;
   try { key = loadSourceKey("malwarebazaar"); } catch (err) { return { code: 1, err: err.message }; }
-  const config = await bazaarConfig();
+  return bazaarFetchAndImport(key, await bazaarConfig());
+});
+
+// Shared by the Fetch recent button and the start-up update. The download
+// goes to a temp file that is always deleted; the dump only changes when the
+// import succeeds.
+async function bazaarFetchAndImport(key, config) {
   let download;
   try {
     bazaarProgress(1, "Downloading the recent export from abuse.ch");
@@ -868,7 +877,24 @@ ipcMain.handle("bazaar-fetch", async () => {
   } finally {
     try { fs.unlinkSync(download.file); } catch (_) { /* already gone */ }
   }
-});
+}
+
+// Runs once per app start after the window has loaded. A reload does not run
+// it again (the guard lives in bazaar-autoupdate.js in the main process).
+function startupBazaarUpdate() {
+  runStartupUpdate({
+    isInstalled: async () => {
+      const r = await run(["marketplace", "--store", marketStore()]);
+      return r.code === 0 && String(r.out || "").split("\n").some((l) => { const [id, , state] = l.split("\t"); return id === "malwarebazaar" && state && state !== "not-installed"; });
+    },
+    loadKey: () => loadSourceKey("malwarebazaar"),
+    loadConfig: bazaarConfig,
+    fetchAndImport: bazaarFetchAndImport,
+    redact: bazaar.redact,
+    report: (payload) => { if (win) win.webContents.send("bazaar-auto", payload); },
+  }).then((r) => { if (r && r.error) debugLog("bazaar auto-update: " + r.error); })
+    .catch((err) => debugLog("bazaar auto-update: " + bazaar.redact(err && err.message)));
+}
 
 ipcMain.handle("bazaar-match", async (_event, caseDir) => {
   const dir = casePath(caseDir);

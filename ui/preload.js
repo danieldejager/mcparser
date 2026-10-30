@@ -46,6 +46,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   bazaarFetch: () => ipcRenderer.invoke("bazaar-fetch"),
   bazaarMatch: (caseDir) => ipcRenderer.invoke("bazaar-match", caseDir),
   openReport: (file) => ipcRenderer.invoke("open-report", file),
+  onBazaarAuto: (handler) => ipcRenderer.on("bazaar-auto", (_event, payload) => handler(payload)),
   onBazaarProgress: (handler) => ipcRenderer.on("bazaar-progress", (_event, payload) => handler(payload)),
   onMarketplace: (handler) => ipcRenderer.on("marketplace", () => handler()),
   saveRun: (caseDir, rows, sql, label, analyst, kind) => ipcRenderer.invoke("save-run", caseDir, rows, sql, label, analyst, kind),
