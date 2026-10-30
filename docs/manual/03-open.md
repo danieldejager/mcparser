@@ -17,3 +17,19 @@ flowchart TD
   read --> folder["Write the .mcp folder"]
   folder --> pane["Fill the case pane"]
 ```
+
+## PE view
+
+File, Analyze PE File... opens one Windows executable or DLL and shows what its headers say. McParser only parses the file. It never runs it and makes no network calls for it. The tabs cover General, PE Header, MZ Header, Sections / Overlay, Imports / Exports / TLS, Resources, Debug, Version Info / Signature, and Hex / Strings. The hints on the General tab are hints, not verdicts.
+
+The bar at the top has a theme switch: Light, Dark, or Follow system. Follow system is the default and tracks the OS light or dark setting. The choice is remembered. Use the arrow keys to move between the three options.
+
+The screenshots below use a synthetic sample, not a real file.
+
+![General](../screenshots/pe/general.png)
+![General, dark](../screenshots/pe/general-dark.png)
+![Sections](../screenshots/pe/sections.png)
+![Imports](../screenshots/pe/imports.png)
+![Resources](../screenshots/pe/resources.png)
+![Version Info / Signature](../screenshots/pe/version.png)
+![Hex](../screenshots/pe/hex.png)

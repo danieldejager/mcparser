@@ -1938,4 +1938,5 @@ window.mcparser.onAnalyzePe(async () => {
   catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
   sheet.hidden = false;
 });
+window.PeTheme.mount(document.getElementById("pe-theme"));
 document.getElementById("pe-close").addEventListener("click", () => { document.getElementById("pe-sheet").hidden = true; });

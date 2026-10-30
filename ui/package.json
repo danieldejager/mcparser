@@ -31,6 +31,7 @@
       "rename-mac.js",
       "hunts.js",
       "pe-view.js",
+      "theme.js",
       "pe-range.js",
       "bazaar-fetch.js",
       "icon.png"

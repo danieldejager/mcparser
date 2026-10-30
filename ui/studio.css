@@ -172,9 +172,9 @@ aside summary { user-select: none; }
 .row-menu a { display: block; padding: 6px 14px; color: #1f4e79; cursor: pointer; font-size: 13px; }
 .row-menu a:hover { background: #f0f4f8; }
 
-/* PE view. Tokens follow the app's light palette; a dark set applies when the
-   app sets data-theme="dark" on <html> (or the OS prefers dark and the app
-   opts in with data-theme="auto"). */
+/* PE view. Tokens follow the app's light palette; the dark set applies when
+   theme.js sets data-theme="dark" on <html> (Dark, or Follow system with the
+   OS preferring dark). */
 .pe-window, .pe-root {
   --pe-bg: #fff; --pe-surface: #fafafa; --pe-sunken: #f7f7f7; --pe-fg: #1f1f1f; --pe-dim: #666; --pe-border: #e1e1e1; --pe-line: #eee;
   --pe-accent: #1f6b4a; --pe-accent-soft: #e6f2ec; --pe-link: #1f4e79; --pe-select: #dce8fb; --pe-hover: #f3f6fb; --pe-zebra: #fbfbfb;
@@ -189,6 +189,12 @@ aside summary { user-select: none; }
 }
 .pe-window { width: min(1180px, 95vw); height: 88vh; background: var(--pe-bg); color: var(--pe-fg); border: 1px solid var(--pe-border); border-radius: 10px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.18); }
 .pe-bar { display: flex; justify-content: space-between; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--pe-border); font-weight: 600; background: var(--pe-surface); }
+.pe-bar-tools { display: flex; align-items: center; gap: 10px; }
+.pe-theme { display: inline-flex; border: 1px solid var(--pe-border); border-radius: 6px; overflow: hidden; font-weight: 400; }
+.pe-theme-opt { font-size: 12px; padding: 2px 10px; border: 0; background: var(--pe-bg); color: var(--pe-fg); cursor: pointer; }
+.pe-theme-opt + .pe-theme-opt { border-left: 1px solid var(--pe-border); }
+.pe-theme-opt[aria-checked="true"] { background: var(--pe-accent-soft); color: var(--pe-accent); font-weight: 600; }
+.pe-theme-opt:focus-visible { outline: 2px solid var(--pe-link); outline-offset: -2px; }
 #pe-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .pe-root { background: var(--pe-bg); color: var(--pe-fg); font: 13px/1.45 "Segoe UI", sans-serif; }
 .pe-mono { font-family: var(--pe-mono); font-size: 12px; }
