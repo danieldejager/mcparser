@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage, Notification } = require("electron");
 const { spawn } = require("child_process");
 const fs = require("fs");
+const peRange = require("./pe-range.js");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
 const { runStartupUpdate } = require("./bazaar-autoupdate");
@@ -942,10 +943,14 @@ ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", 
 ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
 ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
+// Paged hex view: bounded reads from the last picked PE file only.
+let peFile = "";
+ipcMain.handle("pe-read-range", (_event, offset, length) => peRange.readRange(peFile, offset, length));
 // Parse-only PE analysis. The file is read by the parser, never run or loaded.
 ipcMain.handle("pe-analyze", async (_event, caseDir) => {
   const picked = await dialog.showOpenDialog(win, { title: "Analyze PE file", properties: ["openFile"] });
   if (picked.canceled || !picked.filePaths.length) return { code: 0, out: "", canceled: true };
+  peFile = picked.filePaths[0];
   const args = ["pe", "--file", picked.filePaths[0], "--json", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")];
   if (caseDir) args.push("--case", casePath(caseDir));
   return run(args);

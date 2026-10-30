@@ -1934,7 +1934,7 @@ window.mcparser.onAnalyzePe(async () => {
   const sheet = document.getElementById("pe-sheet");
   const view = document.getElementById("pe-view");
   if (result.code !== 0) { view.textContent = result.err || "Analysis failed"; sheet.hidden = false; return; }
-  try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop())); }
+  try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop()), { readRange: window.mcparser.peReadRange }); }
   catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
   sheet.hidden = false;
 });

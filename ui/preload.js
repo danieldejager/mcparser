@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   hosts: (caseDir) => ipcRenderer.invoke("hosts", caseDir),
   collections: (caseDir) => ipcRenderer.invoke("collections", caseDir),
   prefetch: (caseDir) => ipcRenderer.invoke("prefetch", caseDir),
+  peReadRange: (offset, length) => ipcRenderer.invoke("pe-read-range", offset, length),
   peAnalyze: (caseDir) => ipcRenderer.invoke("pe-analyze", caseDir),
   onAnalyzePe: (handler) => ipcRenderer.on("analyze-pe", () => handler()),
   pickCollection: () => ipcRenderer.invoke("pick-collection"),

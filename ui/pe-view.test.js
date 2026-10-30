@@ -40,3 +40,39 @@ test("section flags", () => {
   assert.strictEqual(sectionFlags({ read: true, write: true, execute: true }), "RWX");
   assert.strictEqual(sectionFlags(null), "---");
 });
+
+const { parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, safeIconUrl, PAGE_SIZES } = require("./pe-view.js");
+
+test("jump box accepts hex and decimal offsets only", () => {
+  assert.strictEqual(parseOffset("0x1F0"), 0x1f0);
+  assert.strictEqual(parseOffset("1f0h"), 0x1f0);
+  assert.strictEqual(parseOffset(" 496 "), 496);
+  for (const bad of ["", "-1", "0x", "zz", "1e9", "0x" + "f".repeat(20), "12345678901234567", null, "<b>"]) assert.strictEqual(parseOffset(bad), null, String(bad));
+});
+
+test("hex pages align to 4 KB or 64 KB", () => {
+  assert.deepStrictEqual(PAGE_SIZES, [4096, 65536]);
+  assert.strictEqual(pageStart(5000, 4096), 4096);
+  assert.strictEqual(pageStart(70000, 65536), 65536);
+  assert.strictEqual(pageStart(-5, 4096), 0);
+  assert.strictEqual(pageStart(5000, 123), 4096);
+  assert.strictEqual(hexRows(new Uint8Array(16), 1, 0x1000)[0][0], "00001000");
+});
+
+test("severity and entropy bands", () => {
+  assert.deepStrictEqual(["HIGH", "medium", "low", "weird", undefined].map(severityOf), ["high", "medium", "low", "low", "low"]);
+  assert.deepStrictEqual([7.9, 6.8, 3, NaN, "x"].map(entropyLevel), ["high", "medium", "normal", "none", "none"]);
+});
+
+test("import and resource trees group in order", () => {
+  const t = importTree([{ dll: "A.dll", name: "f" }, { dll: "B.dll", ordinal: 7 }, { dll: "A.dll", name: "g" }, { dll: "C.dll", name: "h", delayed: true }]);
+  assert.deepStrictEqual(t, [["A.dll", ["f", "g"]], ["B.dll", ["ordinal 7"]], ["C.dll (delay)", ["h"]]]);
+  assert.deepStrictEqual(importTree(null), []);
+  assert.deepStrictEqual(resourceTree([{ type: "ICON" }, { type: "VERSION" }, { type: "ICON" }]).map(([k, v]) => [k, v.length]), [["ICON", 2], ["VERSION", 1]]);
+});
+
+test("only parser-built image data URLs are shown", () => {
+  assert.ok(safeIconUrl("data:image/png;base64,iVBORw0KGgo="));
+  assert.ok(safeIconUrl("data:image/x-icon;base64,AAABAA=="));
+  for (const bad of ["data:image/svg+xml;base64,PHN2Zz4=", "javascript:alert(1)", "data:image/png;base64,abc\"onerror=1", "https://x/y.png", null]) assert.ok(!safeIconUrl(bad), String(bad));
+});
