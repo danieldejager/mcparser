@@ -158,9 +158,10 @@ jobs:
         run: |
           cargo install cargo-cyclonedx --locked
           cargo cyclonedx --format json
-          # cargo-cyclonedx writes bom.json at the workspace root
-          test -f bom.json
-          cp bom.json mcparser.cdx.json
+          # cargo-cyclonedx writes one <crate>.cdx.json per crate, next to
+          # each Cargo.toml. The mcparser binary SBOM is in crates/cli.
+          test -f crates/cli/mcparser.cdx.json
+          cp crates/cli/mcparser.cdx.json mcparser.cdx.json
       - name: Attach the SBOM
         uses: softprops/action-gh-release@v2
         with:
