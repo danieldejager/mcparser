@@ -79,7 +79,7 @@ test("renderer offers Open PE analysis with keyboard access", () => {
   const view = fs.readFileSync(path.join(__dirname, "pe-view.js"), "utf8");
   assert.match(view, /Locate file\.\.\./);
   const main = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
-  assert.match(main, /fileMatches\(picked\.filePaths\[0\], peCaseSha\)/);
+  assert.match(main, /openRef\(picked\.filePaths\[0\], peCaseSha\)/);
 });
 
 test("buildReport fills headers, mitigations, debug, signer and icons from newer cases", () => {

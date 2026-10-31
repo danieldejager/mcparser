@@ -37,3 +37,73 @@ test("fileMatches checks sha256 before a file can be used", async () => {
   assert.ok(!(await fileMatches(dir, sha)));
   assert.ok(!(await fileMatches("", sha)));
 });
+
+const { openRef, readRef, closeRef, CHANGED } = require("./pe-range.js");
+const crypto = require("crypto");
+
+function tmpFile(content) {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "pe-ref-")), "x.bin");
+  fs.writeFileSync(f, content);
+  return f;
+}
+const sha = (b) => crypto.createHash("sha256").update(b).digest("hex");
+
+test("openRef verifies sha256 through the open descriptor", () => {
+  const f = tmpFile("MZ0123456789");
+  assert.strictEqual(openRef(f, sha("other")), null);
+  const ref = openRef(f, sha("MZ0123456789").toUpperCase());
+  assert.ok(ref);
+  assert.strictEqual(Buffer.from(readRef(ref, 2, 4).base64, "base64").toString(), "0123");
+  assert.ok(readRef(ref, 0, MAX_RANGE + 1).error);
+  closeRef(ref);
+});
+
+test("file replaced between verify and read is refused", () => {
+  const f = tmpFile("MZ0123456789");
+  const ref = openRef(f, sha("MZ0123456789"));
+  const other = f + ".new";
+  fs.writeFileSync(other, "MZevilevilev");
+  fs.renameSync(other, f);
+  assert.strictEqual(readRef(ref, 0, 4).error, CHANGED);
+  closeRef(ref);
+});
+
+test("file modified in place after verify is refused", () => {
+  const f = tmpFile("MZ0123456789");
+  const ref = openRef(f, sha("MZ0123456789"));
+  fs.appendFileSync(f, "more");
+  assert.strictEqual(readRef(ref, 0, 4).error, CHANGED);
+  closeRef(ref);
+});
+
+test("file deleted after verify is refused", () => {
+  const f = tmpFile("MZ0123456789");
+  const ref = openRef(f);
+  fs.unlinkSync(f);
+  assert.strictEqual(readRef(ref, 0, 4).error, CHANGED);
+  closeRef(ref);
+});
+
+test("closeRef clears the reference and releases the descriptor", () => {
+  const f = tmpFile("MZ0123456789");
+  const ref = openRef(f);
+  const fd = ref.fd;
+  closeRef(ref);
+  closeRef(ref);
+  assert.strictEqual(ref.fd, undefined);
+  assert.deepStrictEqual(readRef(ref, 0, 4), { error: "no PE file open" });
+  assert.throws(() => fs.fstatSync(fd), /EBADF/);
+  assert.deepStrictEqual(readRef(null, 0, 4), { error: "no PE file open" });
+});
+
+test("main.js clears the PE reference on sheet close, case close and window close", () => {
+  const main = fs.readFileSync(path.join(__dirname, "main.js"), "utf8");
+  const renderer = fs.readFileSync(path.join(__dirname, "renderer.js"), "utf8");
+  assert.match(main, /handle\("pe-close", \(\) => \{ clearPe\(\);/);
+  assert.match(main, /if \(!caseOpen\) clearPe\(\);/);
+  assert.match(main, /win\.on\("closed", \(\) => clearPe\(\)\)/);
+  assert.match(main, /function setPeRef\(ref\) \{ peRange\.closeRef\(peRef\);/);
+  assert.ok(!/peFile/.test(main), "no path-only reference left");
+  assert.match(renderer, /"pe-close"\)\.addEventListener\("click", \(\) => closePeView\(\)\)/);
+  assert.match(renderer, /peViewCase !== caseDir\(\)\) closePeView\(\)/);
+});

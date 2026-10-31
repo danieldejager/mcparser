@@ -154,8 +154,18 @@ function fillHunts() {
   }
 }
 
+// The PE view's open file reference belongs to one case: drop it when the
+// case closes or changes.
+let peViewCase = null;
+function closePeView() {
+  document.getElementById("pe-sheet").hidden = true;
+  window.mcparser.peClose();
+}
+
 function markCase() {
   const open = Boolean(caseDir());
+  if (peViewCase !== null && peViewCase !== caseDir()) closePeView();
+  peViewCase = caseDir();
   window.mcparser.setCaseOpen(open);
   const ioc = document.getElementById("tb-ioc");
   if (ioc) ioc.disabled = !open;
@@ -2013,4 +2023,4 @@ window.mcparser.onAnalyzePe(async () => {
 // Light or dark mode applies to the whole app. It is chosen from View > Mode
 // in the app menu; theme.js already set data-theme in <head>.
 window.PeTheme.connect(document, window.mcparser);
-document.getElementById("pe-close").addEventListener("click", () => { document.getElementById("pe-sheet").hidden = true; });
+document.getElementById("pe-close").addEventListener("click", () => closePeView());

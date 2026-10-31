@@ -581,6 +581,7 @@ function createWindow() {
     startupBazaarUpdate();
   });
   win.on("focus", () => buildMenu());
+  win.on("closed", () => clearPe());
 }
 
 // Every ipcMain.handle goes through the sender check in ipc-guard.js.
@@ -597,7 +598,7 @@ ipcMain.on(THEME_STATE_CHANNEL, (event, mode) => {
   themeMode = mode;
   buildMenu();
 });
-handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
+handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); if (!caseOpen) clearPe(); buildMenu(); return caseOpen; });
 handle("ioc-upload", async () => {
   const picked = await dialog.showOpenDialog(win, {
     title: "Upload IOC file",
@@ -947,16 +948,21 @@ handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case"
 handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
 handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
 handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
-// Paged hex view: bounded reads from the last picked PE file only.
-let peFile = "";
+// Paged hex view: bounded reads from an open reference to the last picked
+// PE file, or to a file whose sha256 matched the case row being viewed.
+// Each read re-checks the file identity (see pe-range.js openRef/readRef).
+let peRef = null;
 let peCaseSha = "";
-handle("pe-read-range", (_event, offset, length) => peRange.readRange(peFile, offset, length));
-// Parse-only PE analysis. The file is read by the parser, never run or loaded.
+function setPeRef(ref) { peRange.closeRef(peRef); peRef = ref; }
+function clearPe() { setPeRef(null); peCaseSha = ""; }
+handle("pe-read-range", (_event, offset, length) => peRange.readRef(peRef, offset, length));
+// Called when the PE sheet closes or the case closes or changes.
+handle("pe-close", () => { clearPe(); return true; });
 handle("pe-analyze", async (_event, caseDir) => {
   const picked = await dialog.showOpenDialog(win, { title: "Analyze PE file", properties: ["openFile"] });
   if (picked.canceled || !picked.filePaths.length) return { code: 0, out: "", canceled: true };
-  peFile = picked.filePaths[0];
-  peCaseSha = "";
+  clearPe();
+  setPeRef(peRange.openRef(picked.filePaths[0]));
   const args = ["pe", "--file", picked.filePaths[0], "--json", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")];
   if (caseDir) args.push("--case", casePath(caseDir));
   return run(args);
@@ -975,17 +981,18 @@ handle("pe-case-report", async (_event, caseDir, target) => {
   }
   const report = peCase.buildReport(rows);
   if (!report) return { code: 1, err: "No saved PE analysis for this row in the case" };
-  peFile = "";
+  clearPe();
   peCaseSha = target.sha256.toLowerCase();
-  if (report.path && await peRange.fileMatches(report.path, peCaseSha)) peFile = report.path;
-  return { code: 0, report, hexReady: Boolean(peFile) };
+  if (report.path) setPeRef(peRange.openRef(report.path, peCaseSha));
+  return { code: 0, report, hexReady: Boolean(peRef) };
 });
 handle("pe-locate", async () => {
   if (!peCaseSha) return { ok: false, error: "No saved PE analysis is open" };
   const picked = await dialog.showOpenDialog(win, { title: "Locate the analysed file", properties: ["openFile"] });
   if (picked.canceled || !picked.filePaths.length) return { ok: false };
-  if (!(await peRange.fileMatches(picked.filePaths[0], peCaseSha))) return { ok: false, error: "That file's SHA256 does not match this analysis." };
-  peFile = picked.filePaths[0];
+  const ref = peRange.openRef(picked.filePaths[0], peCaseSha);
+  if (!ref) return { ok: false, error: "That file's SHA256 does not match this analysis." };
+  setPeRef(ref);
   return { ok: true };
 });
 handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));

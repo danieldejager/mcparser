@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("mcparser", {
   peReadRange: (offset, length) => ipcRenderer.invoke("pe-read-range", offset, length),
   peCaseReport: (caseDir, target) => ipcRenderer.invoke("pe-case-report", caseDir, target),
   peLocate: () => ipcRenderer.invoke("pe-locate"),
+  peClose: () => ipcRenderer.invoke("pe-close"),
   peAnalyze: (caseDir) => ipcRenderer.invoke("pe-analyze", caseDir),
   // View > Mode: fixed channels only. The renderer reports the effective mode
   // and the menu sends "light" or "dark".
