@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.6-rc1 - 2026-10-31
+
+Release candidate to verify the macOS signing pipeline.
+
+### macOS
+
+- macOS builds are now signed with a Developer ID certificate and notarized
+- No other changes
+
 ## 0.3.5 - 2026-10-31
 
 PE file analyzer, IOC extraction from strings, PE data in the case, and UI hardening.
