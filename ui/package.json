@@ -35,6 +35,7 @@
       "ask-context.js",
       "theme.js",
       "pe-range.js",
+      "ipc-guard.js",
       "parser-binary.js",
       "bazaar-fetch.js",
       "icon.png"

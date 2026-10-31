@@ -8,6 +8,7 @@ const parserBin = require("./parser-binary.js");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
 const { runStartupUpdate } = require("./bazaar-autoupdate");
+const ipcGuard = require("./ipc-guard");
 
 app.setName("McParser");
 app.setAboutPanelOptions({
@@ -582,9 +583,11 @@ function createWindow() {
   win.on("focus", () => buildMenu());
 }
 
-ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
-ipcMain.handle("hosts", (_event, caseDir) => run(["hosts", "--case", casePath(caseDir)]));
-ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
+// Every ipcMain.handle goes through the sender check in ipc-guard.js.
+function handle(channel, fn) { ipcMain.handle(channel, ipcGuard.guard(channel, () => win, fn)); }
+handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
+handle("hosts", (_event, caseDir) => run(["hosts", "--case", casePath(caseDir)]));
+handle("pick-collection", async () => dialog.showOpenDialog(win, {
   title: "Import Velociraptor collection",
   properties: ["openFile"],
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
@@ -594,8 +597,8 @@ ipcMain.on(THEME_STATE_CHANNEL, (event, mode) => {
   themeMode = mode;
   buildMenu();
 });
-ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
-ipcMain.handle("ioc-upload", async () => {
+handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
+handle("ioc-upload", async () => {
   const picked = await dialog.showOpenDialog(win, {
     title: "Upload IOC file",
     filters: [{ name: "CSV", extensions: ["csv", "txt"] }],
@@ -630,11 +633,11 @@ function runIocUpload(args) {
     child.on("error", (error) => resolve({ code: 1, out: "", err: error.message }));
   });
 }
-ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
-ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
-ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
-ipcMain.handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
-ipcMain.handle("pick-case-open", async () => {
+handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
+handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
+handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
+handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
+handle("pick-case-open", async () => {
   const picked = await dialog.showOpenDialog(win, {
     title: "Open Collection",
     properties: ["openDirectory"],
@@ -647,7 +650,7 @@ ipcMain.handle("pick-case-open", async () => {
   if (mcp >= 0) dir = parts.slice(0, mcp + 1).join(path.sep);
   return { canceled: false, filePaths: [dir] };
 });
-ipcMain.handle("delete-case", async (_event, caseDir) => {
+handle("delete-case", async (_event, caseDir) => {
   const dir = casePath(caseDir);
   if (!dir || !dir.endsWith(".mcp")) return { error: "Only a .mcp case folder can be deleted" };
   const choice = await dialog.showMessageBox(win, {
@@ -662,19 +665,19 @@ ipcMain.handle("delete-case", async (_event, caseDir) => {
   fs.rmSync(dir, { recursive: true, force: true });
   return { deleted: true };
 });
-ipcMain.handle("pick-case-save", async () => dialog.showOpenDialog(win, {
+handle("pick-case-save", async () => dialog.showOpenDialog(win, {
   title: "Save case",
   properties: ["openDirectory", "createDirectory"],
   buttonLabel: "Save case",
 }));
-ipcMain.handle("make-case-dir", (_event, parent, name) => {
+handle("make-case-dir", (_event, parent, name) => {
   const safe = String(name || "").replace(/[\\/:*?"<>|]/g, "-").trim();
   if (!safe) return { error: "Case name is required" };
   const dir = path.join(parent, safe.endsWith(".mcp") ? safe : safe + ".mcp");
   fs.mkdirSync(dir, { recursive: true });
   return { dir };
 });
-ipcMain.handle("collect", (_event, caseDir, file, analyst) => runCollect(["collect", "--case", casePath(caseDir), "--analyst", analyst || "", file]));
+handle("collect", (_event, caseDir, file, analyst) => runCollect(["collect", "--case", casePath(caseDir), "--analyst", analyst || "", file]));
 
 function runCollect(args) {
   return new Promise((resolve) => {
@@ -735,16 +738,16 @@ function runHunt(args, channel = "hunt-progress") {
   });
 }
 
-ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
-ipcMain.handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
-ipcMain.handle("store-key", (_event, name, key) => { try { storeKey(name, key); return { code: 0 }; } catch (err) { return { code: 1, err: err.message }; } });
-ipcMain.handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
-ipcMain.handle("uninstall-source", (_event, id) => {
+handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
+handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+handle("store-key", (_event, name, key) => { try { storeKey(name, key); return { code: 0 }; } catch (err) { return { code: 1, err: err.message }; } });
+handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+handle("uninstall-source", (_event, id) => {
   const file = keyFile(id);
   if (fs.existsSync(file)) fs.unlinkSync(file);
   return run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
 });
-ipcMain.handle("test-source", async (_event, id) => {
+handle("test-source", async (_event, id) => {
   try {
     const key = loadSourceKey(id);
     if (id === "malwarebazaar") {
@@ -760,7 +763,7 @@ ipcMain.handle("test-source", async (_event, id) => {
     return { code: 1, err: bazaar.redact(err.message) };
   }
 });
-ipcMain.handle("lookup-hash", async (_event, hash) => {
+handle("lookup-hash", async (_event, hash) => {
   try {
     const key = loadSourceKey("malwarebazaar");
     const body = new URLSearchParams({ query: "get_info", hash });
@@ -821,13 +824,13 @@ async function bazaarImportFile(file, label) {
   return { code: 0, counts, info };
 }
 
-ipcMain.handle("bazaar-info", async () => {
+handle("bazaar-info", async () => {
   const result = await run(["bazaar-info", "--store", marketStore()]);
   const config = await bazaarConfig();
   return { code: result.code, info: parseTsv(result.out), config: { onlineLookup: config.onlineLookup, onlineMax: config.onlineMax, lookupEndpoint: config.lookupEndpoint, exportUrl: bazaar.redact(config.exportUrl) }, warning: bazaar.endpointWarning(config), err: result.err };
 });
 
-ipcMain.handle("bazaar-settings", async (_event, changes) => {
+handle("bazaar-settings", async (_event, changes) => {
   const current = await bazaarConfig();
   const next = { ...current };
   if (changes && typeof changes.onlineLookup === "boolean") next.onlineLookup = changes.onlineLookup;
@@ -839,7 +842,7 @@ ipcMain.handle("bazaar-settings", async (_event, changes) => {
   return { ...result, warning: bazaar.endpointWarning(checked.next) };
 });
 
-ipcMain.handle("bazaar-upload", async () => {
+handle("bazaar-upload", async () => {
   const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "MalwareBazaar export", extensions: ["zip", "csv", "txt"] }] });
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
   const result = await bazaarImportFile(picked.filePaths[0], path.basename(picked.filePaths[0]));
@@ -847,7 +850,7 @@ ipcMain.handle("bazaar-upload", async () => {
   return result;
 });
 
-ipcMain.handle("bazaar-fetch", async () => {
+handle("bazaar-fetch", async () => {
   let key;
   try { key = loadSourceKey("malwarebazaar"); } catch (err) { return { code: 1, err: err.message }; }
   return bazaarFetchAndImport(key, await bazaarConfig());
@@ -901,7 +904,7 @@ function startupBazaarUpdate() {
     .catch((err) => debugLog("bazaar auto-update: " + bazaar.redact(err && err.message)));
 }
 
-ipcMain.handle("bazaar-match", async (_event, caseDir) => {
+handle("bazaar-match", async (_event, caseDir) => {
   const dir = casePath(caseDir);
   if (!dir) return { code: 1, err: "Open a case first." };
   const result = await runHunt(["bazaar-match", "--case", dir, "--store", marketStore()], "bazaar-progress");
@@ -933,23 +936,23 @@ ipcMain.handle("bazaar-match", async (_event, caseDir) => {
   return { code: 0, checked, hits, unmatched, dumpRows, csv, md, runId, online };
 });
 
-ipcMain.handle("open-report", (_event, file) => {
+handle("open-report", (_event, file) => {
   const target = String(file || "");
   if (!/[\\/]reports[\\/]malwarebazaar-[0-9]+\.(md|csv)$/.test(target) || !fs.existsSync(target)) return { code: 1, err: "Report not found" };
   return shell.openPath(target).then((err) => ({ code: err ? 1 : 0, err }));
 });
 
-ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
+handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
 
-ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
-ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
-ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
+handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
+handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
+handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
 // Paged hex view: bounded reads from the last picked PE file only.
 let peFile = "";
 let peCaseSha = "";
-ipcMain.handle("pe-read-range", (_event, offset, length) => peRange.readRange(peFile, offset, length));
+handle("pe-read-range", (_event, offset, length) => peRange.readRange(peFile, offset, length));
 // Parse-only PE analysis. The file is read by the parser, never run or loaded.
-ipcMain.handle("pe-analyze", async (_event, caseDir) => {
+handle("pe-analyze", async (_event, caseDir) => {
   const picked = await dialog.showOpenDialog(win, { title: "Analyze PE file", properties: ["openFile"] });
   if (picked.canceled || !picked.filePaths.length) return { code: 0, out: "", canceled: true };
   peFile = picked.filePaths[0];
@@ -960,7 +963,7 @@ ipcMain.handle("pe-analyze", async (_event, caseDir) => {
 });
 // Reopen a saved PE analysis from the case tables (read-only SELECTs). The
 // file is only made readable for hex after its sha256 matches the row.
-ipcMain.handle("pe-case-report", async (_event, caseDir, target) => {
+handle("pe-case-report", async (_event, caseDir, target) => {
   let qs;
   try { qs = peCase.queries(target); } catch { return { code: 1, err: "Not a valid sha256" }; }
   const rows = { _failed: [] };
@@ -977,7 +980,7 @@ ipcMain.handle("pe-case-report", async (_event, caseDir, target) => {
   if (report.path && await peRange.fileMatches(report.path, peCaseSha)) peFile = report.path;
   return { code: 0, report, hexReady: Boolean(peFile) };
 });
-ipcMain.handle("pe-locate", async () => {
+handle("pe-locate", async () => {
   if (!peCaseSha) return { ok: false, error: "No saved PE analysis is open" };
   const picked = await dialog.showOpenDialog(win, { title: "Locate the analysed file", properties: ["openFile"] });
   if (picked.canceled || !picked.filePaths.length) return { ok: false };
@@ -985,16 +988,16 @@ ipcMain.handle("pe-locate", async () => {
   peFile = picked.filePaths[0];
   return { ok: true };
 });
-ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
-ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
-ipcMain.handle("query", async (_event, caseDir, sql) => {
+handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
+handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
+handle("query", async (_event, caseDir, sql) => {
   const result = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]);
   if (result.code !== 0 && /malwarebazaar\b(?!_full)/i.test(sql) && /column|Binder/i.test(result.err || result.out || "")) {
     result.err = (result.err || result.out || "") + "\nmalwarebazaar has six columns: sha256, sha1, md5, signature, file_name, first_seen. Use malwarebazaar_full for more columns.";
   }
   return result;
 });
-ipcMain.handle("save-csv", async (_event, csv) => {
+handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
     title: "Export results",
     defaultPath: "results.csv",
@@ -1004,12 +1007,12 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   fs.writeFileSync(picked.filePath, csv);
   return { saved: true, path: picked.filePath };
 });
-ipcMain.handle("grok-status", () => grokStatus());
-ipcMain.handle("set-model", (_event, name, model) => {
+handle("grok-status", () => grokStatus());
+handle("set-model", (_event, name, model) => {
   if (models[name] && model) models[name] = model;
   return grokStatus();
 });
-ipcMain.handle("set-provider", (_event, name) => {
+handle("set-provider", (_event, name) => {
   if (name !== "grok" && name !== "claude" && name !== "openai") return grokStatus();
   provider = name;
   buildMenu();
@@ -1017,7 +1020,7 @@ ipcMain.handle("set-provider", (_event, name) => {
   return grokStatus();
 });
 
-ipcMain.handle("grok-save", (_event, key, name) => {
+handle("grok-save", (_event, key, name) => {
   if (name === "claude" || name === "grok" || name === "openai") provider = name;
   const value = String(key || "").trim();
   if (!value) return { connected: false, error: "Enter a key" };
@@ -1034,23 +1037,23 @@ ipcMain.handle("grok-save", (_event, key, name) => {
     return { connected: false, error: error.message };
   }
 });
-ipcMain.handle("grok-forget", () => {
+handle("grok-forget", () => {
   forgetKey();
   buildMenu();
   return grokStatus();
 });
-ipcMain.handle("grok-forget-one", (_event, name) => {
+handle("grok-forget-one", (_event, name) => {
   if (name === "grok" || name === "claude" || name === "openai") forgetOne(name);
   buildMenu();
   return grokStatus();
 });
-ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
+handle("grok-ask", (_event, caseDir, question, name) => {
   if (name === "grok" || name === "claude" || name === "openai") provider = name;
   return grokAsk(caseDir, question);
 });
-ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
-ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
-ipcMain.handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
+handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
+handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
+handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
   const dir = casePath(caseDir);
   const name = String(suggested || "query.sql");
   const picked = await dialog.showSaveDialog(win, {
@@ -1062,20 +1065,20 @@ ipcMain.handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
   fs.writeFileSync(picked.filePath, String(sql || ""), "utf8");
   return { saved: true, path: picked.filePath };
 });
-ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
-ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
-ipcMain.handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));
-ipcMain.handle("save-chat", (_event, caseDir, vendor, question, sql, answer) => run(["save-chat", "--case", casePath(caseDir), "--vendor", vendor, "--question", question, "--sql", sql, "--answer", answer]));
-ipcMain.handle("export-handoff", (_event, caseDir, password, out) => run(["handoff", "--case", casePath(caseDir), "--out", out], password));
-ipcMain.handle("open-handoff", (_event, file, password, out) => run(["open-handoff", "--file", file, "--out", out], password));
-ipcMain.handle("pick-handoff-save", async () => dialog.showSaveDialog({ defaultPath: "handoff.mcpz" }));
-ipcMain.handle("pick-handoff-open", async () => dialog.showOpenDialog({ properties: ["openFile"] }));
-ipcMain.handle("handoff-error", async (_event, message) => dialog.showMessageBox({ type: "error", message }));
-ipcMain.handle("pick-handoff-dir", async () => dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }));
+handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
+handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
+handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));
+handle("save-chat", (_event, caseDir, vendor, question, sql, answer) => run(["save-chat", "--case", casePath(caseDir), "--vendor", vendor, "--question", question, "--sql", sql, "--answer", answer]));
+handle("export-handoff", (_event, caseDir, password, out) => run(["handoff", "--case", casePath(caseDir), "--out", out], password));
+handle("open-handoff", (_event, file, password, out) => run(["open-handoff", "--file", file, "--out", out], password));
+handle("pick-handoff-save", async () => dialog.showSaveDialog({ defaultPath: "handoff.mcpz" }));
+handle("pick-handoff-open", async () => dialog.showOpenDialog({ properties: ["openFile"] }));
+handle("handoff-error", async (_event, message) => dialog.showMessageBox({ type: "error", message }));
+handle("pick-handoff-dir", async () => dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }));
 
-ipcMain.handle("save-run", (_event, caseDir, rows, sql, label, analyst, kind) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), "--label", label || "query", "--analyst", analyst || "", "--kind", kind || "run", sql]));
+handle("save-run", (_event, caseDir, rows, sql, label, analyst, kind) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), "--label", label || "query", "--analyst", analyst || "", "--kind", kind || "run", sql]));
 
-ipcMain.handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
+handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
 
 
 
