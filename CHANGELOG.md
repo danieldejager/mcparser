@@ -1,5 +1,54 @@
 # Changelog
 
+## 0.3.5 - 2026-10-31
+
+PE file analyzer, IOC extraction from strings, PE data in the case, and UI hardening.
+
+### PE file analyzer
+
+- File > Analyze PE File... (Open PE file) analyzes a Windows executable without running, loading or disassembling it. Every offset and size is bounds-checked and hostile input returns an error instead of crashing
+- Header and section views, with entropy per section and the overlay
+- Imports and exports, with an import tree
+- Resources tree of type folders, names or ids, and languages. A selected resource shows its hashes, size, offset, a MalwareBazaar state from the local dump, and a hex preview
+- Certificates from the Authenticode certificate table are parsed and shown. Signatures are not verified
+- Version info, manifest and icon cards
+- Strings, and a paged hex view (4 KB or 64 KB pages, jump to offset, offset links from tables). Reads are capped at 1 MB and only read the file you picked
+- View > Mode sets light or dark mode app-wide
+
+### IOC extraction
+
+- Hex / Strings lists IOC candidates found in the strings: URLs, domains, IPv4 and IPv6 addresses, emails, registry keys, Windows paths, named pipes and user agents
+- Candidates are shown defanged, so nothing on screen is a live link
+- Filter by type or text, and hide benign hints and private IPs
+- With a case open, tick rows and choose Add selected to IOC list to use them in a hunt
+- Candidates are hints, not verdicts. No DNS or reputation lookup is made
+
+### PE data in the case
+
+- Analysis results are stored in the case in pe_* tables, including pe_iocs, pe_header_fields, pe_mitigations, pe_debug and pe_signatures. File bytes and resource payloads are never stored, only offsets, sizes and hashes
+- Right-click a pe_files row in the results grid and choose Open PE analysis to rebuild the PE view from the case. Hex is enabled only when the file on disk matches the saved SHA256
+- Cases from earlier builds open as before. Analyzing a file again adds the new tables and columns
+
+### Ask
+
+- The AI models receive PE and IOC data: the pe_* tables, the MalwareBazaar tables and a summary row per analyzed PE file. IOC candidates are written defanged
+- The schema lists only tables that exist in the case
+
+### Security
+
+- The UI sets a Content-Security-Policy and explicit webPreferences
+- IPC handlers accept calls only from the main window
+- PE hex reads use a file opened once and checked, not a path that could be swapped after it was verified
+- The certificate date range is labelled Validity period, so it does not read like a trust verdict
+
+### Dependencies
+
+- cms 0.2.3, der 0.7.10 and x509-cert 0.2.5 for certificate parsing
+
+### CI
+
+- CodeQL analyze uses the same explicit category in the test and release workflows
+
 ## 0.3.4 — 2026-10-30
 
 MalwareBazaar full dump, rebuilt. One card, its own database, a SQL table, and a background match with a report.
