@@ -30,6 +30,13 @@
       "studio.css",
       "rename-mac.js",
       "hunts.js",
+      "pe-view.js",
+      "pe-case.js",
+      "ask-context.js",
+      "theme.js",
+      "pe-range.js",
+      "ipc-guard.js",
+      "parser-binary.js",
       "bazaar-fetch.js",
       "icon.png"
     ],

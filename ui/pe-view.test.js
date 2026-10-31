@@ -1,0 +1,141 @@
+const test = require("node:test");
+const assert = require("node:assert");
+const { flattenTree, summaryItems, TABS, hexRows, decodeBase64, sectionFlags } = require("./pe-view.js");
+
+test("flattenTree keeps order and depth", () => {
+  const flat = flattenTree([{ id: "dos", label: "DOS header", rows: [{ field: "e_magic" }] }, { id: "nt", label: "NT", children: [{ id: "file", label: "File header" }] }]);
+  assert.deepStrictEqual(flat.map((n) => [n.id, n.depth]), [["dos", 0], ["nt", 0], ["file", 1]]);
+  assert.strictEqual(flat[0].rows.length, 1);
+  assert.deepStrictEqual(flat[2].rows, []);
+});
+
+test("flattenTree tolerates junk", () => {
+  assert.deepStrictEqual(flattenTree(null), []);
+  assert.deepStrictEqual(flattenTree([{}]).map((n) => n.label), [""]);
+});
+
+test("summary shows MalwareBazaar hit plainly and skips it when not installed", () => {
+  const hit = summaryItems({ sha256: "a", malwarebazaar: { result: "hit", signature: "AgentTesla" } });
+  assert.deepStrictEqual(hit.find(([k]) => k === "MalwareBazaar"), ["MalwareBazaar", "HIT AgentTesla"]);
+  const none = summaryItems({ sha256: "a", malwarebazaar: { result: "no hit" } });
+  assert.deepStrictEqual(none.find(([k]) => k === "MalwareBazaar"), ["MalwareBazaar", "no hit"]);
+  assert.strictEqual(summaryItems({ sha256: "a" }).find(([k]) => k === "MalwareBazaar"), undefined);
+});
+
+test("tabs follow the agreed order and leave out excluded views", () => {
+  assert.deepStrictEqual(TABS.map((t) => t.id), ["general", "pe", "mz", "sections", "imports", "resources", "debug", "version", "hex"]);
+  assert.ok(!TABS.some((t) => /disasm|virus|process|memory|score/i.test(t.label)));
+});
+
+test("hex rows and base64 decode", () => {
+  const bytes = decodeBase64(Buffer.from("MZ\x90\x00hello world, PE!").toString("base64"));
+  const rows = hexRows(bytes);
+  assert.strictEqual(rows[0][0], "00000000");
+  assert.ok(rows[0][1].startsWith("4D 5A"));
+  assert.ok(rows[0][2].startsWith("MZ"));
+  assert.deepStrictEqual(hexRows(new Uint8Array(0)), []);
+});
+
+test("section flags", () => {
+  assert.strictEqual(sectionFlags({ read: true, write: true, execute: true }), "RWX");
+  assert.strictEqual(sectionFlags(null), "---");
+});
+
+const { parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, safeIconUrl, PAGE_SIZES } = require("./pe-view.js");
+
+test("jump box accepts hex and decimal offsets only", () => {
+  assert.strictEqual(parseOffset("0x1F0"), 0x1f0);
+  assert.strictEqual(parseOffset("1f0h"), 0x1f0);
+  assert.strictEqual(parseOffset(" 496 "), 496);
+  for (const bad of ["", "-1", "0x", "zz", "1e9", "0x" + "f".repeat(20), "12345678901234567", null, "<b>"]) assert.strictEqual(parseOffset(bad), null, String(bad));
+});
+
+test("hex pages align to 4 KB or 64 KB", () => {
+  assert.deepStrictEqual(PAGE_SIZES, [4096, 65536]);
+  assert.strictEqual(pageStart(5000, 4096), 4096);
+  assert.strictEqual(pageStart(70000, 65536), 65536);
+  assert.strictEqual(pageStart(-5, 4096), 0);
+  assert.strictEqual(pageStart(5000, 123), 4096);
+  assert.strictEqual(hexRows(new Uint8Array(16), 1, 0x1000)[0][0], "00001000");
+});
+
+test("severity and entropy bands", () => {
+  assert.deepStrictEqual(["HIGH", "medium", "low", "weird", undefined].map(severityOf), ["high", "medium", "low", "low", "low"]);
+  assert.deepStrictEqual([7.9, 6.8, 3, NaN, "x"].map(entropyLevel), ["high", "medium", "normal", "none", "none"]);
+});
+
+test("import and resource trees group in order", () => {
+  const t = importTree([{ dll: "A.dll", name: "f" }, { dll: "B.dll", ordinal: 7 }, { dll: "A.dll", name: "g" }, { dll: "C.dll", name: "h", delayed: true }]);
+  assert.deepStrictEqual(t, [["A.dll", ["f", "g"]], ["B.dll", ["ordinal 7"]], ["C.dll (delay)", ["h"]]]);
+  assert.deepStrictEqual(importTree(null), []);
+  assert.deepStrictEqual(resourceTree([{ type: "ICON" }, { type: "VERSION" }, { type: "ICON" }]).map(([k, v]) => [k, v.length]), [["ICON", 2], ["VERSION", 1]]);
+});
+
+test("only parser-built image data URLs are shown", () => {
+  assert.ok(safeIconUrl("data:image/png;base64,iVBORw0KGgo="));
+  assert.ok(safeIconUrl("data:image/x-icon;base64,AAABAA=="));
+  for (const bad of ["data:image/svg+xml;base64,PHN2Zz4=", "javascript:alert(1)", "data:image/png;base64,abc\"onerror=1", "https://x/y.png", null]) assert.ok(!safeIconUrl(bad), String(bad));
+});
+
+const { resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX } = require("./pe-view.js");
+
+test("resource tree nests type, then name or id, then language", () => {
+  const t = resourceNodes([
+    { type: "ICON", name: "1", language: 1033 }, { type: "ICON", name: "2", language: 1033 },
+    { type: "VERSION", name: "1", language: 1033 }, { type: "ICON", name: "1", language: 1031 }, { type: "#300", name: "CONFIG", language: 0 },
+  ]);
+  assert.deepStrictEqual(t.map((x) => x.label), ["RT_ICON", "RT_VERSION", "#300"]);
+  assert.deepStrictEqual(t[0].names.map((n) => [n.name, n.langs.map((r) => r.language)]), [["1", [1033, 1031]], ["2", [1033]]]);
+  assert.deepStrictEqual(resourceNodes(null), []);
+  assert.strictEqual(rtLabel("GROUP_ICON"), "RT_GROUP_ICON");
+});
+
+test("language label shows decimal, hex and a name when known", () => {
+  assert.strictEqual(langLabel(1033), "1033 (0x409) English - United States");
+  assert.strictEqual(langLabel(0), "0 (0x0) Neutral");
+  assert.strictEqual(langLabel(4242), "4242 (0x1092)");
+  assert.strictEqual(langLabel("x"), "x");
+});
+
+test("resource hex preview is capped and MalwareBazaar state is explicit", () => {
+  assert.strictEqual(RES_PREVIEW_MAX, 4096);
+  assert.strictEqual(previewLength(956), 956);
+  assert.strictEqual(previewLength(10 * 1024 * 1024), 4096);
+  assert.strictEqual(previewLength(-1), 0);
+  assert.strictEqual(previewLength("junk"), 0);
+  assert.deepStrictEqual(["hit", "no hit", undefined, null, "weird"].map(bazaarState), ["hit", "no hit", "not checked", "not checked", "not checked"]);
+});
+
+test("an old or missing binary gets one plain rebuild message", () => {
+  const { failureMessage, MISSING_PE } = require("./pe-view.js");
+  assert.strictEqual(MISSING_PE, "This McParser build does not include the PE analyzer. Rebuild with cargo build and restart.");
+  assert.strictEqual(failureMessage({ code: 2, out: "", err: "unknown command: pe\n" }), MISSING_PE);
+  assert.strictEqual(failureMessage({ code: 1, out: "unknown command: pe", err: "" }), MISSING_PE);
+  assert.strictEqual(failureMessage({ code: 1, out: "", err: "spawn /repo/target/release/mcparser ENOENT" }), MISSING_PE);
+  assert.strictEqual(failureMessage({ code: 1, out: "", err: "/tmp/x.exe: not a regular file" }), "/tmp/x.exe: not a regular file");
+  assert.strictEqual(failureMessage({ code: 1 }), "Analysis failed");
+  const r = require("node:fs").readFileSync(__dirname + "/renderer.js", "utf8");
+  assert.ok(r.includes("window.PeView.failureMessage(result)"));
+});
+
+test("IOC filters, defang and kind mapping", () => {
+  const { defang, filterIocs, iocKind } = require("./pe-view.js");
+  assert.strictEqual(defang("http://c2.example.com/gate"), "hxxp://c2[.]example[.]com/gate");
+  assert.strictEqual(defang("ftp://203.0.113.9/x"), "fxp://203[.]0[.]113[.]9/x");
+  assert.strictEqual(defang("ops@example.com"), "ops[@]example[.]com");
+  const iocs = [
+    { type: "url", value: "http://c2.example.com/gate", source_string: "", benign_hint: false, is_private: false },
+    { type: "ipv4", value: "10.0.0.5", source_string: "", benign_hint: false, is_private: true },
+    { type: "url", value: "http://schemas.microsoft.com/x", source_string: "", benign_hint: true, is_private: false },
+    { type: "ipv4", value: "198.51.100.7", source_string: "connect 198.51.100.7", benign_hint: false, is_private: false },
+  ];
+  assert.strictEqual(filterIocs(iocs).length, 4);
+  assert.deepStrictEqual(filterIocs(iocs, { type: "ipv4" }).map((x) => x.value), ["10.0.0.5", "198.51.100.7"]);
+  assert.deepStrictEqual(filterIocs(iocs, { hideNoise: true }).map((x) => x.value), ["http://c2.example.com/gate", "198.51.100.7"]);
+  assert.strictEqual(filterIocs(iocs, { text: "c2[.]example" }).length, 1);
+  assert.strictEqual(filterIocs(iocs, { text: "CONNECT" }).length, 1);
+  assert.strictEqual(filterIocs(null).length, 0);
+  assert.strictEqual(iocKind("ipv6"), "ip");
+  assert.strictEqual(iocKind("domain"), "domain");
+  assert.strictEqual(iocKind("pipe"), "pipe");
+});

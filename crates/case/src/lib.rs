@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use std::path::Path;
 
 pub mod bazaar;
+pub mod pe;
 
 pub fn name() -> &'static str {
     env!("CARGO_PKG_NAME")

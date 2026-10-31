@@ -6,6 +6,16 @@ contextBridge.exposeInMainWorld("mcparser", {
   hosts: (caseDir) => ipcRenderer.invoke("hosts", caseDir),
   collections: (caseDir) => ipcRenderer.invoke("collections", caseDir),
   prefetch: (caseDir) => ipcRenderer.invoke("prefetch", caseDir),
+  peReadRange: (offset, length) => ipcRenderer.invoke("pe-read-range", offset, length),
+  peCaseReport: (caseDir, target) => ipcRenderer.invoke("pe-case-report", caseDir, target),
+  peLocate: () => ipcRenderer.invoke("pe-locate"),
+  peClose: () => ipcRenderer.invoke("pe-close"),
+  peAnalyze: (caseDir) => ipcRenderer.invoke("pe-analyze", caseDir),
+  // View > Mode: fixed channels only. The renderer reports the effective mode
+  // and the menu sends "light" or "dark".
+  themeModeChanged: (mode) => ipcRenderer.send("theme-mode", mode === "dark" ? "dark" : "light"),
+  onSetThemeMode: (handler) => ipcRenderer.on("set-theme-mode", (_event, mode) => handler(mode === "dark" ? "dark" : "light")),
+  onAnalyzePe: (handler) => ipcRenderer.on("analyze-pe", () => handler()),
   pickCollection: () => ipcRenderer.invoke("pick-collection"),
   pickCaseOpen: () => ipcRenderer.invoke("pick-case-open"),
   deleteCase: (caseDir) => ipcRenderer.invoke("delete-case", caseDir),

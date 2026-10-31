@@ -1,9 +1,14 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu, nativeImage, shell, safeStorage, Notification } = require("electron");
 const { spawn } = require("child_process");
+const ask = require("./ask-context");
 const fs = require("fs");
+const peRange = require("./pe-range.js");
+const peCase = require("./pe-case.js");
+const parserBin = require("./parser-binary.js");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
 const { runStartupUpdate } = require("./bazaar-autoupdate");
+const ipcGuard = require("./ipc-guard");
 
 app.setName("McParser");
 app.setAboutPanelOptions({
@@ -109,9 +114,8 @@ function activeKey() {
 }
 
 function parserBinary() {
-  const name = process.platform === "win32" ? "mcparser.exe" : "mcparser";
-  if (app.isPackaged) return path.join(process.resourcesPath, name);
-  return path.join(repo, "target", "debug", name);
+  if (app.isPackaged) return path.join(process.resourcesPath, parserBin.binaryName(process.platform));
+  return parserBin.devBinary(repo, process.platform);
 }
 
 function appIcon() {
@@ -257,84 +261,43 @@ async function askModel(input) {
   return grok(input);
 }
 
-function oneSelect(text) {
-  const fenced = text.match(/```sql\s*([\s\S]*?)```/i);
-  let sql = (fenced ? fenced[1] : text).trim().replace(/;+\s*$/, "");
-  if (sql.includes(";")) throw new Error("The model returned more than one statement");
-  if (!/^select\b/i.test(sql)) throw new Error("The model did not return a SELECT");
-  if (/\b(attach|copy|pragma|insert|update|delete|drop|create|alter)\b/i.test(sql)) {
-    throw new Error("The model returned a statement that is not a read");
-  }
-  if (!/\blimit\b/i.test(sql)) sql += " LIMIT 50";
-  return sql;
-}
-
 function clip(text) {
   return text.length > 4000 ? text.slice(0, 4000) : text;
 }
 
-const schema = [
-  "Table events(source_sha256, record_id, event_id, channel, provider, computer, time_created, event_data, host_id, log_name).",
-  "Columns, never read these from event_data: computer, channel, provider, host_id, log_name, event_id, time_created, record_id, source_sha256.",
-  "host_id is a UUID from the host list. A hostname is not a host_id.",
-  "log_name is a path. Match a file with LIKE '%Security.evtx'. Use a log_name value from the case context.",
-  "event_data is JSON. Read TargetUserName, LogonType and IpAddress with json_extract_string(event_data, '$.TargetUserName').",
-  "A successful logon is event_id 4624.",
-  "Table prefetch(host_id, pf_name, executable, run_count, last_run, version, path). It is not inside events. Use it for what ran on the machine and how often.",
-  "Table userassist(host_id, guid, name, run_count, last_run). It is not inside events. Use it for programs Explorer launched for one user. Ignore names starting with UEME_CTL.",
-  "Table amcache(host_id, kind, name, path, sha1, size, modified, publisher, version, key_path). It is not inside events. kind is file or program. A file row means the executable was inventoried, not that it ran. modified on a file row is the compile time, not a run time. A program row is an installed product and its modified value is the install date.",
-  "Table shimcache(host_id, path, modified, position, executed, control_set). It is not inside events. A row means Windows recorded the path. modified is the file time, not a run time. position 0 is the newest entry.\n" +
-  "Table srum(host_id, kind, timestamp, app, user_sid, bytes_sent, bytes_received, foreground_cycles, background_cycles). It is not inside events. kind is network or app. A network row is hourly bytes for an application. timestamp is when the record was written, not a start time.\n" +
-  "Table services(host_id, name, display_name, state, start_mode, path, user_id). It is not inside events. A row is a Windows service. path is the program it runs. start_mode is how it starts.\n" +
-  "Table tasks(host_id, path, command, arguments, user_id, enabled). It is not inside events. A row is a scheduled task. command plus arguments is what runs with no one at the keyboard.",
-  "Match a hash with amcache.sha1. Match a program name across prefetch.executable, userassist.name, amcache.path, shimcache.path, services.path and tasks.command. The case context shows non-Windows services, tasks and shimcache rows, the busiest SRUM network rows, and the top event ids. Query the table for the rest.",
-  "Table malwarebazaar(sha256, sha1, md5, signature, file_name, first_seen) is the narrow lookup view of the machine-local MalwareBazaar full dump. It has only those six columns. Use it to match a hash with malwarebazaar.sha256, malwarebazaar.sha1 or malwarebazaar.md5. Table malwarebazaar_full(sha256, md5, sha1, sha3_384, imphash, tlsh, ssdeep, telfhash, gimphash, dhash_icon, first_seen, last_seen, reporter, file_name, file_type, mime_type, file_size, signature, clamav, vtpercent, tags, delivery_method, origin_country, intelligence, note) has every column; use it for file_type, tags, reporter, clamav, imphash and other fields. Neither is inside events. Every column is a plain VARCHAR column. note is NULL unless the export had columns not listed here. The case context shows a sample of rows.",
-  "Return one DuckDB SELECT and no other text."
-].join(" ");
+async function caseTables(caseDir) {
+  const listed = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", bazaarStore(), ask.TABLES_SQL]);
+  return listed.code === 0 ? ask.parseTables(listed.out) : new Set();
+}
 
-async function caseContext(caseDir) {
+function bazaarStore() {
+  return path.join(app.getPath("userData"), "marketplace.sqlite");
+}
+
+async function caseContext(caseDir, tables) {
+  const q = async (table, sql, label) => {
+    if (table && !tables.has(table)) return "";
+    const args = ["query", "--case", casePath(caseDir), "--format", "csv"];
+    if (table && table.startsWith("malwarebazaar")) args.push("--store", bazaarStore());
+    args.push(sql);
+    const out = await run(args);
+    return "\n" + label + ":\n" + clip(out.code === 0 ? out.out || "no rows" : "query failed");
+  };
   const hosts = await run(["hosts", "--case", casePath(caseDir)]);
-  const logs = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, log_name, computer, count(*) AS events FROM events GROUP BY host_id, log_name, computer ORDER BY events DESC LIMIT 30"]);
-  const prefetch = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30"]);
-  const prefetchText = prefetch.code === 0 ? prefetch.out || "" : "prefetch table is not loaded";
-  const userassist = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT host_id, run_count, last_run, \"name\" FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30"]);
-  const userassistText = userassist.code === 0 ? userassist.out || "" : "userassist table is not loaded";
-  const amcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT kind, \"name\", sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30"]);
-  const amcacheText = amcache.code === 0 ? amcache.out || "" : "amcache table is not loaded";
-  const events = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT event_id, channel, count(*) AS events FROM events GROUP BY event_id, channel ORDER BY events DESC LIMIT 20"]);
-  const eventsText = events.code === 0 ? events.out || "" : "events table is not loaded";
-  const shimcache = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT position, executed, modified, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 30"]);
-  const shimcacheText = shimcache.code === 0 ? shimcache.out || "" : "shimcache table is not loaded";
-  const srum = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 30"]);
-  const srumText = srum.code === 0 ? srum.out || "" : "srum table is not loaded";
-  const services = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT name, state, start_mode, user_id, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(path) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY name LIMIT 40"]);
-  const servicesText = services.code === 0 ? services.out || "" : "services table is not loaded";
-  const tasks = await run(["query", "--case", casePath(caseDir), "--format", "csv",
-    "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40"]);
-  const tasksText = tasks.code === 0 ? tasks.out || "" : "tasks table is not loaded";
-  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
-  const bazaar = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", store,
-    "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20"]);
-  const bazaarText = bazaar.code === 0 ? bazaar.out || "" : "malwarebazaar is not loaded";
-  return "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "") +
-    "\nLogs in this case, csv host_id, log_name, computer, events:\n" + clip(logs.out || "") +
-    "\nEvent ids in this case, csv event_id, channel, events:\n" + clip(eventsText) +
-    "\nPrefetch in this case, csv host_id, executable, run_count, last_run, path:\n" + clip(prefetchText) +
-    "\nUserAssist in this case, csv host_id, run_count, last_run, name:\n" + clip(userassistText) +
-    "\nAmcache file rows in this case, csv kind, name, sha1, modified, path:\n" + clip(amcacheText) +
-    "\nShimcache outside Windows, newest 30, csv position, executed, modified, path:\n" + clip(shimcacheText) +
-    "\nSRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles:\n" + clip(srumText) +
-    "\nServices outside System32, csv name, state, start_mode, user_id, path:\n" + clip(servicesText) +
-    "\nScheduled tasks outside System32, csv enabled, user_id, command, arguments, path:\n" + clip(tasksText) +
-    "\nMalwareBazaar sample, csv sha256, md5, sha1, file_name, signature, file_type:\n" + clip(bazaarText);
+  let text = "Hosts, tab separated host_id, hostname, fqdn, os, arch:\n" + clip(hosts.out || "");
+  text += await q("events", "SELECT host_id, log_name, computer, count(*) AS events FROM events GROUP BY host_id, log_name, computer ORDER BY events DESC LIMIT 30", "Logs in this case, csv host_id, log_name, computer, events");
+  text += await q("prefetch", "SELECT host_id, executable, run_count, last_run, path FROM prefetch ORDER BY run_count DESC LIMIT 30", "Prefetch in this case, csv host_id, executable, run_count, last_run, path");
+  text += await q("userassist", "SELECT host_id, run_count, last_run, \"name\" FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 30", "UserAssist in this case, csv host_id, run_count, last_run, name");
+  text += await q("amcache", "SELECT kind, \"name\", sha1, modified, path FROM amcache WHERE kind = 'file' ORDER BY modified DESC LIMIT 30", "Amcache file rows in this case, csv kind, name, sha1, modified, path");
+  text += await q("events", "SELECT event_id, channel, count(*) AS events FROM events GROUP BY event_id, channel ORDER BY events DESC LIMIT 20", "Event ids in this case, csv event_id, channel, events");
+  text += await q("shimcache", "SELECT position, executed, modified, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 30", "Shimcache outside Windows, newest 30, csv position, executed, modified, path");
+  text += await q("srum", "SELECT kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 30", "SRUM network rows, highest bytes sent, csv kind, timestamp, app, user_sid, bytes_sent, bytes_received, background_cycles");
+  text += await q("services", "SELECT name, state, start_mode, user_id, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(path) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY name LIMIT 40", "Services outside System32, csv name, state, start_mode, user_id, path");
+  text += await q("tasks", "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40", "Scheduled tasks outside System32, csv enabled, user_id, command, arguments, path");
+  text += await q("malwarebazaar", "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20", "MalwareBazaar sample, csv sha256, sha1, md5, signature, file_name, first_seen");
+  const peSql = ask.peSummarySql(tables);
+  if (peSql) text += await q("pe_files", peSql, "Analyzed PE files, one row each, most indicators first (hints, not verdicts; signature_present is not validation; IOC candidates are shown defanged and are not confirmed malicious)");
+  return text;
 }
 
 function vendorLabel() {
@@ -347,27 +310,15 @@ function askProgress(label) {
   if (win) win.webContents.send("ask-progress", label);
 }
 
-async function coverage(caseDir) {
-  const samples = [
-    ["events", "SELECT event_id, count(*) AS events FROM events GROUP BY event_id ORDER BY events DESC LIMIT 3"],
-    ["prefetch", "SELECT executable, run_count, last_run FROM prefetch ORDER BY run_count DESC LIMIT 3"],
-    ["userassist", "SELECT \"name\", run_count FROM userassist WHERE \"name\" NOT LIKE 'UEME_CTL%' ORDER BY run_count DESC LIMIT 3"],
-    ["amcache", "SELECT \"name\", sha1, path FROM amcache WHERE kind = 'file' LIMIT 3"],
-    ["shimcache", "SELECT position, path FROM shimcache WHERE lower(path) NOT LIKE '%\\\\windows\\\\%' ORDER BY position LIMIT 3"],
-    ["srum", "SELECT app, bytes_sent FROM srum WHERE kind = 'network' ORDER BY bytes_sent DESC LIMIT 3"],
-    ["services", "SELECT name, start_mode, path FROM services WHERE lower(path) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
-    ["tasks", "SELECT command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' LIMIT 3"],
-    ["malwarebazaar", "SELECT sha256, file_name, signature FROM malwarebazaar LIMIT 3"],
-  ];
+async function coverage(caseDir, tables) {
   const parts = [];
-  const store = path.join(app.getPath("userData"), "marketplace.sqlite");
-  for (const [name, sql] of samples) {
+  for (const [name, sql] of ask.coverageQueries(tables)) {
     askProgress("Querying " + name);
     const args = ["query", "--case", casePath(caseDir), "--format", "csv"];
-    if (name === "malwarebazaar") args.push("--store", store);
+    if (name === "malwarebazaar") args.push("--store", bazaarStore());
     args.push(sql);
     const queried = await run(args);
-    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + (queried.err || queried.out || "unknown")));
+    parts.push(name + "\n" + (queried.code === 0 ? queried.out || "no rows" : "query failed: " + clip(queried.err || queried.out || "unknown")));
   }
   return parts.join("\n");
 }
@@ -375,24 +326,32 @@ async function coverage(caseDir) {
 async function grokAsk(caseDir, question) {
   if (!activeKey()) return { error: "Configure this integration.", provider };
   try {
-    const context = await caseContext(caseDir);
-    const covered = await coverage(caseDir);
+    const tables = await caseTables(caseDir);
+    const schema = ask.buildSchema(tables);
+    const context = await caseContext(caseDir, tables);
+    const covered = await coverage(caseDir, tables);
     askProgress("Asking " + vendorLabel() + " for a query");
-    const rules = "\nWrite one SELECT only. Do not use UNION. A question about more than one table is already answered by the coverage rows; pick the single most relevant table for the SELECT.\n";
+    const prompt = schema + "\n" + context + "\nCoverage already queried:\n" + covered + ask.RULES + "Question: " + question;
     let sql = "";
-    let rows = covered;
-    try {
-      sql = oneSelect(await askModel(schema + "\n" + context + "\nCoverage already queried:\n" + covered + rules + "Question: " + question));
-      const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", sql]);
-      if (queried.code === 0) rows = queried.out || covered;
-      else sql = sql + "\n-- failed, answered from coverage";
-    } catch (error) {
-      sql = "-- answered from coverage\n" + error.message;
+    let rows = "";
+    let failure = "";
+    for (let attempt = 0; attempt < 2 && !rows; attempt++) {
+      try {
+        sql = ask.readOnlySql(await askModel(prompt + failure));
+        const queried = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", bazaarStore(), sql]);
+        if (queried.code === 0) rows = queried.out || "no rows";
+        else failure = "\nYour last statement failed: " + clip(queried.err || queried.out || "unknown") + "\nFix it.\n";
+      } catch (error) {
+        failure = "\nYour last answer was rejected: " + error.message + "\n";
+      }
     }
+    if (!rows) sql = (sql ? sql + "\n" : "") + "-- failed, answered from coverage";
     askProgress("Asking " + vendorLabel() + " to answer");
     const answer = await askModel(
-      "Answer from these rows only. Be brief. Do not invent rows. If a source says not loaded or query failed, say so.\n" +
+      ask.ANSWER_RULES +
       "Question: " + question +
+      (rows ? "\nQuery:\n" + sql + "\nRows:\n" + clip(rows) : "") +
+      "\nCase context:\n" + context +
       "\nCoverage:\n" + covered
     );
     return { sql, answer, provider };
@@ -425,6 +384,37 @@ async function showAbout() {
 }
 
 let caseOpen = false;
+
+// View > Mode. Fixed IPC channels, nothing loaded from the network:
+// main sends THEME_SET_CHANNEL with "light" or "dark" when a radio is picked;
+// the renderer reports the effective mode on THEME_STATE_CHANNEL at startup
+// and on every change so the radio checks stay in sync.
+const THEME_SET_CHANNEL = "set-theme-mode";
+const THEME_STATE_CHANNEL = "theme-mode";
+const THEME_MODES = ["light", "dark"];
+let themeMode = "light";
+
+function setThemeMode(mode) {
+  if (!THEME_MODES.includes(mode)) return;
+  themeMode = mode;
+  if (win) win.webContents.send(THEME_SET_CHANNEL, mode);
+  buildMenu();
+}
+
+function viewMenu() {
+  return {
+    label: "View",
+    submenu: [
+      {
+        label: "Mode",
+        submenu: [
+          { label: "Light", type: "radio", checked: themeMode === "light", click: () => setThemeMode("light") },
+          { label: "Dark", type: "radio", checked: themeMode === "dark", click: () => setThemeMode("dark") },
+        ],
+      },
+    ],
+  };
+}
 
 function buildMenu() {
   const connected = activeKey().length > 0;
@@ -461,6 +451,7 @@ function buildMenu() {
         { type: "separator" },
         { label: "Import EVTX...", click: openEvtx },
         { label: "Import Collection...", click: () => win.webContents.send("import-collection") },
+        { label: "Analyze PE File...", click: () => win.webContents.send("analyze-pe") },
         {
           label: "HandOff",
           submenu: [
@@ -484,6 +475,7 @@ function buildMenu() {
         { role: "selectAll" },
       ],
     },
+    viewMenu(),
     {
       label: "Audit",
       submenu: [
@@ -574,6 +566,13 @@ function createWindow() {
     backgroundColor: "#f3f3f3",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      // Preload only uses contextBridge, ipcRenderer and process.platform,
+      // all available in a sandboxed preload.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
   win.loadFile("index.html");
@@ -582,17 +581,25 @@ function createWindow() {
     startupBazaarUpdate();
   });
   win.on("focus", () => buildMenu());
+  win.on("closed", () => clearPe());
 }
 
-ipcMain.handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
-ipcMain.handle("hosts", (_event, caseDir) => run(["hosts", "--case", casePath(caseDir)]));
-ipcMain.handle("pick-collection", async () => dialog.showOpenDialog(win, {
+// Every ipcMain.handle goes through the sender check in ipc-guard.js.
+function handle(channel, fn) { ipcMain.handle(channel, ipcGuard.guard(channel, () => win, fn)); }
+handle("stats", (_event, caseDir) => run(["stats", "--case", casePath(caseDir)]));
+handle("hosts", (_event, caseDir) => run(["hosts", "--case", casePath(caseDir)]));
+handle("pick-collection", async () => dialog.showOpenDialog(win, {
   title: "Import Velociraptor collection",
   properties: ["openFile"],
   filters: [{ name: "Collector zip", extensions: ["zip"] }],
 }));
-ipcMain.handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); buildMenu(); return caseOpen; });
-ipcMain.handle("ioc-upload", async () => {
+ipcMain.on(THEME_STATE_CHANNEL, (event, mode) => {
+  if (!win || event.sender !== win.webContents || !THEME_MODES.includes(mode) || mode === themeMode) return;
+  themeMode = mode;
+  buildMenu();
+});
+handle("set-case-open", (_event, open) => { caseOpen = Boolean(open); if (!caseOpen) clearPe(); buildMenu(); return caseOpen; });
+handle("ioc-upload", async () => {
   const picked = await dialog.showOpenDialog(win, {
     title: "Upload IOC file",
     filters: [{ name: "CSV", extensions: ["csv", "txt"] }],
@@ -627,11 +634,11 @@ function runIocUpload(args) {
     child.on("error", (error) => resolve({ code: 1, out: "", err: error.message }));
   });
 }
-ipcMain.handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
-ipcMain.handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
-ipcMain.handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
-ipcMain.handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
-ipcMain.handle("pick-case-open", async () => {
+handle("iocs", (_event, caseDir) => run(["iocs", "--case", casePath(caseDir)]));
+handle("ioc-add", (_event, caseDir, kind, value, note) => run(["ioc-add", "--case", casePath(caseDir), "--kind", kind, "--value", value, "--note", note || ""]));
+handle("ioc-update", (_event, caseDir, id, kind, value, note) => run(["ioc-update", "--case", casePath(caseDir), "--id", String(id), "--kind", kind, "--value", value, "--note", note || ""]));
+handle("ioc-remove", (_event, caseDir, id) => run(["ioc-remove", "--case", casePath(caseDir), "--id", String(id)]));
+handle("pick-case-open", async () => {
   const picked = await dialog.showOpenDialog(win, {
     title: "Open Collection",
     properties: ["openDirectory"],
@@ -644,7 +651,7 @@ ipcMain.handle("pick-case-open", async () => {
   if (mcp >= 0) dir = parts.slice(0, mcp + 1).join(path.sep);
   return { canceled: false, filePaths: [dir] };
 });
-ipcMain.handle("delete-case", async (_event, caseDir) => {
+handle("delete-case", async (_event, caseDir) => {
   const dir = casePath(caseDir);
   if (!dir || !dir.endsWith(".mcp")) return { error: "Only a .mcp case folder can be deleted" };
   const choice = await dialog.showMessageBox(win, {
@@ -659,19 +666,19 @@ ipcMain.handle("delete-case", async (_event, caseDir) => {
   fs.rmSync(dir, { recursive: true, force: true });
   return { deleted: true };
 });
-ipcMain.handle("pick-case-save", async () => dialog.showOpenDialog(win, {
+handle("pick-case-save", async () => dialog.showOpenDialog(win, {
   title: "Save case",
   properties: ["openDirectory", "createDirectory"],
   buttonLabel: "Save case",
 }));
-ipcMain.handle("make-case-dir", (_event, parent, name) => {
+handle("make-case-dir", (_event, parent, name) => {
   const safe = String(name || "").replace(/[\\/:*?"<>|]/g, "-").trim();
   if (!safe) return { error: "Case name is required" };
   const dir = path.join(parent, safe.endsWith(".mcp") ? safe : safe + ".mcp");
   fs.mkdirSync(dir, { recursive: true });
   return { dir };
 });
-ipcMain.handle("collect", (_event, caseDir, file, analyst) => runCollect(["collect", "--case", casePath(caseDir), "--analyst", analyst || "", file]));
+handle("collect", (_event, caseDir, file, analyst) => runCollect(["collect", "--case", casePath(caseDir), "--analyst", analyst || "", file]));
 
 function runCollect(args) {
   return new Promise((resolve) => {
@@ -732,16 +739,16 @@ function runHunt(args, channel = "hunt-progress") {
   });
 }
 
-ipcMain.handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
-ipcMain.handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
-ipcMain.handle("store-key", (_event, name, key) => { try { storeKey(name, key); return { code: 0 }; } catch (err) { return { code: 1, err: err.message }; } });
-ipcMain.handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
-ipcMain.handle("uninstall-source", (_event, id) => {
+handle("hunt", (_event, caseDir) => runHunt(["hunt", "--case", casePath(caseDir)]));
+handle("marketplace", () => run(["marketplace", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+handle("store-key", (_event, name, key) => { try { storeKey(name, key); return { code: 0 }; } catch (err) { return { code: 1, err: err.message }; } });
+handle("install-source", (_event, id, config) => run(["install-source", "--source", id, "--config", config || "{}", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]));
+handle("uninstall-source", (_event, id) => {
   const file = keyFile(id);
   if (fs.existsSync(file)) fs.unlinkSync(file);
   return run(["uninstall-source", "--source", id, "--store", path.join(app.getPath("userData"), "marketplace.sqlite")]);
 });
-ipcMain.handle("test-source", async (_event, id) => {
+handle("test-source", async (_event, id) => {
   try {
     const key = loadSourceKey(id);
     if (id === "malwarebazaar") {
@@ -757,7 +764,7 @@ ipcMain.handle("test-source", async (_event, id) => {
     return { code: 1, err: bazaar.redact(err.message) };
   }
 });
-ipcMain.handle("lookup-hash", async (_event, hash) => {
+handle("lookup-hash", async (_event, hash) => {
   try {
     const key = loadSourceKey("malwarebazaar");
     const body = new URLSearchParams({ query: "get_info", hash });
@@ -818,13 +825,13 @@ async function bazaarImportFile(file, label) {
   return { code: 0, counts, info };
 }
 
-ipcMain.handle("bazaar-info", async () => {
+handle("bazaar-info", async () => {
   const result = await run(["bazaar-info", "--store", marketStore()]);
   const config = await bazaarConfig();
   return { code: result.code, info: parseTsv(result.out), config: { onlineLookup: config.onlineLookup, onlineMax: config.onlineMax, lookupEndpoint: config.lookupEndpoint, exportUrl: bazaar.redact(config.exportUrl) }, warning: bazaar.endpointWarning(config), err: result.err };
 });
 
-ipcMain.handle("bazaar-settings", async (_event, changes) => {
+handle("bazaar-settings", async (_event, changes) => {
   const current = await bazaarConfig();
   const next = { ...current };
   if (changes && typeof changes.onlineLookup === "boolean") next.onlineLookup = changes.onlineLookup;
@@ -836,7 +843,7 @@ ipcMain.handle("bazaar-settings", async (_event, changes) => {
   return { ...result, warning: bazaar.endpointWarning(checked.next) };
 });
 
-ipcMain.handle("bazaar-upload", async () => {
+handle("bazaar-upload", async () => {
   const picked = await dialog.showOpenDialog(win, { properties: ["openFile"], filters: [{ name: "MalwareBazaar export", extensions: ["zip", "csv", "txt"] }] });
   if (picked.canceled || !picked.filePaths[0]) return { canceled: true };
   const result = await bazaarImportFile(picked.filePaths[0], path.basename(picked.filePaths[0]));
@@ -844,7 +851,7 @@ ipcMain.handle("bazaar-upload", async () => {
   return result;
 });
 
-ipcMain.handle("bazaar-fetch", async () => {
+handle("bazaar-fetch", async () => {
   let key;
   try { key = loadSourceKey("malwarebazaar"); } catch (err) { return { code: 1, err: err.message }; }
   return bazaarFetchAndImport(key, await bazaarConfig());
@@ -898,7 +905,7 @@ function startupBazaarUpdate() {
     .catch((err) => debugLog("bazaar auto-update: " + bazaar.redact(err && err.message)));
 }
 
-ipcMain.handle("bazaar-match", async (_event, caseDir) => {
+handle("bazaar-match", async (_event, caseDir) => {
   const dir = casePath(caseDir);
   if (!dir) return { code: 1, err: "Open a case first." };
   const result = await runHunt(["bazaar-match", "--case", dir, "--store", marketStore()], "bazaar-progress");
@@ -930,27 +937,74 @@ ipcMain.handle("bazaar-match", async (_event, caseDir) => {
   return { code: 0, checked, hits, unmatched, dumpRows, csv, md, runId, online };
 });
 
-ipcMain.handle("open-report", (_event, file) => {
+handle("open-report", (_event, file) => {
   const target = String(file || "");
   if (!/[\\/]reports[\\/]malwarebazaar-[0-9]+\.(md|csv)$/.test(target) || !fs.existsSync(target)) return { code: 1, err: "Report not found" };
   return shell.openPath(target).then((err) => ({ code: err ? 1 : 0, err }));
 });
 
-ipcMain.handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
+handle("hunt-matches", (_event, caseDir, runId) => run(["hunt-matches", "--case", casePath(caseDir), "--run", String(runId)]));
 
-ipcMain.handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
-ipcMain.handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
-ipcMain.handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
-ipcMain.handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
-ipcMain.handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
-ipcMain.handle("query", async (_event, caseDir, sql) => {
+handle("ingest", (_event, caseDir, file) => run(["ingest", "--case", casePath(caseDir), file]));
+handle("choose-case-target", async (_event, current) => dialog.showMessageBox(win, { type: "question", message: "Do you want to import this file to the existing case?", detail: current, buttons: ["Import to this case", "New case", "Cancel"], defaultId: 0, cancelId: 2 }));
+handle("save-analyst", (_event, caseDir, name) => run(["save-analyst", "--case", casePath(caseDir), "--name", name]));
+// Paged hex view: bounded reads from an open reference to the last picked
+// PE file, or to a file whose sha256 matched the case row being viewed.
+// Each read re-checks the file identity (see pe-range.js openRef/readRef).
+let peRef = null;
+let peCaseSha = "";
+function setPeRef(ref) { peRange.closeRef(peRef); peRef = ref; }
+function clearPe() { setPeRef(null); peCaseSha = ""; }
+handle("pe-read-range", (_event, offset, length) => peRange.readRef(peRef, offset, length));
+// Called when the PE sheet closes or the case closes or changes.
+handle("pe-close", () => { clearPe(); return true; });
+handle("pe-analyze", async (_event, caseDir) => {
+  const picked = await dialog.showOpenDialog(win, { title: "Analyze PE file", properties: ["openFile"] });
+  if (picked.canceled || !picked.filePaths.length) return { code: 0, out: "", canceled: true };
+  clearPe();
+  setPeRef(peRange.openRef(picked.filePaths[0]));
+  const args = ["pe", "--file", picked.filePaths[0], "--json", "--store", path.join(app.getPath("userData"), "marketplace.sqlite")];
+  if (caseDir) args.push("--case", casePath(caseDir));
+  return run(args);
+});
+// Reopen a saved PE analysis from the case tables (read-only SELECTs). The
+// file is only made readable for hex after its sha256 matches the row.
+handle("pe-case-report", async (_event, caseDir, target) => {
+  let qs;
+  try { qs = peCase.queries(target); } catch { return { code: 1, err: "Not a valid sha256" }; }
+  const rows = { _failed: [] };
+  for (const [k, q] of Object.entries(qs)) {
+    const res = await run(["query", "--case", casePath(caseDir), "--format", "jsonl", q]);
+    if (res.code !== 0 && k === "files") return { code: 1, err: res.err || res.out || "Query failed" };
+    if (res.code !== 0) rows._failed.push(k);
+    rows[k] = res.code === 0 ? peCase.parseJsonl(res.out) : [];
+  }
+  const report = peCase.buildReport(rows);
+  if (!report) return { code: 1, err: "No saved PE analysis for this row in the case" };
+  clearPe();
+  peCaseSha = target.sha256.toLowerCase();
+  if (report.path) setPeRef(peRange.openRef(report.path, peCaseSha));
+  return { code: 0, report, hexReady: Boolean(peRef) };
+});
+handle("pe-locate", async () => {
+  if (!peCaseSha) return { ok: false, error: "No saved PE analysis is open" };
+  const picked = await dialog.showOpenDialog(win, { title: "Locate the analysed file", properties: ["openFile"] });
+  if (picked.canceled || !picked.filePaths.length) return { ok: false };
+  const ref = peRange.openRef(picked.filePaths[0], peCaseSha);
+  if (!ref) return { ok: false, error: "That file's SHA256 does not match this analysis." };
+  setPeRef(ref);
+  return { ok: true };
+});
+handle("collections", (_event, caseDir) => run(["collections", "--case", casePath(caseDir)]));
+handle("prefetch", (_event, caseDir) => run(["prefetch", "--case", casePath(caseDir)]));
+handle("query", async (_event, caseDir, sql) => {
   const result = await run(["query", "--case", casePath(caseDir), "--format", "csv", "--store", path.join(app.getPath("userData"), "marketplace.sqlite"), sql]);
   if (result.code !== 0 && /malwarebazaar\b(?!_full)/i.test(sql) && /column|Binder/i.test(result.err || result.out || "")) {
     result.err = (result.err || result.out || "") + "\nmalwarebazaar has six columns: sha256, sha1, md5, signature, file_name, first_seen. Use malwarebazaar_full for more columns.";
   }
   return result;
 });
-ipcMain.handle("save-csv", async (_event, csv) => {
+handle("save-csv", async (_event, csv) => {
   const picked = await dialog.showSaveDialog(win, {
     title: "Export results",
     defaultPath: "results.csv",
@@ -960,12 +1014,12 @@ ipcMain.handle("save-csv", async (_event, csv) => {
   fs.writeFileSync(picked.filePath, csv);
   return { saved: true, path: picked.filePath };
 });
-ipcMain.handle("grok-status", () => grokStatus());
-ipcMain.handle("set-model", (_event, name, model) => {
+handle("grok-status", () => grokStatus());
+handle("set-model", (_event, name, model) => {
   if (models[name] && model) models[name] = model;
   return grokStatus();
 });
-ipcMain.handle("set-provider", (_event, name) => {
+handle("set-provider", (_event, name) => {
   if (name !== "grok" && name !== "claude" && name !== "openai") return grokStatus();
   provider = name;
   buildMenu();
@@ -973,7 +1027,7 @@ ipcMain.handle("set-provider", (_event, name) => {
   return grokStatus();
 });
 
-ipcMain.handle("grok-save", (_event, key, name) => {
+handle("grok-save", (_event, key, name) => {
   if (name === "claude" || name === "grok" || name === "openai") provider = name;
   const value = String(key || "").trim();
   if (!value) return { connected: false, error: "Enter a key" };
@@ -990,23 +1044,23 @@ ipcMain.handle("grok-save", (_event, key, name) => {
     return { connected: false, error: error.message };
   }
 });
-ipcMain.handle("grok-forget", () => {
+handle("grok-forget", () => {
   forgetKey();
   buildMenu();
   return grokStatus();
 });
-ipcMain.handle("grok-forget-one", (_event, name) => {
+handle("grok-forget-one", (_event, name) => {
   if (name === "grok" || name === "claude" || name === "openai") forgetOne(name);
   buildMenu();
   return grokStatus();
 });
-ipcMain.handle("grok-ask", (_event, caseDir, question, name) => {
+handle("grok-ask", (_event, caseDir, question, name) => {
   if (name === "grok" || name === "claude" || name === "openai") provider = name;
   return grokAsk(caseDir, question);
 });
-ipcMain.handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
-ipcMain.handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
-ipcMain.handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
+handle("queries", (_event, caseDir) => run(["queries", "--case", casePath(caseDir)]));
+handle("save-query", (_event, caseDir, name, sql) => run(["save-query", "--case", casePath(caseDir), "--name", name, sql]));
+handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
   const dir = casePath(caseDir);
   const name = String(suggested || "query.sql");
   const picked = await dialog.showSaveDialog(win, {
@@ -1018,20 +1072,20 @@ ipcMain.handle("save-sql-file", async (_event, caseDir, suggested, sql) => {
   fs.writeFileSync(picked.filePath, String(sql || ""), "utf8");
   return { saved: true, path: picked.filePath };
 });
-ipcMain.handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
-ipcMain.handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
-ipcMain.handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));
-ipcMain.handle("save-chat", (_event, caseDir, vendor, question, sql, answer) => run(["save-chat", "--case", casePath(caseDir), "--vendor", vendor, "--question", question, "--sql", sql, "--answer", answer]));
-ipcMain.handle("export-handoff", (_event, caseDir, password, out) => run(["handoff", "--case", casePath(caseDir), "--out", out], password));
-ipcMain.handle("open-handoff", (_event, file, password, out) => run(["open-handoff", "--file", file, "--out", out], password));
-ipcMain.handle("pick-handoff-save", async () => dialog.showSaveDialog({ defaultPath: "handoff.mcpz" }));
-ipcMain.handle("pick-handoff-open", async () => dialog.showOpenDialog({ properties: ["openFile"] }));
-ipcMain.handle("handoff-error", async (_event, message) => dialog.showMessageBox({ type: "error", message }));
-ipcMain.handle("pick-handoff-dir", async () => dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }));
+handle("notes", (_event, caseDir) => run(["notes", "--case", casePath(caseDir)]));
+handle("runs", (_event, caseDir) => run(["runs", "--case", casePath(caseDir)]));
+handle("chats", (_event, caseDir) => run(["chats", "--case", casePath(caseDir)]));
+handle("save-chat", (_event, caseDir, vendor, question, sql, answer) => run(["save-chat", "--case", casePath(caseDir), "--vendor", vendor, "--question", question, "--sql", sql, "--answer", answer]));
+handle("export-handoff", (_event, caseDir, password, out) => run(["handoff", "--case", casePath(caseDir), "--out", out], password));
+handle("open-handoff", (_event, file, password, out) => run(["open-handoff", "--file", file, "--out", out], password));
+handle("pick-handoff-save", async () => dialog.showSaveDialog({ defaultPath: "handoff.mcpz" }));
+handle("pick-handoff-open", async () => dialog.showOpenDialog({ properties: ["openFile"] }));
+handle("handoff-error", async (_event, message) => dialog.showMessageBox({ type: "error", message }));
+handle("pick-handoff-dir", async () => dialog.showOpenDialog({ properties: ["openDirectory", "createDirectory"] }));
 
-ipcMain.handle("save-run", (_event, caseDir, rows, sql, label, analyst, kind) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), "--label", label || "query", "--analyst", analyst || "", "--kind", kind || "run", sql]));
+handle("save-run", (_event, caseDir, rows, sql, label, analyst, kind) => run(["save-run", "--case", casePath(caseDir), "--rows", String(rows), "--label", label || "query", "--analyst", analyst || "", "--kind", kind || "run", sql]));
 
-ipcMain.handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
+handle("save-note", (_event, caseDir, recordId, body, sql) => run(["save-note", "--case", casePath(caseDir), "--record", String(recordId), "--sql", sql || "", body]));
 
 
 

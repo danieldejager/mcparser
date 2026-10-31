@@ -41,6 +41,7 @@ fn main() -> ExitCode {
         Some("srum") => srum(&mut args),
         Some("tasks") => tasks(&mut args),
         Some("userassist") => userassist(&mut args),
+        Some("pe") => pe(&mut args),
         Some("save-analyst") => save_analyst(&mut args),
         Some("handoff") => handoff(&mut args),
         Some("open-handoff") => open_handoff(&mut args),
@@ -85,6 +86,7 @@ Commands:
   source-config  Print the settings JSON of an installed hash source
   bazaar-import  Load a MalwareBazaar CSV or zip into the full dump database
   bazaar-info    Row count and import details of the MalwareBazaar dump
+  pe             Parse a PE file (or every MZ file in a case) into pe_* tables, no execution
   bazaar-match   Match every hash in the case against the dump and write a report
   bazaar-online-hits  Add online get_info results to a bazaar-match report
   ioc-upload     Import a CSV of kind,value pairs into the machine store
@@ -1444,4 +1446,55 @@ fn ioc_upload(args: &mut impl Iterator<Item = String>) -> ExitCode {
         Ok(count) => { println!("imported {count} IOCs"); ExitCode::SUCCESS }
         Err(err) => { eprintln!("{err}"); ExitCode::from(1) }
     }
+}
+
+/// Parse-only PE analysis. Reads bytes; never executes, loads or disassembles.
+fn pe(args: &mut impl Iterator<Item = String>) -> ExitCode {
+    let rest: Vec<String> = args.collect();
+    let file = flag(&rest, "--file").map(PathBuf::from);
+    let case_dir = flag(&rest, "--case").map(PathBuf::from);
+    let json = rest.iter().any(|a| a == "--json");
+    let store = store_path(&rest);
+    let now = unix_now();
+    let targets: Vec<(String, PathBuf)> = match (&file, &case_dir) {
+        (Some(f), _) => vec![(flag(&rest, "--host").unwrap_or_default(), f.clone())],
+        (None, Some(dir)) => case::pe::case_candidates(dir),
+        (None, None) => {
+            eprintln!("usage: mcparser pe --file <path> [--case <dir>] [--host <id>] [--store <file>] [--json]");
+            eprintln!("       mcparser pe --case <dir>   (every MZ file in the case collections)");
+            return ExitCode::from(2);
+        }
+    };
+    // Without a case the results go to a temporary database and are only printed.
+    let tmp = match &case_dir { Some(_) => None, None => tempfile::tempdir().ok() };
+    let db = match (&case_dir, &tmp) {
+        (Some(dir), _) => dir.join("events.duckdb"),
+        (None, Some(t)) => t.path().join("pe.duckdb"),
+        _ => { eprintln!("could not create a temporary directory"); return ExitCode::FAILURE; }
+    };
+    let total = targets.len().max(1);
+    let mut failed = 0;
+    for (i, (host, path)) in targets.iter().enumerate() {
+        if file.is_none() { case::report_progress(((i * 100) / total) as u8, &format!("Analyzing {}", path.display())); }
+        match case::pe::analyze_file(&db, &store, host, path, &now) {
+            Ok(a) => {
+                if json {
+                    println!("{}", case::pe::report_json(&path.to_string_lossy(), &a.report, &a.extras, a.check.as_ref()));
+                } else {
+                    let r = &a.report;
+                    println!("path\t{}", path.display());
+                    println!("sha256\t{}\nmd5\t{}\nsha1\t{}\nimphash\t{}", r.hashes.sha256, r.hashes.md5, r.hashes.sha1, r.imphash);
+                    println!("pe\t{}\narchitecture\t{}\nsubsystem\t{}\ncompile_time\t{}", r.is_pe, r.architecture(), r.subsystem_name(), case::pe::iso_time(r.timestamp));
+                    println!("signed\t{}\ndotnet\t{}\nsections\t{}\nimports\t{}\nexports\t{}", r.signed(), r.is_dotnet(), r.sections.len(), r.imports.len(), r.exports.len());
+                    if let Some(c) = &a.check { println!("malwarebazaar\t{}\t{}", c.result, c.signature); }
+                    for i in &a.extras.indicators { println!("indicator\t{}\t{}\t{}", i.severity, i.rule, i.reason); }
+                    for w in &r.warnings { println!("warning\t{w}"); }
+                    println!();
+                }
+            }
+            Err(err) => { failed += 1; eprintln!("{}: {err}", path.display()); }
+        }
+    }
+    if file.is_none() { case::report_progress(100, &format!("Analyzed {} files", targets.len() - failed)); }
+    if failed > 0 && targets.len() == 1 { ExitCode::FAILURE } else { ExitCode::SUCCESS }
 }

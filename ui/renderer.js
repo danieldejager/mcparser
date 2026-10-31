@@ -154,8 +154,18 @@ function fillHunts() {
   }
 }
 
+// The PE view's open file reference belongs to one case: drop it when the
+// case closes or changes.
+let peViewCase = null;
+function closePeView() {
+  document.getElementById("pe-sheet").hidden = true;
+  window.mcparser.peClose();
+}
+
 function markCase() {
   const open = Boolean(caseDir());
+  if (peViewCase !== null && peViewCase !== caseDir()) closePeView();
+  peViewCase = caseDir();
   window.mcparser.setCaseOpen(open);
   const ioc = document.getElementById("tb-ioc");
   if (ioc) ioc.disabled = !open;
@@ -406,12 +416,27 @@ function renderCsv(text) {
     if (index > 0) {
       tr.style.cursor = "pointer";
       tr.onclick = () => {
-        table.querySelectorAll("tr.selected").forEach((row) => row.classList.remove("selected"));
+        table.querySelectorAll("tr.selected").forEach((row) => { row.classList.remove("selected"); row.tabIndex = -1; });
         tr.classList.add("selected");
+        tr.tabIndex = 0;
       };
+      tr.tabIndex = -1;
       tr.oncontextmenu = (event) => {
         event.preventDefault();
-        showRowMenu(event, recordId, rowNotes.get(recordId) || "", row);
+        tr.onclick();
+        showRowMenu(event, recordId, rowNotes.get(recordId) || "", row, headers, tr);
+      };
+      // Shift+F10 or the ContextMenu key opens the same menu for the focused row.
+      tr.onkeydown = (event) => {
+        if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+          event.preventDefault();
+          tr.onclick();
+          const box = tr.getBoundingClientRect();
+          showRowMenu({ clientX: box.left + 24, clientY: box.bottom }, recordId, rowNotes.get(recordId) || "", row, headers, tr);
+        } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+          const to = event.key === "ArrowDown" ? tr.nextElementSibling : tr.previousElementSibling;
+          if (to && to.tabIndex === -1 && to.querySelector("td")) { event.preventDefault(); to.focus(); to.onclick(); }
+        }
       };
     }
     table.append(tr);
@@ -475,28 +500,85 @@ function rowHash(row) {
   return "";
 }
 
-function showRowMenu(event, recordId, note, row) {
+function showRowMenu(event, recordId, note, row, headers, rowNode) {
   const old = document.getElementById("row-menu");
   if (old) old.remove();
   const menu = document.createElement("div");
   menu.id = "row-menu";
   menu.className = "row-menu";
+  menu.setAttribute("role", "menu");
   menu.style.left = event.clientX + "px";
   menu.style.top = event.clientY + "px";
-  const noteItem = document.createElement("a");
-  noteItem.textContent = "Add note";
-  noteItem.onclick = () => { menu.remove(); showNoteSheet(recordId, note, row.join(" | ")); };
-  menu.append(noteItem);
+  const items = [];
+  const close = (refocus) => {
+    menu.remove();
+    document.removeEventListener("click", onDoc);
+    if (refocus && rowNode && rowNode.isConnected) rowNode.focus();
+  };
+  const onDoc = (e) => { if (!menu.contains(e.target)) close(false); };
+  const add = (label, action) => {
+    const item = document.createElement("a");
+    item.textContent = label;
+    item.setAttribute("role", "menuitem");
+    item.tabIndex = -1;
+    item.onclick = () => { close(false); action(); };
+    item.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); item.onclick(); } };
+    menu.append(item);
+    items.push(item);
+  };
+  const target = window.PeCase && window.PeCase.isPeFilesResult(headers) ? window.PeCase.targetFromRow(headers, row) : null;
+  if (target) add("Open PE analysis", () => openSavedPe(target));
+  add("Add note", () => showNoteSheet(recordId, note, row.join(" | ")));
   const hash = rowHash(row);
-  if (hash) {
-    const look = document.createElement("a");
-    look.textContent = "MalwareBazaar lookup";
-    look.onclick = () => { menu.remove(); lookupHash(hash); };
-    menu.append(look);
-  }
+  if (hash) add("MalwareBazaar lookup", () => lookupHash(hash));
+  menu.addEventListener("keydown", (e) => {
+    const at = items.indexOf(document.activeElement);
+    if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); close(true); }
+    else if (e.key === "ArrowDown") { e.preventDefault(); items[(at + 1) % items.length].focus(); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); items[(at + items.length - 1) % items.length].focus(); }
+    else if (e.key === "Home") { e.preventDefault(); items[0].focus(); }
+    else if (e.key === "End") { e.preventDefault(); items[items.length - 1].focus(); }
+  });
   document.body.append(menu);
-  const close = () => { menu.remove(); document.removeEventListener("click", close); };
-  setTimeout(() => document.addEventListener("click", close), 0);
+  const box = menu.getBoundingClientRect();
+  if (box.right > window.innerWidth) menu.style.left = Math.max(0, window.innerWidth - box.width - 4) + "px";
+  if (box.bottom > window.innerHeight) menu.style.top = Math.max(0, window.innerHeight - box.height - 4) + "px";
+  items[0].focus();
+  setTimeout(() => document.addEventListener("click", onDoc), 0);
+}
+
+// Add to IOC list from the PE view: the existing ioc-add command on the open
+// case. Undefined (no button) when no case is open.
+function peAddIoc() {
+  const dir = caseDir();
+  if (!dir) return undefined;
+  return async (kind, value, note) => {
+    const res = await window.mcparser.iocAdd(dir, kind, value, note);
+    return Boolean(res && res.code === 0);
+  };
+}
+
+// Reopen the PE view for a pe_files row from what the case already holds.
+// Nothing is picked, run or loaded; hex needs the file with a matching sha256.
+async function openSavedPe(target) {
+  const sheet = document.getElementById("pe-sheet");
+  const view = document.getElementById("pe-view");
+  status.textContent = "Opening PE analysis " + target.sha256.slice(0, 12) + "...";
+  const result = await window.mcparser.peCaseReport(caseDir(), target);
+  if (!result || result.code !== 0 || !result.report) {
+    status.textContent = (result && result.err) || "Could not open the saved PE analysis";
+    return;
+  }
+  const opts = {};
+  if (result.hexReady) opts.readRange = window.mcparser.peReadRange;
+  else opts.locateFile = async () => {
+    const res = await window.mcparser.peLocate();
+    return res && res.ok ? { ok: true, readRange: window.mcparser.peReadRange } : res;
+  };
+  opts.addIoc = peAddIoc();
+  window.PeView.render(view, result.report, opts);
+  sheet.hidden = false;
+  status.textContent = "PE analysis from the case";
 }
 
 async function lookupHash(hash) {
@@ -1926,3 +2008,19 @@ window.mcparser.onBazaarAuto(({ phase, text }) => {
     status.textContent = text;
   }
 });
+
+// PE analysis view (layout lives in pe-view.js).
+window.mcparser.onAnalyzePe(async () => {
+  const result = await window.mcparser.peAnalyze(caseDir());
+  if (!result || result.canceled) return;
+  const sheet = document.getElementById("pe-sheet");
+  const view = document.getElementById("pe-view");
+  if (result.code !== 0 || /unknown command:\s*pe\b/i.test(result.out || "")) { view.textContent = window.PeView.failureMessage(result); sheet.hidden = false; return; }
+  try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop()), { readRange: window.mcparser.peReadRange, addIoc: peAddIoc() }); }
+  catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
+  sheet.hidden = false;
+});
+// Light or dark mode applies to the whole app. It is chosen from View > Mode
+// in the app menu; theme.js already set data-theme in <head>.
+window.PeTheme.connect(document, window.mcparser);
+document.getElementById("pe-close").addEventListener("click", () => closePeView());

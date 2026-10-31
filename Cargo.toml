@@ -6,6 +6,7 @@ members = [
   "crates/case",
   "crates/query",
   "crates/cli",
+  "crates/pe-read",
 ]
 
 [workspace.package]

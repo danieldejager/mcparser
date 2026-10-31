@@ -47,3 +47,7 @@ jobs:
           languages: javascript-typescript, rust
       - uses: github/codeql-action/autobuild@v3
       - uses: github/codeql-action/analyze@v3
+        with:
+          # Same category in test.yml and release.yml so both upload to the
+          # one CodeQL configuration main already has.
+          category: ".github/workflows/test.yml:security"
