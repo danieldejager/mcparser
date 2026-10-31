@@ -372,7 +372,7 @@
             top.append(el("span", "pe-cert-cn", ct.subject.cn || ct.subject.full || "(no name)"));
             if (ct.is_signer) top.append(badge("info", "signer"));
             if (ct.self_signed) top.append(badge("low", "self-signed"));
-            cc.append(top, kv([["Subject", [ct.subject.o, ct.subject.ou, ct.subject.c].filter(Boolean).join(", ")], ["Issuer", ct.issuer.cn || ct.issuer.full], ["Issuer org", [ct.issuer.o, ct.issuer.c].filter(Boolean).join(", ")], ["Serial (hex)", el("span", "pe-mono", ct.serial_hex)], ["Serial (dec)", el("span", "pe-mono", ct.serial_dec)], ["Valid", `${ct.not_before} to ${ct.not_after}`], ["Version", "v" + ct.version], ["Algorithm", ct.signature_algorithm]]));
+            cc.append(top, kv([["Subject", [ct.subject.o, ct.subject.ou, ct.subject.c].filter(Boolean).join(", ")], ["Issuer", ct.issuer.cn || ct.issuer.full], ["Issuer org", [ct.issuer.o, ct.issuer.c].filter(Boolean).join(", ")], ["Serial (hex)", el("span", "pe-mono", ct.serial_hex)], ["Serial (dec)", el("span", "pe-mono", ct.serial_dec)], ["Validity period", `${ct.not_before} to ${ct.not_after}`], ["Version", "v" + ct.version], ["Algorithm", ct.signature_algorithm]]));
             chain.append(cc);
           }
           c.append(chain);
