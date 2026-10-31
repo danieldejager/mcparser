@@ -295,7 +295,7 @@ async function caseContext(caseDir, tables) {
   text += await q("tasks", "SELECT enabled, user_id, command, arguments, path FROM tasks WHERE command <> '' AND lower(command) NOT LIKE '%\\\\windows\\\\system32\\\\%' AND lower(command) NOT LIKE '%\\\\windows\\\\syswow64\\\\%' ORDER BY command LIMIT 40", "Scheduled tasks outside System32, csv enabled, user_id, command, arguments, path");
   text += await q("malwarebazaar", "SELECT sha256, sha1, md5, signature, file_name, first_seen FROM malwarebazaar LIMIT 20", "MalwareBazaar sample, csv sha256, sha1, md5, signature, file_name, first_seen");
   const peSql = ask.peSummarySql(tables);
-  if (peSql) text += await q("pe_files", peSql, "Analyzed PE files, one row each, most indicators first (hints, not verdicts; signature_present is not validation)");
+  if (peSql) text += await q("pe_files", peSql, "Analyzed PE files, one row each, most indicators first (hints, not verdicts; signature_present is not validation; IOC candidates are shown defanged and are not confirmed malicious)");
   return text;
 }
 
@@ -956,10 +956,11 @@ ipcMain.handle("pe-analyze", async (_event, caseDir) => {
 ipcMain.handle("pe-case-report", async (_event, caseDir, target) => {
   let qs;
   try { qs = peCase.queries(target); } catch { return { code: 1, err: "Not a valid sha256" }; }
-  const rows = {};
+  const rows = { _failed: [] };
   for (const [k, q] of Object.entries(qs)) {
     const res = await run(["query", "--case", casePath(caseDir), "--format", "jsonl", q]);
     if (res.code !== 0 && k === "files") return { code: 1, err: res.err || res.out || "Query failed" };
+    if (res.code !== 0) rows._failed.push(k);
     rows[k] = res.code === 0 ? peCase.parseJsonl(res.out) : [];
   }
   const report = peCase.buildReport(rows);

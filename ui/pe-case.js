@@ -51,10 +51,11 @@
     headers: "SELECT node, field, file_offset, size, value, meaning FROM pe_header_fields",
     mitigations: "SELECT name, enabled FROM pe_mitigations",
     debug: "SELECT type, timestamp, size, pdb_path, raw_offset FROM pe_debug",
+    iocs: "SELECT type, value, file_offset, encoding, is_private, benign_hint, source_string_idx, source_string FROM pe_iocs",
     signatures: "SELECT signature_idx, file_offset, length, revision, cert_type, signed_data_version, digest_algorithm, signature_algorithm, signer_serial_hex, signer_serial_dec, signer_issuer, signer_issuer_cn, signer_issuer_o, signer_issuer_ou, signer_issuer_c, signer_index, error FROM pe_signatures",
   };
   const ORDER = { files: "", sections: " ORDER BY idx", imports: "", exports: " ORDER BY ordinal", resources: "", indicators: "", strings: " ORDER BY file_offset LIMIT 5000", rich: "", certificates: " ORDER BY signature_idx, cert_idx", version: "", manifest: " LIMIT 1", icons: "", checks: " ORDER BY checked_at DESC LIMIT 1",
-    files_ext: "", resources_ext: "", certificates_ext: " ORDER BY signature_idx, cert_idx", icons_ext: "", headers: " ORDER BY idx", mitigations: " ORDER BY idx", debug: " ORDER BY idx", signatures: " ORDER BY signature_idx" };
+    files_ext: "", resources_ext: "", certificates_ext: " ORDER BY signature_idx, cert_idx", icons_ext: "", headers: " ORDER BY idx", mitigations: " ORDER BY idx", debug: " ORDER BY idx", iocs: " ORDER BY idx LIMIT 5000", signatures: " ORDER BY signature_idx" };
 
   // SQL per table for one target. Only a validated sha256 and quoted
   // literals are put into the text.
@@ -150,6 +151,10 @@
       ...(extended ? { entry_section: ext[0] || null } : {}),
       indicators: R("indicators").map(([rule, severity, reason]) => ({ rule, severity, reason })),
       rich: R("rich").map(([product_id, build, count]) => ({ product_id: num(product_id), build: num(build), count: num(count) })),
+      // Absent (undefined) when the case has no pe_iocs table: the view says
+      // the candidates were not saved. rows._failed lists queries that failed.
+      ...((rows._failed || []).includes("iocs") ? {} : { iocs: R("iocs").map(([type, value, off, encoding, priv, benign, sidx, src]) => ({ type, value, offset: offOrNull(off), encoding,
+        is_private: bool(priv), benign_hint: bool(benign), source_string_idx: offOrNull(sidx), source_string: src || "" })) }),
       strings: R("strings").map(([offset, encoding, category, value]) => ({ offset: num(offset), encoding, category, value })),
       sections, imports, exports, resources,
       debug,

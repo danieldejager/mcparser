@@ -68,3 +68,20 @@ test("newer PE tables and columns are described only when the table exists", () 
   assert.match(full, /never verified/);
   assert.match(full, /not a verdict/);
 });
+
+test("pe_iocs is described only when present, with hints-not-verdicts wording", () => {
+  assert.ok(!ask.buildSchema(ask.parseTables(csv(["pe_files"]))).includes("pe_iocs"));
+  const schema = ask.buildSchema(ask.parseTables(csv(["pe_files", "pe_iocs", "pe_strings"])));
+  assert.ok(schema.includes("Table pe_iocs("));
+  assert.ok(schema.includes("Table pe_strings("));
+  assert.ok(/hints, not verdicts/.test(schema));
+  assert.ok(/packed or encrypted/.test(schema));
+  assert.ok(!/is malicious|confirmed C2 server/i.test(schema));
+  const sql = ask.peSummarySql(new Set(["pe_files", "pe_iocs"]));
+  assert.ok(sql.includes("AS ioc_counts") && sql.includes("AS ioc_candidates_defanged"));
+  assert.ok(sql.includes("'[.]'") && sql.includes("'hxxp'") && sql.includes("LIMIT 10"));
+  assert.ok(/ORDER BY \(c\.benign_hint OR c\.is_private\)/.test(sql));
+  assert.ok(!ask.peSummarySql(new Set(["pe_files"])).includes("pe_iocs"));
+  assert.ok(/never call one confirmed malicious/.test(ask.ANSWER_RULES));
+  assert.ok(/defanged/.test(ask.ANSWER_RULES));
+});

@@ -60,6 +60,10 @@ CREATE TABLE IF NOT EXISTS pe_signatures (
     signer_serial_dec VARCHAR, signer_issuer VARCHAR, signer_issuer_cn VARCHAR, signer_issuer_o VARCHAR,
     signer_issuer_ou VARCHAR, signer_issuer_c VARCHAR, signer_index INTEGER, error VARCHAR
 );
+CREATE TABLE IF NOT EXISTS pe_iocs (
+    sha256 VARCHAR, idx INTEGER, type VARCHAR, value VARCHAR, source_string_idx INTEGER, source_string VARCHAR,
+    file_offset BIGINT, is_private BOOLEAN, benign_hint BOOLEAN, encoding VARCHAR
+);
 ALTER TABLE pe_files ADD COLUMN IF NOT EXISTS entry_section VARCHAR;
 ALTER TABLE pe_files ADD COLUMN IF NOT EXISTS certificate_present BOOLEAN;
 ALTER TABLE pe_files ADD COLUMN IF NOT EXISTS clr_present BOOLEAN;
@@ -204,6 +208,7 @@ pub fn store_report(
         "pe_mitigations",
         "pe_debug",
         "pe_signatures",
+        "pe_iocs",
     ] {
         conn.execute(&format!("DELETE FROM {t} WHERE sha256 = ?"), [sha])
             .map_err(err)?;
@@ -307,6 +312,24 @@ pub fn store_report(
             t.encoding,
             t.category,
             t.value
+        ])
+        .map_err(err)?;
+    }
+    drop(a);
+    // Raw values; the UI and the Ask text defang them for display.
+    let mut a = conn.appender("pe_iocs").map_err(err)?;
+    for (i, c) in x.iocs.iter().enumerate() {
+        a.append_row(duckdb::params![
+            sha,
+            i as i32,
+            c.kind,
+            c.value,
+            c.string_idx as i32,
+            c.source,
+            c.offset.map(|o| o as i64),
+            c.is_private,
+            c.benign_hint,
+            c.encoding
         ])
         .map_err(err)?;
     }
@@ -516,6 +539,8 @@ pub struct Extras {
     pub indicators: Vec<pe_read::extra::Indicator>,
     pub strings: Vec<pe_read::extra::PeString>,
     pub rich: Vec<pe_read::extra::RichEntry>,
+    /// Indicator candidates from the strings (hints, not verdicts).
+    pub iocs: Vec<pe_read::iocs::Ioc>,
     /// Local MalwareBazaar dump result per resource sha256 ("hit" or
     /// "no hit"). Empty when the dump is not installed.
     pub resource_bazaar: std::collections::HashMap<String, String>,
@@ -526,9 +551,11 @@ pub fn extras(bytes: &[u8], r: &PeReport) -> Extras {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
+    let strings = pe_read::extra::strings(bytes, 5);
     Extras {
         indicators: pe_read::extra::indicators(r, now),
-        strings: pe_read::extra::strings(bytes, 5),
+        iocs: pe_read::iocs::extract(&strings),
+        strings,
         rich: pe_read::extra::rich_header(bytes),
         resource_bazaar: Default::default(),
     }
@@ -779,6 +806,7 @@ INSERT INTO pe_files (sha256, path) VALUES ('old', 'C:/old.exe');
             "SELECT * FROM pe_header_fields",
             "SELECT * FROM pe_signatures",
             "SELECT * FROM pe_debug",
+            "SELECT sha256, idx, type, value, source_string_idx, source_string, file_offset, is_private, benign_hint, encoding FROM pe_iocs",
         ] {
             conn.prepare(q).unwrap();
         }
@@ -786,6 +814,36 @@ INSERT INTO pe_files (sha256, path) VALUES ('old', 'C:/old.exe');
         let r = pe_read::analyze(&bytes);
         store_report(&conn, "h", "p", &r, &extras(&bytes, &r), "now").unwrap();
         assert_eq!(count(&conn, "SELECT count(*) FROM pe_files"), 2);
+    }
+
+    /// tiny_pe with synthetic strings (documentation addresses only).
+    fn pe_with_strings() -> Vec<u8> {
+        let mut b = tiny_pe();
+        let at = 0x300;
+        let a = b"http://c2.example.com/gate\0198.51.100.7\0http://schemas.microsoft.com/x\010.0.0.5\0";
+        b[at..at + a.len()].copy_from_slice(a);
+        let w: Vec<u8> = "HKCU\\Software\\Example\\Run".bytes().flat_map(|c| [c, 0]).collect();
+        b[0x380..0x380 + w.len()].copy_from_slice(&w);
+        b
+    }
+
+    #[test]
+    fn stores_iocs_and_replaces_on_reanalysis() {
+        let bytes = pe_with_strings();
+        let r = pe_read::analyze(&bytes);
+        let x = extras(&bytes, &r);
+        let conn = duckdb::Connection::open_in_memory().unwrap();
+        store_report(&conn, "h", "p", &r, &x, "now").unwrap();
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'url' AND value = 'http://c2.example.com/gate' AND NOT benign_hint AND NOT is_private AND file_offset = 768 AND encoding = 'ascii'"), 1);
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'ipv4' AND value = '198.51.100.7' AND NOT is_private"), 1);
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'ipv4' AND value = '10.0.0.5' AND is_private"), 1);
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'url' AND benign_hint"), 1);
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'registry' AND encoding = 'utf16le' AND file_offset = 896"), 1);
+        let n = count(&conn, "SELECT count(*) FROM pe_iocs");
+        assert_eq!(n, x.iocs.len() as i64);
+        store_report(&conn, "h", "p", &r, &x, "now").unwrap();
+        assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs"), n);
+        assert_eq!(count(&conn, "SELECT count(DISTINCT idx) FROM pe_iocs"), n);
     }
 
     #[test]
@@ -920,6 +978,7 @@ pub fn report_json(
         "indicators": x.indicators.iter().map(|i| json!({"rule": i.rule, "severity": i.severity, "reason": i.reason})).collect::<Vec<_>>(),
         "rich": x.rich.iter().map(|e| json!({"product_id": e.product_id, "build": e.build, "count": e.count})).collect::<Vec<_>>(),
         "strings": x.strings.iter().take(5000).map(|t| json!({"offset": t.offset, "encoding": t.encoding, "category": t.category, "value": t.value})).collect::<Vec<_>>(),
+        "iocs": x.iocs.iter().map(|c| json!({"type": c.kind, "value": c.value, "source_string_idx": c.string_idx, "source_string": c.source, "offset": c.offset, "is_private": c.is_private, "benign_hint": c.benign_hint, "encoding": c.encoding})).collect::<Vec<_>>(),
         "sections": r.sections.iter().map(|s| json!({"name": s.name, "virtual_size": s.virtual_size, "virtual_address": s.virtual_address,
             "raw_size": s.raw_size, "raw_offset": s.raw_offset, "entropy": s.entropy, "md5": s.md5, "flags": {
                 "read": s.characteristics & 0x4000_0000 != 0, "write": s.characteristics & 0x8000_0000 != 0, "execute": s.characteristics & 0x2000_0000 != 0,

@@ -157,6 +157,27 @@
   // Only data URLs the parser built from validated PNG/ICO bytes are shown.
   const safeIconUrl = (u) => typeof u === "string" && /^data:image\/(png|x-icon);base64,[A-Za-z0-9+/=]+$/.test(u) && u.length < 2 * 1024 * 1024;
 
+  // IOC candidates from the strings. Values are stored raw; they are only
+  // ever shown defanged so nothing on screen is a live link.
+  const IOC_TYPES = ["url", "domain", "ipv4", "ipv6", "email", "registry", "path", "pipe", "user_agent"];
+  function defang(v) {
+    return String(v ?? "").replaceAll(".", "[.]").replaceAll("@", "[@]")
+      .replace(/^http/i, (m) => (m === "http" ? "hxxp" : "hXXp")).replace(/^ftp:\/\//i, "fxp://");
+  }
+  // type: "" for all; text: substring of the raw value or source string;
+  // hideNoise drops benign hints and private addresses.
+  function filterIocs(iocs, { type = "", text = "", hideNoise = false } = {}) {
+    const q = String(text || "").trim().toLowerCase();
+    return (Array.isArray(iocs) ? iocs : []).filter((c) => c && (!type || c.type === type) &&
+      (!hideNoise || (!c.benign_hint && !c.is_private)) &&
+      (!q || String(c.value || "").toLowerCase().includes(q) || defang(c.value).toLowerCase().includes(q) || String(c.source_string || "").toLowerCase().includes(q)));
+  }
+  // Kind for the case IOC list. The hunt matches values as substrings, so
+  // the kind is a label; the existing kinds are reused where they fit.
+  function iocKind(type) {
+    return type === "ipv4" || type === "ipv6" ? "ip" : type === "domain" || type === "path" ? type : String(type || "other");
+  }
+
   function render(container, report, opts = {}) {
     const doc = container.ownerDocument;
     const win = doc.defaultView;
@@ -362,10 +383,86 @@
       hex: () => {
         const d = el("div", "pe-stack");
         d.append(hexCard());
+        d.append(iocCard());
         d.append(card(`Strings (${(report.strings || []).length})`, table([{ label: "Offset", cls: "pe-mono pe-num" }, { label: "Encoding" }, { label: "Category" }, { label: "Value", cls: "pe-mono" }], (report.strings || []).map((t) => [offsetCell(t.offset), t.encoding, t.category, t.value]))));
         return d;
       },
     };
+
+    // IOC candidates: type and text filters, a toggle to hide benign hints
+    // and private addresses, and (with a case open) Add to IOC list.
+    function iocCard() {
+      const all = report.iocs;
+      const title = "IOC candidates from strings (hints, not verdicts)";
+      if (!Array.isArray(all)) {
+        return card(title, el("div", "pe-notice", report.from_case
+          ? "IOC candidates were not saved in the case. Analyze the file again with this build to add them."
+          : "This parser build did not report IOC candidates."));
+      }
+      const c = el("div", "pe-iocs");
+      const bar = el("div", "pe-hextools");
+      const sel = el("select");
+      sel.setAttribute("aria-label", "IOC type");
+      const counts = {};
+      for (const x of all) counts[x.type] = (counts[x.type] || 0) + 1;
+      sel.append(new win.Option(`All types (${all.length})`, ""));
+      for (const t of IOC_TYPES) if (counts[t]) sel.append(new win.Option(`${t} (${counts[t]})`, t));
+      const txt = el("input");
+      txt.type = "search";
+      txt.placeholder = "Filter";
+      txt.setAttribute("aria-label", "Filter IOC candidates");
+      const lab = el("label", "pe-dim");
+      const hide = el("input");
+      hide.type = "checkbox";
+      hide.style.width = "auto";
+      lab.append(hide, doc.createTextNode(" Hide benign hints and private IPs"));
+      bar.append(sel, txt, lab);
+      const picked = new Set();
+      let addBtn = null;
+      if (typeof opts.addIoc === "function") {
+        addBtn = el("button", "pe-copy", "Add selected to IOC list");
+        addBtn.type = "button";
+        addBtn.disabled = true;
+        addBtn.addEventListener("click", async () => {
+          const rows = [...picked];
+          addBtn.disabled = true;
+          let ok = 0;
+          for (const x of rows) { try { if (await opts.addIoc(iocKind(x.type), x.value, "from PE strings " + (s.sha256 || ""))) ok++; } catch (_) { /* reported below */ } }
+          addBtn.textContent = `Added ${ok} of ${rows.length}`;
+          picked.clear();
+          draw();
+        });
+        bar.append(addBtn);
+      }
+      const note = el("div", "pe-dim", "Shown defanged. Benign hints are well-known hosts such as Microsoft, W3C and certificate authorities. Packed or encrypted files can hide C2 addresses from plain strings.");
+      const body = el("div");
+      const draw = () => {
+        const rows = filterIocs(all, { type: sel.value, text: txt.value, hideNoise: hide.checked }).slice(0, 5000);
+        if (addBtn) addBtn.disabled = picked.size === 0;
+        const cols = [{ label: "Type" }, { label: "Value (defanged)", cls: "pe-mono" }, { label: "Offset", cls: "pe-mono pe-num" }, { label: "Encoding" }, { label: "Notes" }];
+        if (addBtn) cols.unshift({ label: "" });
+        body.replaceChildren(table(cols, rows.map((x) => {
+          const notes = [x.benign_hint ? "benign hint" : "", x.is_private ? "private" : ""].filter(Boolean).join(", ");
+          const cells = [x.type, defang(x.value), offsetCell(typeof x.offset === "number" ? x.offset : null), x.encoding, notes];
+          if (addBtn) {
+            const cb = el("input");
+            cb.type = "checkbox";
+            cb.style.width = "auto";
+            cb.setAttribute("aria-label", "Select " + defang(x.value));
+            cb.checked = picked.has(x);
+            cb.addEventListener("change", () => { if (cb.checked) picked.add(x); else picked.delete(x); addBtn.disabled = picked.size === 0; addBtn.textContent = "Add selected to IOC list"; });
+            cells.unshift(cb);
+          }
+          return cells;
+        })));
+      };
+      sel.addEventListener("change", draw);
+      txt.addEventListener("input", draw);
+      hide.addEventListener("change", draw);
+      draw();
+      c.append(bar, note, body);
+      return card(title, c);
+    }
 
     // Resources: tree on the left, details, hex preview and parsed text on
     // the right. Bytes come from opts.readRange, capped at RES_PREVIEW_MAX.
@@ -657,5 +754,5 @@
     return { open: (id) => open(Math.max(0, TABS.findIndex((t) => t.id === id))), goHex: (o) => goHex(o) };
   }
 
-  return { COLUMNS, TABS, PAGE_SIZES, MAX_RANGE, flattenTree, summaryItems, hexRows, decodeBase64, sectionFlags, parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX, safeIconUrl, MISSING_PE, failureMessage, render };
+  return { IOC_TYPES, defang, filterIocs, iocKind, COLUMNS, TABS, PAGE_SIZES, MAX_RANGE, flattenTree, summaryItems, hexRows, decodeBase64, sectionFlags, parseOffset, pageStart, severityOf, entropyLevel, importTree, resourceTree, resourceNodes, rtLabel, langLabel, previewLength, bazaarState, RES_PREVIEW_MAX, safeIconUrl, MISSING_PE, failureMessage, render };
 });

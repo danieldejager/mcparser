@@ -537,6 +537,17 @@ function showRowMenu(event, recordId, note, row, headers, rowNode) {
   setTimeout(() => document.addEventListener("click", onDoc), 0);
 }
 
+// Add to IOC list from the PE view: the existing ioc-add command on the open
+// case. Undefined (no button) when no case is open.
+function peAddIoc() {
+  const dir = caseDir();
+  if (!dir) return undefined;
+  return async (kind, value, note) => {
+    const res = await window.mcparser.iocAdd(dir, kind, value, note);
+    return Boolean(res && res.code === 0);
+  };
+}
+
 // Reopen the PE view for a pe_files row from what the case already holds.
 // Nothing is picked, run or loaded; hex needs the file with a matching sha256.
 async function openSavedPe(target) {
@@ -554,6 +565,7 @@ async function openSavedPe(target) {
     const res = await window.mcparser.peLocate();
     return res && res.ok ? { ok: true, readRange: window.mcparser.peReadRange } : res;
   };
+  opts.addIoc = peAddIoc();
   window.PeView.render(view, result.report, opts);
   sheet.hidden = false;
   status.textContent = "PE analysis from the case";
@@ -1994,7 +2006,7 @@ window.mcparser.onAnalyzePe(async () => {
   const sheet = document.getElementById("pe-sheet");
   const view = document.getElementById("pe-view");
   if (result.code !== 0 || /unknown command:\s*pe\b/i.test(result.out || "")) { view.textContent = window.PeView.failureMessage(result); sheet.hidden = false; return; }
-  try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop()), { readRange: window.mcparser.peReadRange }); }
+  try { window.PeView.render(view, JSON.parse(result.out.trim().split("\n").pop()), { readRange: window.mcparser.peReadRange, addIoc: peAddIoc() }); }
   catch (err) { view.textContent = "Could not read the analysis: " + err.message; }
   sheet.hidden = false;
 });

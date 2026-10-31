@@ -7,6 +7,7 @@
 
 pub mod cert;
 pub mod extra;
+pub mod iocs;
 pub mod rsrc;
 
 use md5::Md5;

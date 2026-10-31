@@ -117,3 +117,25 @@ test("an old or missing binary gets one plain rebuild message", () => {
   const r = require("node:fs").readFileSync(__dirname + "/renderer.js", "utf8");
   assert.ok(r.includes("window.PeView.failureMessage(result)"));
 });
+
+test("IOC filters, defang and kind mapping", () => {
+  const { defang, filterIocs, iocKind } = require("./pe-view.js");
+  assert.strictEqual(defang("http://c2.example.com/gate"), "hxxp://c2[.]example[.]com/gate");
+  assert.strictEqual(defang("ftp://203.0.113.9/x"), "fxp://203[.]0[.]113[.]9/x");
+  assert.strictEqual(defang("ops@example.com"), "ops[@]example[.]com");
+  const iocs = [
+    { type: "url", value: "http://c2.example.com/gate", source_string: "", benign_hint: false, is_private: false },
+    { type: "ipv4", value: "10.0.0.5", source_string: "", benign_hint: false, is_private: true },
+    { type: "url", value: "http://schemas.microsoft.com/x", source_string: "", benign_hint: true, is_private: false },
+    { type: "ipv4", value: "198.51.100.7", source_string: "connect 198.51.100.7", benign_hint: false, is_private: false },
+  ];
+  assert.strictEqual(filterIocs(iocs).length, 4);
+  assert.deepStrictEqual(filterIocs(iocs, { type: "ipv4" }).map((x) => x.value), ["10.0.0.5", "198.51.100.7"]);
+  assert.deepStrictEqual(filterIocs(iocs, { hideNoise: true }).map((x) => x.value), ["http://c2.example.com/gate", "198.51.100.7"]);
+  assert.strictEqual(filterIocs(iocs, { text: "c2[.]example" }).length, 1);
+  assert.strictEqual(filterIocs(iocs, { text: "CONNECT" }).length, 1);
+  assert.strictEqual(filterIocs(null).length, 0);
+  assert.strictEqual(iocKind("ipv6"), "ip");
+  assert.strictEqual(iocKind("domain"), "domain");
+  assert.strictEqual(iocKind("pipe"), "pipe");
+});

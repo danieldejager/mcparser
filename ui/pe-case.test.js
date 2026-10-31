@@ -136,3 +136,14 @@ test("newer case queries are read-only and scoped to the file", () => {
   assert.match(q.files_ext, /AND host_id = 'h' AND path = 'p' LIMIT 1$/);
   for (const k of ["headers", "mitigations", "debug", "signatures", "resources_ext", "icons_ext", "certificates_ext"]) assert.match(q[k], new RegExp("^SELECT .* WHERE sha256 = 'a{64}'"), k);
 });
+
+test("buildReport reads pe_iocs and marks a case without the table", () => {
+  const base = { files: [[SHA, "m", "s1", "imp", "h1", "C:\\x.exe", "2048", "true", "true", "false", "false", "x64", "Windows GUI", "", "", "false", "0", "", "false", "0", "100", "", "0"]] };
+  const r = buildReport({ ...base, iocs: [["url", "http://c2.example.com/gate", "768", "ascii", "false", "false", "1", "http://c2.example.com/gate"], ["ipv4", "10.0.0.5", "", "ascii", "true", "false", "4", "10.0.0.5"]] });
+  assert.deepStrictEqual(r.iocs[0], { type: "url", value: "http://c2.example.com/gate", offset: 768, encoding: "ascii", is_private: false, benign_hint: false, source_string_idx: 1, source_string: "http://c2.example.com/gate" });
+  assert.strictEqual(r.iocs[1].is_private, true);
+  assert.strictEqual(r.iocs[1].offset, null);
+  assert.match(queries({ sha256: SHA }).iocs, /FROM pe_iocs WHERE sha256 = .a{64}. ORDER BY idx LIMIT 5000$/);
+  const old = buildReport({ ...base, iocs: [], _failed: ["iocs"] });
+  assert.strictEqual(old.iocs, undefined);
+});
