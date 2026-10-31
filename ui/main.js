@@ -565,6 +565,13 @@ function createWindow() {
     backgroundColor: "#f3f3f3",
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      // Preload only uses contextBridge, ipcRenderer and process.platform,
+      // all available in a sandboxed preload.
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
     },
   });
   win.loadFile("index.html");
