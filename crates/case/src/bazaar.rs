@@ -71,7 +71,7 @@ fn hash_column(name: &str) -> Option<usize> {
 }
 
 fn open_dump(path: &Path) -> Result<duckdb::Connection, String> {
-    let db = duckdb::Connection::open(path).map_err(|e| e.to_string())?;
+    let db = crate::open_db(path).map_err(|e| e.to_string())?;
     let cols: Vec<String> = FIELDS.iter().map(|(c, _)| format!("{c} VARCHAR")).collect();
     db.execute_batch(&format!(
         "CREATE TABLE IF NOT EXISTS malwarebazaar (sha256 VARCHAR PRIMARY KEY, {}, note VARCHAR);
@@ -98,7 +98,7 @@ fn migrate(db: &duckdb::Connection) -> Result<(), String> {
             db.execute_batch(&format!("ALTER TABLE malwarebazaar ADD COLUMN {c} VARCHAR")).map_err(|e| e.to_string())?;
         }
     }
-    // Parsed in Rust: the DuckDB json extension is not bundled.
+    // Parsed in Rust (this predates the built in DuckDB json extension).
     let mut old: Vec<(String, String)> = Vec::new();
     {
         let mut stmt = db.prepare("SELECT sha256, note FROM malwarebazaar WHERE note IS NOT NULL").map_err(|e| e.to_string())?;
@@ -274,6 +274,7 @@ pub fn dump_info(store: &Path) -> Option<(u64, Vec<(String, String)>)> {
     let path = dump_path(store);
     if !path.exists() { return None; }
     let db = duckdb::Connection::open_with_flags(&path, duckdb::Config::default().access_mode(duckdb::AccessMode::ReadOnly).ok()?).ok()?;
+    db.execute_batch(crate::NO_EXTENSION_DOWNLOADS).ok()?;
     let total: i64 = db.query_row("SELECT count(*) FROM malwarebazaar", [], |r| r.get(0)).ok()?;
     let mut meta = Vec::new();
     if let Ok(mut stmt) = db.prepare("SELECT key, value FROM malwarebazaar_meta ORDER BY key") {
@@ -354,7 +355,7 @@ fn gather(conn: &duckdb::Connection) -> Result<(), String> {
 pub fn match_case(store: &Path, db_path: &Path, progress: &mut dyn FnMut(u8, &str)) -> Result<MatchOutcome, String> {
     if dump_path(store).exists() { drop(open_dump(&dump_path(store))?); } // migrates an older schema
     let (dump_rows, dump_meta) = dump_info(store).ok_or("The MalwareBazaar dump is not loaded. Upload or fetch it first.")?;
-    let conn = duckdb::Connection::open(db_path).map_err(|e| e.to_string())?;
+    let conn = crate::open_db(db_path).map_err(|e| e.to_string())?;
     progress(10, "Gathering hashes from the case");
     gather(&conn)?;
     let checked: i64 = conn.query_row("SELECT count(DISTINCT hash) FROM case_hashes", [], |r| r.get(0)).map_err(|e| e.to_string())?;
@@ -435,7 +436,7 @@ pub fn write_report(case_dir: &Path, stamp: &str, outcome: &MatchOutcome) -> Res
 /// Turn online get_info results (hash, sha256, signature, file_name) into hits
 /// attributed to every host and artifact in the case that holds the hash.
 pub fn online_hits(db_path: &Path, found: &[(String, String, String, String)]) -> Result<Vec<BazaarHit>, String> {
-    let conn = duckdb::Connection::open(db_path).map_err(|e| e.to_string())?;
+    let conn = crate::open_db(db_path).map_err(|e| e.to_string())?;
     gather(&conn)?;
     conn.execute_batch("CREATE OR REPLACE TEMP TABLE online_found (hash VARCHAR, sha256 VARCHAR, signature VARCHAR, file_name VARCHAR)").map_err(|e| e.to_string())?;
     for (h, s, sig, f) in found {
@@ -536,7 +537,7 @@ mod tests {
         std::fs::write(&csv, body).unwrap();
         import_dump(&store, &csv, &mut |_| {}).unwrap();
         let db_path = d.join("events.duckdb");
-        let db = duckdb::Connection::open(&db_path).unwrap();
+        let db = crate::open_db(&db_path).unwrap();
         db.execute_batch("CREATE TABLE amcache (host_id VARCHAR, kind VARCHAR, name VARCHAR, path VARCHAR, sha1 VARCHAR, size BIGINT, modified VARCHAR, publisher VARCHAR, version VARCHAR, key_path VARCHAR);
             CREATE TABLE events (source_sha256 VARCHAR, record_id BIGINT, event_id INTEGER, channel VARCHAR, provider VARCHAR, computer VARCHAR, time_created VARCHAR, event_data VARCHAR, host_id VARCHAR, log_name VARCHAR);").unwrap();
         for i in 0..3000u64 {
@@ -561,7 +562,7 @@ mod tests {
         let store = d.join("marketplace.sqlite");
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/malwarebazaar/recent-sample.csv");
         import_dump(&store, &fixture, &mut |_| {}).unwrap();
-        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let conn = crate::open_db_in_memory().unwrap();
         assert!(attach_dump(&conn, &store).unwrap());
         let cols = |t: &str| -> Vec<String> {
             let mut st = conn.prepare(&format!("SELECT column_name FROM (DESCRIBE {t})")).unwrap();
@@ -583,7 +584,7 @@ mod tests {
         let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/malwarebazaar/recent-sample.csv");
         let c = import_dump(&store, &fixture, &mut |_| {}).unwrap();
         assert_eq!((c.read, c.added), (3, 3));
-        let db = duckdb::Connection::open(dump_path(&store)).unwrap();
+        let db = crate::open_db(dump_path(&store)).unwrap();
         let row: Vec<Option<String>> = db.query_row(
             "SELECT md5, sha1, imphash, ssdeep, tlsh, first_seen, reporter, file_name, file_type, mime_type, signature, clamav, vtpercent, tags, note FROM malwarebazaar WHERE signature = 'AgentTesla'",
             [], |r| (0..15).map(|i| r.get(i)).collect()).unwrap();
@@ -626,14 +627,14 @@ mod tests {
         let store = d.join("marketplace.sqlite");
         let a = hex(9, 64);
         {
-            let db = duckdb::Connection::open(dump_path(&store)).unwrap();
+            let db = crate::open_db(dump_path(&store)).unwrap();
             db.execute_batch("CREATE TABLE malwarebazaar (sha256 VARCHAR PRIMARY KEY, md5 VARCHAR, sha1 VARCHAR, note VARCHAR)").unwrap();
             db.execute("INSERT INTO malwarebazaar VALUES (?, NULL, NULL, '{\"file_name\":\"m.exe\",\"signature\":\"Old\",\"file_type\":\"exe\",\"reporter\":\"r\"}')", [&a]).unwrap();
         }
         let csv = d.join("e.csv");
         std::fs::write(&csv, "# empty\n").unwrap();
         import_dump(&store, &csv, &mut |_| {}).unwrap();
-        let db = duckdb::Connection::open(dump_path(&store)).unwrap();
+        let db = crate::open_db(dump_path(&store)).unwrap();
         let (f, s, n): (String, String, Option<String>) = db.query_row("SELECT file_name, signature, note FROM malwarebazaar", [], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?))).unwrap();
         assert_eq!((f.as_str(), s.as_str(), n), ("m.exe", "Old", None));
     }
@@ -655,7 +656,7 @@ mod tests {
         let c = import_dump(&store, &csv, &mut |_| {}).unwrap();
         assert_eq!(c.total, 1_000_000);
         let db_path = d.join("events.duckdb");
-        let db = duckdb::Connection::open(&db_path).unwrap();
+        let db = crate::open_db(&db_path).unwrap();
         db.execute_batch("CREATE TABLE amcache AS SELECT 'H' AS host_id, 'k' AS kind, 'n' AS name, 'p' AS path, printf('%040x', i) AS sha1 FROM range(0, 2000000, 20) t(i)").unwrap();
         drop(db);
         let out = match_case(&store, &db_path, &mut |_, _| {}).unwrap();

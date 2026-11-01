@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.6-rc3 - 2026-11-02
+
+### Fixed
+
+- The JSON functions in queries no longer download an extension. They are built in, so queries using json_extract_string work in the signed Mac app and offline. McParser also turns off DuckDB extension autoinstall and autoload, so a missing extension fails locally instead of fetching from the network
+
 ## 0.3.6-rc2 - 2026-11-01
 
 Fixes a launch crash in 0.3.6-rc1.

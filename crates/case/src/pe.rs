@@ -588,7 +588,7 @@ pub fn analyze_file(
     let report = pe_read::analyze(&bytes);
     let mut extras = extras(&bytes, &report);
     drop(bytes);
-    let conn = duckdb::Connection::open(db_path).map_err(err)?;
+    let conn = crate::open_db(db_path).map_err(err)?;
     let shown = file.to_string_lossy().to_string();
     store_report(&conn, host_id, &shown, &report, &extras, analyzed_at)?;
     let check = bazaar_check(&conn, store, &report.hashes.sha256);
@@ -756,7 +756,7 @@ INSERT INTO pe_files (sha256, path) VALUES ('old', 'C:/old.exe');
         let r = pe_read::analyze(&bytes);
         assert!(r.is_pe);
         let x = extras(&bytes, &r);
-        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let conn = crate::open_db_in_memory().unwrap();
         store_report(&conn, "h", "p", &r, &x, "now").unwrap();
         let rows = header_rows(&r);
         assert!(rows.iter().any(|h| h.0 == "dos" && h.1 == "e_magic"));
@@ -785,7 +785,7 @@ INSERT INTO pe_files (sha256, path) VALUES ('old', 'C:/old.exe');
 
     #[test]
     fn old_case_schema_is_migrated_in_place() {
-        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let conn = crate::open_db_in_memory().unwrap();
         conn.execute_batch(OLD_SCHEMA).unwrap();
         conn.execute_batch(SCHEMA).unwrap();
         conn.execute_batch(SCHEMA).unwrap();
@@ -832,7 +832,7 @@ INSERT INTO pe_files (sha256, path) VALUES ('old', 'C:/old.exe');
         let bytes = pe_with_strings();
         let r = pe_read::analyze(&bytes);
         let x = extras(&bytes, &r);
-        let conn = duckdb::Connection::open_in_memory().unwrap();
+        let conn = crate::open_db_in_memory().unwrap();
         store_report(&conn, "h", "p", &r, &x, "now").unwrap();
         assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'url' AND value = 'http://c2.example.com/gate' AND NOT benign_hint AND NOT is_private AND file_offset = 768 AND encoding = 'ascii'"), 1);
         assert_eq!(count(&conn, "SELECT count(*) FROM pe_iocs WHERE type = 'ipv4' AND value = '198.51.100.7' AND NOT is_private"), 1);
