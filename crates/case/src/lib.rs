@@ -3,6 +3,27 @@ use model::Event;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+
+/// Settings run on every DuckDB connection. Extensions we need are compiled
+/// in, so a query must never fetch one from the network (a downloaded
+/// extension is also rejected by macOS library validation in the signed app).
+pub(crate) const NO_EXTENSION_DOWNLOADS: &str =
+    "SET autoinstall_known_extensions=false; SET autoload_known_extensions=false;";
+
+/// Open a DuckDB database with extension autoinstall and autoload disabled.
+pub fn open_db<P: AsRef<Path>>(path: P) -> Result<Connection, duckdb::Error> {
+    let conn = Connection::open(path)?;
+    conn.execute_batch(NO_EXTENSION_DOWNLOADS)?;
+    Ok(conn)
+}
+
+/// In-memory DuckDB with extension autoinstall and autoload disabled.
+pub fn open_db_in_memory() -> Result<Connection, duckdb::Error> {
+    let conn = Connection::open_in_memory()?;
+    conn.execute_batch(NO_EXTENSION_DOWNLOADS)?;
+    Ok(conn)
+}
+
 pub mod bazaar;
 pub mod pe;
 
@@ -27,7 +48,7 @@ pub struct SavedQuery {
 }
 
 pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS events (
             source_sha256 VARCHAR,
@@ -64,7 +85,7 @@ pub fn ingest(db_path: &Path, source_sha256: &str, events: &[Event]) -> Result<u
 }
 
 pub fn count_event_id(db_path: &Path, event_id: u32) -> Result<i64, duckdb::Error> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
     conn.query_row(
         "SELECT count(*) FROM events WHERE event_id = ?",
         [event_id],
@@ -115,7 +136,7 @@ pub fn query_table_with_iocs(
     store: Option<&Path>,
     sql: &str,
 ) -> Result<Table, duckdb::Error> {
-    let conn = if db_path.as_os_str().is_empty() { Connection::open_in_memory()? } else { Connection::open(db_path)? };
+    let conn = if db_path.as_os_str().is_empty() { open_db_in_memory()? } else { open_db(db_path)? };
     let _ = expose_iocs(&conn, catalog, store);
     if let Some(store) = store { let _ = bazaar::attach_dump(&conn, store); }
     let mut stmt = conn.prepare(sql)?;
@@ -332,7 +353,7 @@ pub fn remove_source(catalog: &Path, sha256: &str) -> Result<(), rusqlite::Error
 }
 
 pub fn delete_events_for_source(db_path: &Path, sha256: &str) -> Result<usize, duckdb::Error> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
     conn.execute("DELETE FROM events WHERE source_sha256 = ?", [sha256])
 }
 
@@ -815,7 +836,7 @@ pub fn eventlog_payloads(zip_path: &Path) -> Result<Vec<LogPayload>, String> {
 pub fn ingest_for_host(db_path: &Path, source_sha256: &str, host_id: &str, log_name: &str, events: &[Event]) -> Result<usize, duckdb::Error> {
     let inserted = ingest(db_path, source_sha256, events)?;
     if inserted == 0 { return Ok(inserted); }
-    let conn = Connection::open(db_path)?;
+    let conn = open_db(db_path)?;
     conn.execute(
         "UPDATE events SET host_id = ?1, log_name = ?2 WHERE source_sha256 = ?3 AND (host_id IS NULL OR host_id = '')",
         params![host_id, log_name, source_sha256],
@@ -840,7 +861,7 @@ pub fn ingest_prefetch(catalog: &Path, db_path: &Path) -> Result<usize, String> 
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS prefetch (
             host_id VARCHAR, pf_name VARCHAR, executable VARCHAR, run_count INTEGER, last_run VARCHAR, version INTEGER, path VARCHAR
@@ -920,7 +941,7 @@ pub fn ingest_amcache(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS amcache (
             host_id VARCHAR, kind VARCHAR, name VARCHAR, path VARCHAR, sha1 VARCHAR,
@@ -1094,7 +1115,7 @@ pub fn ingest_userassist(catalog: &Path, db_path: &Path) -> Result<usize, String
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS userassist (
             host_id VARCHAR, guid VARCHAR, name VARCHAR, run_count INTEGER, last_run VARCHAR
@@ -1196,7 +1217,7 @@ pub fn ingest_shimcache(catalog: &Path, db_path: &Path) -> Result<usize, String>
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS shimcache (
             host_id VARCHAR, path VARCHAR, modified VARCHAR, position INTEGER, executed VARCHAR, control_set VARCHAR
@@ -1367,7 +1388,7 @@ pub fn ingest_srum(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS srum (
             host_id VARCHAR, kind VARCHAR, timestamp VARCHAR, app VARCHAR, user_sid VARCHAR,
@@ -1546,7 +1567,7 @@ pub fn ingest_services(catalog: &Path, db_path: &Path) -> Result<usize, String> 
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS services (
             host_id VARCHAR, name VARCHAR, display_name VARCHAR, state VARCHAR, start_mode VARCHAR, path VARCHAR, user_id VARCHAR
@@ -1644,7 +1665,7 @@ pub fn ingest_tasks(catalog: &Path, db_path: &Path) -> Result<usize, String> {
         .collect::<Result<Vec<_>, _>>()
         .map_err(|err| err.to_string())?;
     let case_dir = catalog.parent().unwrap_or(Path::new("."));
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS tasks (
             host_id VARCHAR, path VARCHAR, command VARCHAR, arguments VARCHAR, user_id VARCHAR, enabled VARCHAR
@@ -1817,7 +1838,7 @@ pub fn iocs(catalog: &Path) -> Result<Vec<Ioc>, rusqlite::Error> {
 
 
 pub fn ensure_hunt_table(db_path: &Path) -> Result<(), String> {
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     db.execute_batch(
         "CREATE TABLE IF NOT EXISTS hunt_matches (
             run_id BIGINT,
@@ -1835,7 +1856,7 @@ pub fn ensure_hunt_table(db_path: &Path) -> Result<(), String> {
 
 pub fn save_hunt_matches_db(db_path: &Path, run_id: i64, matches: &[HuntMatch]) -> Result<(), String> {
     ensure_hunt_table(db_path)?;
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     for row in matches {
         db.execute(
             "INSERT INTO hunt_matches (run_id, source, host_id, column_name, value, ioc_kind, ioc_value, context) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1905,7 +1926,7 @@ pub fn hunt_iocs(catalog: &Path, db_path: &Path) -> Result<Vec<HuntMatch>, Strin
     if indicators.is_empty() {
         return Ok(Vec::new());
     }
-    let db = duckdb::Connection::open(db_path).map_err(|err| err.to_string())?;
+    let db = crate::open_db(db_path).map_err(|err| err.to_string())?;
     let scans: &[(&str, &str, &str, &str)] = &[
         ("events", "SELECT computer, event_id, event_data FROM events", "event_data", "computer"),
         ("prefetch", "SELECT host_id, executable, path FROM prefetch", "executable", "host_id"),
