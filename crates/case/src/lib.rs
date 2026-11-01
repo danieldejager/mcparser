@@ -3,6 +3,8 @@ use model::Event;
 use sha2::{Digest, Sha256};
 use std::path::Path;
 
+mod render;
+
 
 /// Settings run on every DuckDB connection. Extensions we need are compiled
 /// in, so a query must never fetch one from the network (a downloaded
@@ -167,16 +169,10 @@ pub fn query_table_with_iocs(
 }
 
 fn cell(row: &duckdb::Row, i: usize) -> String {
-    if let Ok(value) = row.get::<_, i64>(i) {
-        return value.to_string();
+    match row.get::<_, duckdb::types::Value>(i) {
+        Ok(value) => render::cell_text(&value),
+        Err(_) => String::new(),
     }
-    if let Ok(value) = row.get::<_, f64>(i) {
-        return value.to_string();
-    }
-    if let Ok(value) = row.get::<_, String>(i) {
-        return value;
-    }
-    String::new()
 }
 
 pub fn file_sha256(path: &Path) -> std::io::Result<String> {
