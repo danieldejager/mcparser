@@ -38,6 +38,7 @@
       "ipc-guard.js",
       "parser-binary.js",
       "bazaar-fetch.js",
+      "bazaar-autoupdate.js",
       "icon.png"
     ],
     "extraResources": [
