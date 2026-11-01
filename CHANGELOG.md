@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.6-rc2 - 2026-11-01
+
+Fixes a launch crash in 0.3.6-rc1.
+
+### Fixed
+
+- The installed app crashed at startup with "Cannot find module './bazaar-autoupdate'" because the file was not packaged. It is now included, and a test fails if any module the app loads is left out of the package
+
 ## 0.3.6-rc1 - 2026-10-31
 
 Release candidate to verify the macOS signing pipeline.
