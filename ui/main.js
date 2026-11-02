@@ -4,6 +4,7 @@ const ask = require("./ask-context");
 const fs = require("fs");
 const peRange = require("./pe-range.js");
 const peCase = require("./pe-case.js");
+const { windowOptions } = require("./window-options.js");
 const parserBin = require("./parser-binary.js");
 const path = require("path");
 const bazaar = require("./bazaar-fetch");
@@ -557,10 +558,13 @@ function buildMenu() {
 
 function createWindow() {
   const icon = appIcon();
+  const opts = windowOptions(process.platform);
   win = new BrowserWindow({
     width: 1200,
     height: 760,
-    fullscreen: true,
+    fullscreen: opts.fullscreen,
+    frame: opts.frame,
+    autoHideMenuBar: opts.autoHideMenuBar,
     title: "McParser",
     icon: icon || undefined,
     backgroundColor: "#f3f3f3",
@@ -575,6 +579,7 @@ function createWindow() {
       allowRunningInsecureContent: false,
     },
   });
+  if (opts.maximize) win.maximize();
   win.loadFile("index.html");
   win.webContents.once("did-finish-load", () => {
     if (chatShown) win.webContents.send("grok-chat", true);
