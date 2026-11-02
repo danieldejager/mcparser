@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6-rc4 - 2026-11-02
+
+### Fixed
+
+- Query output now renders every DuckDB type as readable text. Booleans show as true or false, and numbers, decimals, dates, timestamps, intervals, blobs, lists, structs and maps are no longer blank or truncated. Text that looks like a number is shown as stored
+- Reopening a saved PE analysis from a case now shows its flags and newer sections correctly
+
 ## 0.3.6-rc3 - 2026-11-02
 
 ### Fixed
